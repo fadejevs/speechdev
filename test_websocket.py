@@ -17,6 +17,6 @@ def on_message(data):
 
 try:
     sio.connect('http://localhost:5001')
-    time.sleep(5)  # Keep connection open for 5 seconds
+    time.sleep(5)  # keeps the connection open for 5 sec
 finally:
     sio.disconnect() 
