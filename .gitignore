@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 speech-test.wav
+test_client.py
