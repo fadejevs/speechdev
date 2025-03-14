@@ -3,3 +3,4 @@ flask-socketio
 azure-cognitiveservices-speech
 requests
 python-dotenv
+firebase-admin

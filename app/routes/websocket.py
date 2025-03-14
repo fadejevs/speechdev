@@ -19,7 +19,7 @@ def handle_test_delay(data):
     # 5 sec delay
     time.sleep(5)
     
-    # Completed
+    # completed
     emit('delay_update', {'message': 'Delay test completed!'})
 
 @socketio.on('message')

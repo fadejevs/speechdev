@@ -5,3 +5,6 @@ __pycache__/
 speech-test.wav
 test_client.py
 config.py
+test_firebase.py
+test_websocket.py
+app/firebase_config.py

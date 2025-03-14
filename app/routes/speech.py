@@ -1,22 +1,38 @@
 from flask import request, jsonify
 import os
 from app import app
-from azure.cognitiveservices.speech import SpeechConfig, AudioConfig, SpeechRecognizer
-from app.config import AZURE_SPEECH_KEY, AZURE_REGION
+from app.services.speech_service import SpeechService
+from app.services.firebase_service import FirebaseService
 
-@app.route('/test-speech', methods=['GET'])
-def test_speech():
+speech_service = SpeechService()
+firebase_service = FirebaseService()
+
+@app.route('/speech-to-text', methods=['POST'])
+def speech_to_text():
     try:
-        file_path = os.path.join(os.getcwd(), 'speech-test.wav')
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+            
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+            
+        temp_path = 'temp_audio.wav'
+        file.save(temp_path)
         
-        speech_config = SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_REGION)
-        audio_config = AudioConfig(filename=file_path)
-        recognizer = SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
-
-        result = recognizer.recognize_once()
+        text = speech_service.recognize_speech(temp_path)
+    
+        os.remove(temp_path)
         
-        if result.reason.name == 'RecognizedSpeech':
-            return jsonify({'text': result.text}), 200
+        if text:
+            transcript_id = firebase_service.store_transcript(
+                text=text,
+                transcript_type='stt'
+            )
+            return jsonify({
+                'text': text,
+                'transcript_id': transcript_id
+            }), 200
         else:
             return jsonify({'error': 'Could not recognize speech'}), 400
             
