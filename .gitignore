@@ -4,3 +4,4 @@ __pycache__/
 .env
 speech-test.wav
 test_client.py
+config.py
