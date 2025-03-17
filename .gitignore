@@ -1,10 +1,22 @@
+.venv/
 venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.py[cod]
+*$py.class
 .env
+# Test files
 speech-test.wav
 test_client.py
-config.py
 test_firebase.py
 test_websocket.py
+
+# Configuration
+config.py
 app/firebase_config.py
+
+# OS specific
+.DS_Store
