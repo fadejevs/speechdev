@@ -1,5 +1,5 @@
 from datetime import datetime
-from app/firebase_config import db
+from app.firebase_config import db
 
 class FirebaseService:
     def __init__(self):
