@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech & Translation Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Speech & Translation Demo</h1>
+    
+    <div class="container">
+        <h2>Speech to Text</h2>
+        <input type="file" id="audioFile" accept="audio/*">
+        <button onclick="convertSpeechToText()">Convert to Text</button>
+        <div id="sttResult" class="result"></div>
+    </div>
+
+    <div class="container">
+        <h2>Translation</h2>
+        <textarea id="textToTranslate" rows="4" cols="50" placeholder="Enter text to translate"></textarea>
+        <br>
+        <select id="targetLanguage">
+            <option value="EN">English</option>
+            <option value="ES">Spanish</option>
+            <option value="FR">French</option>
+            <option value="DE">German</option>
+            <option value="IT">Italian</option>
+        </select>
+        <button onclick="translateText()">Translate</button>
+        <div id="translationResult" class="result"></div>
+    </div>
+
+    <script>
+        async function convertSpeechToText() {
+            const fileInput = document.getElementById('audioFile');
+            const resultDiv = document.getElementById('sttResult');
+            
+            if (!fileInput.files.length) {
+                alert('Please select an audio file');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                resultDiv.textContent = 'Converting...';
+                const response = await fetch('/speech-to-text', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    resultDiv.textContent = `Transcribed Text: ${data.text}`;
+                } else {
+                    resultDiv.textContent = `Error: ${data.error}`;
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function translateText() {
+            const text = document.getElementById('textToTranslate').value;
+            const targetLang = document.getElementById('targetLanguage').value;
+            const resultDiv = document.getElementById('translationResult');
+
+            if (!text) {
+                alert('Please enter text to translate');
+                return;
+            }
+
+            try {
+                resultDiv.textContent = 'Translating...';
+                const response = await fetch('/translate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        target_lang: targetLang
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    resultDiv.textContent = `Translated Text: ${data.translated_text}`;
+                } else {
+                    resultDiv.textContent = `Error: ${data.error}`;
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html> 
