@@ -11,7 +11,7 @@ terminal: python -m venv .venv
 terminal: pip install -r requirements.txt
 
 3. Add environment variables
-Create a ".env" file in the root directory with:
+Create a "config.py" file inside the "app" folder with:
 
 AZURE_SPEECH_KEY=Azure_speech_key
 AZURE_REGION=Azure_region
