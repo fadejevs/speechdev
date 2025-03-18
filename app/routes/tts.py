@@ -15,7 +15,12 @@ def text_to_speech():
         if not text:
             return jsonify({'error': 'No text provided'}), 400
             
-        output_file = "output_audio.wav"
+        # Create a full path for the output file in a directory we know exists
+        output_dir = os.path.dirname(os.path.abspath(__file__))
+        output_file = os.path.join(output_dir, "..", "..", "output_audio.wav")
+        
+        # Ensure the path exists
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
         
         success = speech_service.synthesize_speech(text, output_file, voice)
         

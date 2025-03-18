@@ -50,6 +50,24 @@
         <div id="translationResult" class="result"></div>
     </div>
 
+    <div class="container">
+        <h2>Text to Speech</h2>
+        <textarea id="textToSpeak" rows="4" cols="50" placeholder="Enter text to convert to speech"></textarea>
+        <br>
+        <select id="voiceSelect">
+            <option value="en-US-JennyNeural">English (US) - Jenny</option>
+            <option value="en-GB-SoniaNeural">English (UK) - Sonia</option>
+            <option value="es-ES-ElviraNeural">Spanish - Elvira</option>
+            <option value="fr-FR-DeniseNeural">French - Denise</option>
+            <option value="de-DE-KatjaNeural">German - Katja</option>
+            <option value="it-IT-ElsaNeural">Italian - Elsa</option>
+        </select>
+        <button onclick="convertTextToSpeech()">Generate Speech</button>
+        <div id="ttsResult" class="result">
+            <audio id="audioPlayer" controls style="display: none;"></audio>
+        </div>
+    </div>
+
     <script>
         async function convertSpeechToText() {
             const fileInput = document.getElementById('audioFile');
@@ -109,6 +127,49 @@
                     resultDiv.textContent = `Translated Text: ${data.translated_text}`;
                 } else {
                     resultDiv.textContent = `Error: ${data.error}`;
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function convertTextToSpeech() {
+            const text = document.getElementById('textToSpeak').value;
+            const voice = document.getElementById('voiceSelect').value;
+            const resultDiv = document.getElementById('ttsResult');
+            const audioPlayer = document.getElementById('audioPlayer');
+            
+            if (!text) {
+                alert('Please enter text to convert to speech');
+                return;
+            }
+
+            try {
+                resultDiv.textContent = 'Generating speech...';
+                audioPlayer.style.display = 'none';
+                
+                const response = await fetch('/text-to-speech', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        voice: voice
+                    })
+                });
+                
+                if (response.ok) {
+                    const audioBlob = await response.blob();
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    
+                    audioPlayer.src = audioUrl;
+                    audioPlayer.style.display = 'block';
+                    resultDiv.textContent = 'Speech generated successfully:';
+                    resultDiv.appendChild(audioPlayer);
+                } else {
+                    const errorData = await response.json();
+                    resultDiv.textContent = `Error: ${errorData.error}`;
                 }
             } catch (error) {
                 resultDiv.textContent = `Error: ${error.message}`;
