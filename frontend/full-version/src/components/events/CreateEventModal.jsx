@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -18,7 +18,13 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 
-const CreateEventModal = ({ open, handleClose, handleCreate }) => {
+const CreateEventModal = ({ 
+  open, 
+  handleClose, 
+  handleCreate, 
+  initialData = null,
+  isEditing = false 
+}) => {
   const [eventData, setEventData] = useState({
     name: '',
     description: '',
@@ -29,6 +35,33 @@ const CreateEventModal = ({ open, handleClose, handleCreate }) => {
     eventType: '',
     recordEvent: false
   });
+
+  // Reset form when modal opens/closes
+  useEffect(() => {
+    if (open && initialData) {
+      setEventData({
+        name: initialData.name || '',
+        description: initialData.description || '',
+        location: initialData.location || '',
+        date: initialData.date || '',
+        sourceLanguage: initialData.sourceLanguage || '',
+        targetLanguage: initialData.targetLanguage || '',
+        eventType: initialData.eventType || '',
+        recordEvent: initialData.recordEvent || false
+      });
+    } else if (!open) {
+      setEventData({
+        name: '',
+        description: '',
+        location: '',
+        date: '',
+        sourceLanguage: '',
+        targetLanguage: '',
+        eventType: '',
+        recordEvent: false
+      });
+    }
+  }, [open, initialData]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -60,7 +93,7 @@ const CreateEventModal = ({ open, handleClose, handleCreate }) => {
       }}
     >
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, borderBottom: '1px solid #f0f0f0' }}>
-        <Typography variant="h6">Create New Event</Typography>
+        <Typography variant="h6">{isEditing ? 'Edit Event' : 'Create New Event'}</Typography>
         <IconButton onClick={handleClose} size="small">
           <CloseIcon />
         </IconButton>
@@ -260,7 +293,7 @@ const CreateEventModal = ({ open, handleClose, handleCreate }) => {
             textTransform: 'none'
           }}
         >
-          Create Event
+          {isEditing ? 'Save Changes' : 'Create Event'}
         </Button>
       </DialogActions>
     </Dialog>
