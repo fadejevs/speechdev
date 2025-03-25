@@ -1,0 +1,225 @@
+[
+  {
+    "id": "1",
+    "profile": {
+      "src": "/assets/images/users/avatar-1.png",
+      "name": "Stacy Reichel",
+      "username": "stacy_reichel.890"
+    },
+    "roles": ["User", "Manager", "Admin", "Super Admin"],
+    "features": ["Dashboard Access", "User Management"],
+    "lastActivity": {
+      "title": "Created Account",
+      "date": "2 days ago"
+    },
+    "email": "stacy.reichel@saasable.io",
+    "contact": "+1-212-555-0199",
+    "planStatus": "Pro",
+    "price": "$99 USD",
+    "users": [{ "id": "1", "name": "Blake Adams", "photo": "/assets/images/users/avatar-2.png" }],
+    "date": "15 Sep 2023",
+    "status": "Active",
+    "isBlocked": false,
+    "progress": 90
+  },
+  {
+    "id": "2",
+    "profile": {
+      "src": "/assets/images/users/avatar-2.png",
+      "name": "Morris VonRueden",
+      "username": "morris.vonrueden"
+    },
+    "roles": ["Admin", "User"],
+    "features": ["Project Management", "Analytics", "Notifications", "Team Management"],
+    "lastActivity": {
+      "title": "Logged In",
+      "date": "5 hours ago"
+    },
+    "email": "morris.vonrueden@yahoo.com",
+    "contact": "+1-310-555-0147",
+    "planStatus": "Basic",
+    "price": "$49 USD",
+    "users": [
+      { "id": "1", "name": "Stacy Reichel", "photo": "/assets/images/users/avatar-1.png" },
+      { "id": "2", "name": "Terri Howe", "photo": "/assets/images/users/avatar-2.png" },
+      { "id": "3", "name": "Morris VonRueden", "photo": "/assets/images/users/avatar-3.png" },
+      { "id": "4", "name": "Joel Stroman", "photo": "/assets/images/users/avatar-4.png" },
+      { "id": "5", "name": "Blake Adams", "photo": "/assets/images/users/avatar-5.png" },
+      { "id": "6", "name": "Osvaldo Conn", "photo": "/assets/images/users/avatar-3.png" }
+    ],
+    "date": "25 Aug 2023",
+    "status": "Pending",
+    "isBlocked": false,
+    "progress": 70
+  },
+  {
+    "id": "3",
+    "profile": {
+      "src": "/assets/images/users/avatar-3.png",
+      "name": "Terri Howe",
+      "username": "terri_howe"
+    },
+    "roles": ["User"],
+    "features": ["Analytics", "Notifications"],
+    "lastActivity": {
+      "title": "Updated Profile",
+      "date": "1 day ago"
+    },
+    "email": "terri.howe@outlook.com",
+    "contact": "+1-718-555-0193",
+    "planStatus": "Free",
+    "price": "$0 USD",
+    "users": [{ "id": "1", "name": "Morris VonRueden", "photo": "/assets/images/users/avatar-2.png" }],
+    "date": "30 Sep 2023",
+    "status": "Active",
+    "isBlocked": false,
+    "progress": 50
+  },
+  {
+    "id": "4",
+    "profile": {
+      "src": "/assets/images/users/avatar-4.png",
+      "name": "Blake Adams",
+      "username": "blake_adams"
+    },
+    "roles": ["Manager"],
+    "features": ["Team Management", "Project Oversight"],
+    "lastActivity": {
+      "title": "Logged Out",
+      "date": "7 hours ago"
+    },
+    "email": "blake.adams@saasable.io",
+    "contact": "+1-415-555-0138",
+    "planStatus": "Enterprise",
+    "price": "$199 USD",
+    "users": [
+      { "id": "1", "name": "Stacy Reichel", "photo": "/assets/images/users/avatar-1.png" },
+      { "id": "2", "name": "Joel Stroman", "photo": "/assets/images/users/avatar-5.png" }
+    ],
+    "date": "10 Aug 2023",
+    "status": "Inactive",
+    "isBlocked": true,
+    "progress": 95
+  },
+  {
+    "id": "5",
+    "profile": {
+      "src": "/assets/images/users/avatar-5.png",
+      "name": "Joel Stroman",
+      "username": "joel_stroman"
+    },
+    "roles": ["Super Admin", "User"],
+    "features": ["Full Access", "Analytics", "Notifications", "Team Management", "Project Oversight"],
+    "lastActivity": {
+      "title": "Subscribed",
+      "date": "10 days ago"
+    },
+    "email": "joel.stroman@company.com",
+    "contact": "+1-602-555-0176",
+    "planStatus": "Pro",
+    "price": "$99 USD",
+    "users": [{ "id": "1", "name": "Blake Adams", "photo": "/assets/images/users/avatar-4.png" }],
+    "date": "01 Jul 2023",
+    "status": "Active",
+    "isBlocked": false,
+    "progress": 80
+  },
+  {
+    "id": "6",
+    "profile": {
+      "src": "/assets/images/users/avatar-4.png",
+      "name": "Eva Reilly",
+      "username": "eva_reilly"
+    },
+    "roles": ["Admin", "Manager", "User", "Super Admin"],
+    "features": ["Project Management", "Reports"],
+    "lastActivity": {
+      "title": "Updated Settings",
+      "date": "3 days ago"
+    },
+    "email": "eva.reilly@domain.com",
+    "contact": "+1-917-555-0127",
+    "planStatus": "Enterprise",
+    "price": "$199 USD",
+    "users": [{ "id": "1", "name": "Terri Howe", "photo": "/assets/images/users/avatar-3.png" }],
+    "date": "20 Jun 2023",
+    "status": "Active",
+    "isBlocked": false,
+    "progress": 85
+  },
+  {
+    "id": "7",
+    "profile": {
+      "src": "/assets/images/users/avatar-1.png",
+      "name": "Lila Kuhic",
+      "username": "lila_kuhic"
+    },
+    "roles": ["User"],
+    "features": ["Analytics"],
+    "lastActivity": {
+      "title": "Logged In",
+      "date": "1 hour ago"
+    },
+    "email": "lila.kuhic@hotmail.com",
+    "contact": "+1-312-555-0164",
+    "planStatus": "Basic",
+    "price": "$49 USD",
+    "users": [
+      { "id": "1", "name": "Eva Reilly", "photo": "/assets/images/users/avatar-1.png" },
+      { "id": "2", "name": "Terri Howe", "photo": "/assets/images/users/avatar-2.png" },
+      { "id": "3", "name": "Morris VonRueden", "photo": "/assets/images/users/avatar-3.png" },
+      { "id": "4", "name": "Joel Stroman", "photo": "/assets/images/users/avatar-4.png" },
+      { "id": "5", "name": "Blake Adams", "photo": "/assets/images/users/avatar-5.png" }
+    ],
+    "date": "05 May 2023",
+    "status": "Active",
+    "isBlocked": false,
+    "progress": 65
+  },
+  {
+    "id": "8",
+    "profile": {
+      "src": "/assets/images/users/avatar-2.png",
+      "name": "Osvaldo Conn",
+      "username": "osvaldo_conn"
+    },
+    "roles": ["Super Admin"],
+    "features": ["Full Access", "Team Management"],
+    "lastActivity": {
+      "title": "Logged Out",
+      "date": "12 hours ago"
+    },
+    "email": "osvaldo.conn@business.com",
+    "contact": "+1-213-555-0192",
+    "planStatus": "Pro",
+    "price": "$99 USD",
+    "users": [{ "id": "1", "name": "Joel Stroman", "photo": "/assets/images/users/avatar-5.png" }],
+    "date": "15 Apr 2023",
+    "status": "Pending",
+    "isBlocked": true,
+    "progress": 75
+  },
+  {
+    "id": "9",
+    "profile": {
+      "src": "/assets/images/users/avatar-3.png",
+      "name": "Dora Heidenreich",
+      "username": "dora_heidenreich"
+    },
+    "roles": ["Admin", "User"],
+    "features": ["Project Management", "Notifications", "Team Management", "Reports"],
+    "lastActivity": {
+      "title": "Created Project",
+      "date": "4 hours ago"
+    },
+    "email": "dora.heidenreich@company.com",
+    "contact": "+1-718-555-0185",
+    "planStatus": "Enterprise",
+    "price": "$199 USD",
+    "users": [{ "id": "1", "name": "Osvaldo Conn", "photo": "/assets/images/users/avatar-2.png" }],
+    "date": "10 Mar 2023",
+    "status": "Active",
+    "isBlocked": false,
+    "progress": 85
+  }
+]

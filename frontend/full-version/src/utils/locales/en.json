@@ -1,0 +1,52 @@
+{
+  "manage": "Manage",
+  "dashboard": "Dashboard",
+
+  "account-user": "Account & User",
+  "account": "Account",
+  "user": "User",
+
+  "My Events": "My Events",
+
+  "roles-permissions": "Roles & Permissions",
+  "billing": "Billing",
+  "blog": "Blog",
+  "setting": "Setting",
+
+  "other": "Other",
+  "components": "Components",
+  "chart": "Chart",
+  "tanstack-table": "TanStack Table",
+
+  "avatar": "Avatar",
+  "button": "Button",
+  "card": "Card",
+  "checkbox": "Checkbox",
+  "chip": "Chip",
+  "color": "Color",
+  "drop-down": "Drop Down",
+  "dialog": "Dialog",
+  "illustration": "Illustration",
+  "input": "Input",
+  "progress": "Progress",
+  "radio": "Radio",
+  "shadow": "Shadow",
+  "slider": "Slider",
+  "switch": "Switch",
+  "tabs": "Tabs",
+  "tooltip": "Tooltip",
+  "typography": "Typography",
+
+  "plugins": "Plugins",
+  "color-picker": "Color Picker",
+  "calendar": "Calendar",
+
+  "help": "Help",
+  "sample-page": "Sample Page",
+  "changelog": "Changelog",
+  "documentation": "Documentation",
+  "support": "Support",
+
+  "menu-levels": "Menu Levels",
+  "level": "Level"
+}

@@ -1,0 +1,50 @@
+{
+  "manage": "Gestionează",
+  "dashboard": "Tabloul de bord",
+
+  "account-user": "Cont și utilizator",
+  "account": "Cont",
+  "user": "Utilizator",
+
+  "roles-permissions": "Roluri și permisiuni",
+  "billing": "Facturare",
+  "blog": "Blog",
+  "setting": "Setare",
+
+  "other": "Altul",
+  "components": "Componente",
+  "chart": "gràfiko",
+  "tanstack-table": "Tabel TanStack",
+
+  "avatar": "Avatar",
+  "button": "Buton",
+  "card": "Karta",
+  "checkbox": "Checkbox",
+  "chip": "cip",
+  "color": "Culoare",
+  "drop-down": "Derulare",
+  "dialog": "Dialog",
+  "illustration": "Ilustrație",
+  "input": "Intrare",
+  "progress": "Progres",
+  "radio": "Radio",
+  "shadow": "Umbra",
+  "slider": "Slider",
+  "switch": "Switch",
+  "tabs": "File",
+  "tooltip": "Tooltip",
+  "typography": "Tipografie",
+
+  "plugins": "Plugins",
+  "color-picker": "Selector de culori",
+  "calendar": "Calendar",
+
+  "help": "Ajutor",
+  "sample-page": "pagină-probă",
+  "changelog": "Jurnal de modificări",
+  "documentation": "Documentație",
+  "support": "Suport",
+
+  "menu-levels": "Niveluri de meniu",
+  "level": "Nivel"
+}

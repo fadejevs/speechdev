@@ -1,0 +1,50 @@
+{
+  "manage": "Gérer",
+  "dashboard": "Tableau de bord",
+
+  "account-user": "Compte et utilisateur",
+  "account": "Compte",
+  "user": "Utilisateur",
+
+  "roles-permissions": "Rôles et autorisations",
+  "billing": "Facturation",
+  "blog": "Blog",
+  "setting": "Paramètre",
+
+  "other": "Autre",
+  "components": "Composants",
+  "chart": "Graphique",
+  "tanstack-table": "Tableau TanStack",
+
+  "avatar": "Avatar",
+  "button": "Bouton",
+  "card": "Carte",
+  "checkbox": "Case à cocher",
+  "chip": "Puce",
+  "color": "Couleur",
+  "drop-down": "Liste déroulante",
+  "dialog": "Dialogue",
+  "illustration": "Illustration",
+  "input": "Saisie",
+  "progress": "Progression",
+  "radio": "Radio",
+  "shadow": "Ombre",
+  "slider": "Curseur",
+  "switch": "Commutateur",
+  "tabs": "Onglets",
+  "tooltip": "Info-bulle",
+  "typography": "Typographie",
+
+  "plugins": "Plugins",
+  "color-picker": "Sélecteur de couleurs",
+  "calendar": "Calendrier",
+
+  "help": "Aide",
+  "sample-page": "exemple de page",
+  "changelog": "Journal des modifications",
+  "documentation": "Documentation",
+  "support": "Assistance",
+
+  "menu-levels": "Niveaux de menu",
+  "level": "Niveau"
+}
