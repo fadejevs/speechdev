@@ -16,9 +16,12 @@ import {
   TextField,
   IconButton,
   Menu,
-  MenuItem
+  MenuItem,
+  ListItemIcon,
+  ListItemText
 } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import EditIcon from '@mui/icons-material/Edit';
 import CreateEventModal from '@/components/events/CreateEventModal';
 
 // API service
@@ -52,6 +55,7 @@ const AnalyticsDashboard = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const itemsPerPage = 10;
+  const [editingEvent, setEditingEvent] = useState(null);
 
   // Calculate pagination
   const totalPages = Math.ceil(transcripts.length / itemsPerPage);
@@ -75,26 +79,43 @@ const AnalyticsDashboard = () => {
     }
   };
 
-  const handleEdit = () => {
+  const handleEditEvent = (event) => {
+    const eventDataForEdit = {
+      name: event.title,
+      description: event.description || '',
+      location: event.location || '',
+      date: event.timestamp || '',
+      sourceLanguages: event.sourceLanguages || [],
+      targetLanguages: event.targetLanguages || [],
+      eventType: event.type || '',
+      recordEvent: event.recordEvent || false,
+      status: event.status
+    };
+    
+    setEditingEvent({ ...event, formData: eventDataForEdit });
     setIsEditModalOpen(true);
-    handleMenuClose();
   };
 
-  const handleEditSubmit = (editedData) => {
-    if (selectedEvent) {
-      setTranscripts(prev => prev.map(event => 
-        event.id === selectedEvent.id 
-          ? { ...event, 
-              title: editedData.name,
-              location: editedData.location,
-              type: editedData.eventType,
-              status: 'Draft event' 
-            }
-          : event
-      ));
-      setIsEditModalOpen(false);
-      setSelectedEvent(null);
-    }
+  const handleUpdateEvent = (updatedData) => {
+    const updatedEvent = {
+      ...editingEvent,
+      title: updatedData.name,
+      description: updatedData.description,
+      location: updatedData.location,
+      timestamp: updatedData.date,
+      sourceLanguages: updatedData.sourceLanguages,
+      targetLanguages: updatedData.targetLanguages,
+      type: updatedData.eventType,
+      recordEvent: updatedData.recordEvent,
+      status: updatedData.status || editingEvent.status
+    };
+    
+    setTranscripts(transcripts.map(event => 
+      event.id === editingEvent.id ? updatedEvent : event
+    ));
+    
+    setIsEditModalOpen(false);
+    setEditingEvent(null);
   };
 
   const handleCreateEvent = (eventData) => {
@@ -211,13 +232,8 @@ const AnalyticsDashboard = () => {
           setIsEditModalOpen(false);
           setSelectedEvent(null);
         }}
-        handleCreate={handleEditSubmit}
-        initialData={selectedEvent ? {
-          name: selectedEvent.title,
-          location: selectedEvent.location,
-          eventType: selectedEvent.type,
-          date: selectedEvent.timestamp,
-        } : null}
+        handleCreate={handleUpdateEvent}
+        initialData={editingEvent?.formData}
         isEditing={true}
       />
 
@@ -226,7 +242,7 @@ const AnalyticsDashboard = () => {
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
       >
-        <MenuItem onClick={handleEdit}>Edit</MenuItem>
+        <MenuItem onClick={() => handleEditEvent(selectedEvent)}>Edit</MenuItem>
         <MenuItem onClick={handleDelete}>Delete</MenuItem>
       </Menu>
     </Box>
