@@ -23,6 +23,8 @@ import {
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import EditIcon from '@mui/icons-material/Edit';
 import CreateEventModal from '@/components/events/CreateEventModal';
+import { useRouter } from 'next/navigation';
+import { generateUniqueId } from '@/utils/idGenerator';
 
 // API service
 
@@ -43,7 +45,7 @@ const initialMockData = Array.from({ length: 10 }, (_, i) => ({
   timestamp: new Date(2024, i % 12, (i + 1) * 2).toLocaleDateString(),
   location: i % 2 === 0 ? 'Online' : 'Riga, Latvia',
   type: i % 3 === 0 ? 'stt' : i % 3 === 1 ? 'translation' : 'tts',
-  status: i % 2 === 0 ? 'Draft event' : 'Completed'
+  status: i % 2 === 0 ? 'Scheduled' : 'Completed'
 }));
 
 const AnalyticsDashboard = () => {
@@ -56,6 +58,7 @@ const AnalyticsDashboard = () => {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const itemsPerPage = 10;
   const [editingEvent, setEditingEvent] = useState(null);
+  const router = useRouter();
 
   // Calculate pagination
   const totalPages = Math.ceil(transcripts.length / itemsPerPage);
@@ -120,16 +123,33 @@ const AnalyticsDashboard = () => {
 
   const handleCreateEvent = (eventData) => {
     const newEvent = {
-      id: transcripts.length + 1,
+      id: generateUniqueId(),
       title: eventData.name,
       timestamp: new Date().toLocaleDateString(),
       location: eventData.location || 'Online',
-      type: eventData.eventType || 'stt',
+      type: eventData.type || 'stt',
       status: 'Draft event'
     };
     
     setTranscripts([newEvent, ...transcripts]);
   };
+
+  // Add this useEffect to load events from localStorage on component mount
+  useEffect(() => {
+    try {
+      const savedEvents = localStorage.getItem('eventData');
+      if (savedEvents) {
+        setTranscripts(JSON.parse(savedEvents));
+      } else {
+        // Initialize localStorage with mock data if empty
+        localStorage.setItem('eventData', JSON.stringify(initialMockData));
+        setTranscripts(initialMockData);
+      }
+    } catch (error) {
+      console.error('Error loading events:', error);
+      setTranscripts(initialMockData);
+    }
+  }, []);
 
   const getStatusChip = (status) => {
     switch(status) {
@@ -242,7 +262,15 @@ const AnalyticsDashboard = () => {
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
       >
-        <MenuItem onClick={() => handleEditEvent(selectedEvent)}>Edit</MenuItem>
+        <MenuItem 
+          onClick={() => {
+            router.push(`/events/${selectedEvent.id}`);
+            handleMenuClose();
+          }}
+          sx={{ py: 1 }}
+        >
+          <ListItemText primary="Edit" />
+        </MenuItem>
         <MenuItem onClick={handleDelete}>Delete</MenuItem>
       </Menu>
     </Box>

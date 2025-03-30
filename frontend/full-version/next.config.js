@@ -1,6 +1,21 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
+  // Disable unnecessary features in development
+  eslint: {
+    ignoreDuringBuilds: process.env.NODE_ENV === 'development',
+  },
+  typescript: {
+    ignoreBuildErrors: process.env.NODE_ENV === 'development',
+  },
+  // Simplify webpack config
+  webpack: (config) => {
+    // Disable source maps in development
+    if (process.env.NODE_ENV === 'development') {
+      config.devtool = false;
+    }
+    return config;
+  },
   async headers() {
     return [
       {

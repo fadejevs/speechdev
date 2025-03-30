@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react';
 import {
   Box,
   Button,
@@ -32,6 +32,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
+import { generateUniqueId } from '@/utils/idGenerator';
 
 const LANGUAGES = [
   'Latvian',
@@ -53,6 +54,12 @@ const EVENT_TYPES = [
   { value: 'hybrid', label: 'Hybrid' }
 ];
 
+const EVENT_STATUSES = [
+  { value: 'Draft event', label: 'Draft event' },
+  { value: 'Scheduled', label: 'Scheduled' },
+  { value: 'Completed', label: 'Completed' }
+];
+
 const CreateEventModal = ({ 
   open, 
   handleClose, 
@@ -68,7 +75,8 @@ const CreateEventModal = ({
     sourceLanguages: [],
     targetLanguages: [],
     eventType: '',
-    recordEvent: false
+    recordEvent: false,
+    status: 'Draft event'
   });
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -87,7 +95,8 @@ const CreateEventModal = ({
         sourceLanguages: initialData.sourceLanguages || [],
         targetLanguages: initialData.targetLanguages || [],
         eventType: initialData.eventType || '',
-        recordEvent: initialData.recordEvent || false
+        recordEvent: initialData.recordEvent || false,
+        status: initialData.status || 'Draft event'
       });
     } else if (!open) {
       setEventData({
@@ -98,7 +107,8 @@ const CreateEventModal = ({
         sourceLanguages: [],
         targetLanguages: [],
         eventType: '',
-        recordEvent: false
+        recordEvent: false,
+        status: 'Draft event'
       });
       setSearchTerm('');
     }
@@ -125,25 +135,51 @@ const CreateEventModal = ({
     };
   }, []);
 
-  const handleChange = (e) => {
+  const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
     setEventData(prev => ({ ...prev, [name]: value }));
-  };
+  }, []);
 
-  const handleSwitchChange = (e) => {
-    setEventData(prev => ({ ...prev, recordEvent: e.target.checked }));
-  };
-
-  const handleDateChange = (newDate) => {
+  const handleDateChange = useCallback((newDate) => {
     setEventData(prev => ({ ...prev, date: newDate }));
-  };
+  }, []);
 
   const handleSubmit = () => {
-    const formattedData = {
-      ...eventData,
-      date: eventData.date ? eventData.date.format('DD.MM.YYYY') : ''
+    // Create a properly formatted event object
+    const newEvent = {
+      id: initialData?.id || generateUniqueId(), // Use unique ID generator
+      title: eventData.name,
+      description: eventData.description,
+      location: eventData.location,
+      timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : new Date().toLocaleDateString(),
+      type: eventData.eventType,
+      sourceLanguages: eventData.sourceLanguages,
+      targetLanguages: eventData.targetLanguages,
+      recordEvent: eventData.recordEvent,
+      status: eventData.status || 'Draft event'
     };
-    handleCreate(formattedData);
+    
+    // Save to localStorage for persistence
+    try {
+      const savedEvents = localStorage.getItem('eventData');
+      const events = savedEvents ? JSON.parse(savedEvents) : [];
+      
+      if (isEditing) {
+        // Update existing event
+        const updatedEvents = events.map(event => 
+          event.id === newEvent.id ? newEvent : event
+        );
+        localStorage.setItem('eventData', JSON.stringify(updatedEvents));
+      } else {
+        // Add new event
+        localStorage.setItem('eventData', JSON.stringify([newEvent, ...events]));
+      }
+    } catch (error) {
+      console.error('Error saving event data:', error);
+    }
+    
+    // Call the parent handler
+    handleCreate(newEvent);
     handleClose();
   };
 
@@ -184,7 +220,8 @@ const CreateEventModal = ({
       eventData.sourceLanguages.length > 0 || 
       eventData.targetLanguages.length > 0 || 
       eventData.eventType !== '' || 
-      eventData.recordEvent !== false;
+      eventData.recordEvent !== false ||
+      eventData.status !== 'Draft event';
     
     if (isFormModified) {
       setConfirmDialogOpen(true);
@@ -507,6 +544,143 @@ const CreateEventModal = ({
     );
   };
 
+  const renderStatusSelector = () => {
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    
+    return (
+      <Box sx={{ mb: 2, position: 'relative' }}>
+        <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>Event Status<span style={{ color: 'red' }}>*</span></Typography>
+        
+        <Box 
+          onClick={() => setDropdownOpen(!dropdownOpen)}
+          sx={{ 
+            border: '1px solid #e0e0e0',
+            borderRadius: '8px',
+            px: 1.5,
+            py: 0.75,
+            minHeight: '38px',
+            height: '38px',
+            cursor: 'pointer',
+            display: 'flex',
+            flexWrap: 'nowrap',
+            gap: 0.5,
+            alignItems: 'center',
+            overflow: 'hidden'
+          }}
+        >
+          {!eventData.status ? (
+            <Typography sx={{ color: '#637381', fontSize: '14px' }}>Select Status</Typography>
+          ) : (
+            <Box sx={{ 
+              display: 'flex', 
+              flexWrap: 'nowrap', 
+              gap: 0.5, 
+              alignItems: 'center',
+              maxWidth: 'calc(100% - 30px)',
+              overflow: 'hidden'
+            }}>
+              <Chip
+                label={EVENT_STATUSES.find(status => status.value === eventData.status)?.label}
+                deleteIcon={<CloseIcon style={{ fontSize: '16px' }} />}
+                onDelete={() => setEventData(prev => ({ ...prev, status: '' }))}
+                size="small"
+                sx={{
+                  borderRadius: '4px',
+                  height: '24px',
+                  bgcolor: 'transparent',
+                  border: '1px solid #e0e0e0',
+                  color: '#333',
+                  '& .MuiChip-label': {
+                    px: 1,
+                    py: 0.25,
+                    fontSize: '13px'
+                  },
+                  '& .MuiChip-deleteIcon': {
+                    color: '#666',
+                    marginRight: '4px',
+                    '&:hover': {
+                      color: '#333'
+                    }
+                  }
+                }}
+              />
+            </Box>
+          )}
+          <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
+            <IconButton 
+              size="small" 
+              onClick={(e) => {
+                e.stopPropagation();
+                setDropdownOpen(!dropdownOpen);
+              }}
+              sx={{ padding: 0 }}
+            >
+              {dropdownOpen ? 
+                <KeyboardArrowUpIcon fontSize="small" /> : 
+                <KeyboardArrowDownIcon fontSize="small" />
+              }
+            </IconButton>
+          </Box>
+        </Box>
+        
+        {dropdownOpen && (
+          <Box
+            sx={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              mt: 0.5,
+              bgcolor: 'white',
+              borderRadius: '8px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+              zIndex: 1000,
+              maxHeight: '250px',
+              overflow: 'auto'
+            }}
+          >
+            {EVENT_STATUSES.map((status) => (
+              <Box
+                key={status.value}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEventData(prev => ({ ...prev, status: status.value }));
+                  setDropdownOpen(false);
+                }}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  px: 2,
+                  py: 1,
+                  cursor: 'pointer',
+                  bgcolor: eventData.status === status.value ? '#f5f5ff' : 'transparent',
+                  '&:hover': {
+                    bgcolor: '#f5f5f5'
+                  }
+                }}
+              >
+                <Checkbox
+                  checked={eventData.status === status.value}
+                  onChange={() => {}}
+                  onClick={(e) => e.stopPropagation()}
+                  sx={{ 
+                    color: '#4f46e5',
+                    '&.Mui-checked': {
+                      color: '#4f46e5'
+                    },
+                    padding: '4px',
+                    marginRight: '8px'
+                  }}
+                />
+                <Typography variant="body2">{status.label}</Typography>
+              </Box>
+            ))}
+          </Box>
+        )}
+      </Box>
+    );
+  };
+
   const daysInMonth = (month, year) => {
     return new Date(year, month + 1, 0).getDate();
   };
@@ -592,7 +766,7 @@ const CreateEventModal = ({
                 fullWidth
                 name="name"
                 value={eventData.name}
-                onChange={handleChange}
+                onChange={handleInputChange}
                 placeholder="Demo Event"
                 size="small"
                 variant="outlined"
@@ -615,7 +789,7 @@ const CreateEventModal = ({
                 rows={4}
                 name="description"
                 value={eventData.description}
-                onChange={handleChange}
+                onChange={handleInputChange}
                 placeholder="My first Demo Event with Real time AI Speech to Speech Translation"
                 size="small"
                 variant="outlined"
@@ -638,7 +812,7 @@ const CreateEventModal = ({
                 fullWidth
                 name="location"
                 value={eventData.location}
-                onChange={handleChange}
+                onChange={handleInputChange}
                 placeholder="G. Zemgala gatve 78, Riga, LV-1039"
                 size="small"
                 variant="outlined"
@@ -703,11 +877,12 @@ const CreateEventModal = ({
             </Typography>
             
             {renderEventTypeSelector()}
+            {renderStatusSelector()}
             
             <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
               <Switch 
                 checked={eventData.recordEvent} 
-                onChange={handleSwitchChange}
+                onChange={(e) => handleInputChange(e)}
                 color="primary"
                 size="small"
               />

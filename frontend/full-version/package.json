@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
+    "dev:fast": "NEXT_TURBO=1 next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

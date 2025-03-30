@@ -2,4 +2,10 @@
 @import 'simplebar-react/dist/simplebar.min.css';
 
 /* public styles */
-@import '../../public/assets/styles';
+/* @import '../../public/assets/styles'; */
+
+/* Use a relative path that actually exists */
+@import '/assets/styles/main.css'; /* Adjust this path to match your actual file structure */
+
+/* Or comment it out if the styles aren't critical for development */
+/* @import '../../public/assets/styles'; */

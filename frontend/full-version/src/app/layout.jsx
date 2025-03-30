@@ -9,6 +9,9 @@ import ProviderWrapper from './ProviderWrapper';
 
 // @types
 
+// @utils
+import '@/utils/devPerformance';
+
 /***************************  METADATA - MAIN  ***************************/
 
 // Configures the viewport settings for the application.
