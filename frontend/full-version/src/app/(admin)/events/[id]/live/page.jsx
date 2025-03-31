@@ -282,15 +282,8 @@ const LiveEventPage = () => {
             alignItems: 'center',
             textAlign: 'center'
           }}>
-            <Box sx={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center', 
-              mb: 3,
-              mt: 4
-            }}>
-              <Box sx={{ 
-                mb: 4,
+                <Box sx={{ 
+                mb: 0,
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
@@ -307,25 +300,33 @@ const LiveEventPage = () => {
                   maxHeight: '100%'
                 }} />
               </Box>
+            <Box sx={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              mb: 3,
+              mt: 4
+            }}>
+              {eventStatus && (
+                <Chip 
+                  label={eventStatus} 
+                  size="small" 
+                  sx={{ 
+                    bgcolor: eventStatus === 'Completed' ? '#e8f5e9' : '#fff8e1', 
+                    color: eventStatus === 'Completed' ? '#4caf50' : '#ff9800', 
+                    borderRadius: '16px',
+                    height: '24px',
+                    fontSize: '12px',
+                    mb: 2
+                  }} 
+                />
+              )}
               
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                <Typography variant="h5" sx={{ fontWeight: 600, color: '#212B36' }}>
-                  Your Event Is Live
-                </Typography>
-                {eventStatus && (
-                  <Chip 
-                    label={eventStatus} 
-                    size="small" 
-                    sx={{ 
-                      bgcolor: eventStatus === 'Completed' ? '#e8f5e9' : '#fff8e1', 
-                      color: eventStatus === 'Completed' ? '#4caf50' : '#ff9800', 
-                      borderRadius: '16px',
-                      height: '24px',
-                      fontSize: '12px'
-                    }} 
-                  />
-                )}
-              </Box>
+          
+              
+              <Typography variant="h5" sx={{ fontWeight: 600, color: '#212B36', mb: 1 }}>
+                Your Event Is Live
+              </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', mb: 3, maxWidth: '80%' }}>
                 Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
               </Typography>
@@ -683,12 +684,30 @@ const LiveEventPage = () => {
               }} />
             </Box>
             
-            <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '18px', color: '#212B36', mb: 1 }}>
+            <Typography 
+              variant="h6" 
+              sx={{ 
+                fontWeight: 600, 
+                fontSize: '18px', 
+                color: '#212B36', 
+                mb: 1,
+                textAlign: 'center',
+                width: '100%'
+              }}
+            >
               Are you sure you want to complete this event?
             </Typography>
-            <Typography variant="body2" sx={{ color: '#637381', textAlign: 'center', mb: 2 }}>
+            {/* <Typography 
+              variant="body2" 
+              sx={{ 
+                color: '#637381', 
+                textAlign: 'center', 
+                mb: 2,
+                maxWidth: '90%'
+              }}
+            >
               This will mark the event as completed and you'll be redirected to the dashboard.
-            </Typography>
+            </Typography> */}
           </Box>
           
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
