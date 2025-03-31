@@ -46,16 +46,19 @@ const LiveEventPage = () => {
   const [languageMenuAnchorEl, setLanguageMenuAnchorEl] = useState(null);
   const [selectedLanguage, setSelectedLanguage] = useState(null);
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [eventStatus, setEventStatus] = useState('');
 
   useEffect(() => {
-    // Fetch event data from localStorage
-    try {
-      const savedEvents = localStorage.getItem('eventData');
-      if (savedEvents) {
-        const events = JSON.parse(savedEvents);
-        const event = events.find(e => e.id.toString() === id);
+    if (id) {
+      const storedEvents = localStorage.getItem('eventData');
+      if (storedEvents) {
+        const parsedEvents = JSON.parse(storedEvents);
+        const event = parsedEvents.find(event => event.id === id);
         if (event) {
           setEventData(event);
+          setEventStatus(event.status || 'Draft event');
+          setLoading(false);
           // Set the first source language as selected by default
           if (event.sourceLanguages && event.sourceLanguages.length > 0) {
             setSelectedLanguage(event.sourceLanguages[0]);
@@ -64,10 +67,6 @@ const LiveEventPage = () => {
           router.push('/dashboard/analytics');
         }
       }
-    } catch (error) {
-      console.error('Error fetching event data:', error);
-    } finally {
-      setLoading(false);
     }
   }, [id, router]);
 
@@ -112,10 +111,53 @@ const LiveEventPage = () => {
     // and/or redirect to another page
   };
 
-  const handleCompleteEvent = () => {
-    // Logic to complete event
-    console.log('Completing event');
+  const handleOpenCompleteDialog = () => {
+    setCompleteDialogOpen(true);
+  };
+
+  const handleCloseCompleteDialog = () => {
+    setCompleteDialogOpen(false);
+  };
+
+  const handleConfirmComplete = () => {
+    // Logic to mark the event as completed
+    const storedEvents = localStorage.getItem('eventData');
+    if (storedEvents) {
+      const parsedEvents = JSON.parse(storedEvents);
+      const updatedEvents = parsedEvents.map(event => {
+        if (event.id === id) {
+          return { ...event, status: 'Completed' };
+        }
+        return event;
+      });
+      
+      localStorage.setItem('eventData', JSON.stringify(updatedEvents));
+      setEventStatus('Completed');
+    }
+    
+    setCompleteDialogOpen(false);
+    // Optionally redirect to events list or dashboard
     router.push('/dashboard/analytics');
+  };
+
+  const handleChangeStatusToDraft = () => {
+    // Logic to change the event back to draft
+    const storedEvents = localStorage.getItem('eventData');
+    if (storedEvents) {
+      const parsedEvents = JSON.parse(storedEvents);
+      const updatedEvents = parsedEvents.map(event => {
+        if (event.id === id) {
+          return { ...event, status: 'Draft event' };
+        }
+        return event;
+      });
+      
+      localStorage.setItem('eventData', JSON.stringify(updatedEvents));
+      setEventStatus('Draft event');
+    }
+    
+    // Show a success message or notification
+    console.log('Event changed to draft');
   };
 
   const handleShareEvent = () => {
@@ -156,6 +198,31 @@ const LiveEventPage = () => {
         </Button>
         
         <Box sx={{ display: 'flex', gap: 2 }}>
+          {eventStatus === 'Completed' && (
+            <Button
+              variant="outlined"
+              onClick={handleChangeStatusToDraft}
+              sx={{ 
+                borderColor: '#E5E8EB',
+                color: '#637381',
+                borderRadius: '8px',
+                textTransform: 'none',
+                fontWeight: 500,
+                px: 3,
+                py: 0,
+                height: '40px',
+                fontSize: '14px',
+                '&:hover': { 
+                  borderColor: '#B0B7C3', 
+                  bgcolor: 'rgba(99, 115, 129, 0.08)',
+                  color: '#212B36'
+                }
+              }}
+            >
+              Change to Draft
+            </Button>
+          )}
+          
           <Button
             variant="outlined"
             onClick={handleOpenPauseDialog}
@@ -181,7 +248,7 @@ const LiveEventPage = () => {
           
           <Button
             variant="contained"
-            onClick={handleCompleteEvent}
+            onClick={handleOpenCompleteDialog}
             sx={{ 
               bgcolor: '#6366f1',
               borderRadius: '8px',
@@ -241,9 +308,24 @@ const LiveEventPage = () => {
                 }} />
               </Box>
               
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#212B36', mb: 1 }}>
-                Your Event Is Live
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, color: '#212B36' }}>
+                  Your Event Is Live
+                </Typography>
+                {eventStatus && (
+                  <Chip 
+                    label={eventStatus} 
+                    size="small" 
+                    sx={{ 
+                      bgcolor: eventStatus === 'Completed' ? '#e8f5e9' : '#fff8e1', 
+                      color: eventStatus === 'Completed' ? '#4caf50' : '#ff9800', 
+                      borderRadius: '16px',
+                      height: '24px',
+                      fontSize: '12px'
+                    }} 
+                  />
+                )}
+              </Box>
               <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', mb: 3, maxWidth: '80%' }}>
                 Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
               </Typography>
@@ -556,6 +638,99 @@ const LiveEventPage = () => {
               }}
             >
               Pause
+            </Button>
+          </Box>
+        </Box>
+      </Dialog>
+      
+      {/* Complete Confirmation Dialog */}
+      <Dialog
+        open={completeDialogOpen}
+        onClose={handleCloseCompleteDialog}
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            width: '400px',
+            margin: '0 auto',
+            boxShadow: '0px 20px 40px rgba(0, 0, 0, 0.1)',
+            overflow: 'visible'
+          }
+        }}
+      >
+        <Box sx={{ p: '24px' }}>
+          <Box sx={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            mb: 2
+          }}>
+            <Box sx={{ 
+              mb: 3,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              height: 172,
+              width: 230,
+              position: 'relative'
+            }}>
+              <PlantDoodle sx={{ 
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                maxWidth: '100%',
+                maxHeight: '100%'
+              }} />
+            </Box>
+            
+            <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '18px', color: '#212B36', mb: 1 }}>
+              Are you sure you want to complete this event?
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#637381', textAlign: 'center', mb: 2 }}>
+              This will mark the event as completed and you'll be redirected to the dashboard.
+            </Typography>
+          </Box>
+          
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={handleCloseCompleteDialog}
+              fullWidth
+              sx={{ 
+                borderColor: '#E5E8EB',
+                color: '#637381',
+                borderRadius: '8px',
+                textTransform: 'none',
+                fontWeight: 500,
+                py: 1,
+                height: '40px',
+                fontSize: '14px',
+                '&:hover': { 
+                  borderColor: '#B0B7C3', 
+                  bgcolor: 'rgba(99, 115, 129, 0.08)',
+                  color: '#212B36'
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            
+            <Button
+              variant="contained"
+              onClick={handleConfirmComplete}
+              fullWidth
+              sx={{ 
+                bgcolor: '#6366f1',
+                borderRadius: '8px',
+                textTransform: 'none',
+                fontWeight: 500,
+                py: 1,
+                height: '40px',
+                fontSize: '14px',
+                '&:hover': { bgcolor: '#4338ca' }
+              }}
+            >
+              Complete
             </Button>
           </Box>
         </Box>
