@@ -23,14 +23,14 @@ const manage = {
       // icon: 'IconLayoutGrid'
       icon: 'IconStack2'
     },
-    {
-      id: 'account',
-      title: <FormattedMessage id="account" />,
-      type: 'item',
-      url: '/account',
-      icon: 'IconUserCog',
-      roles: [AuthRole.SUPER_ADMIN]
-    },
+    // {
+    //   id: 'account',
+    //   title: <FormattedMessage id="account" />,
+    //   type: 'item',
+    //   url: '/account',
+    //   icon: 'IconUserCog',
+    //   roles: [AuthRole.SUPER_ADMIN]
+    // },
     // {
     //   id: 'user',
     //   title: <FormattedMessage id="user" />,
