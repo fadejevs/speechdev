@@ -65,7 +65,7 @@ const EditEventPage = () => {
     targetLanguages: [],
     recordEvent: false
   });
-  const [sourceAnchorEl, setSourceAnchorEl] = useState(null);
+  const [sourceMenuAnchorEl, setSourceMenuAnchorEl] = useState(null);
   const [targetAnchorEl, setTargetAnchorEl] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
@@ -75,6 +75,7 @@ const EditEventPage = () => {
   const [selectedAudioOutputs, setSelectedAudioOutputs] = useState({});
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [languageSearch, setLanguageSearch] = useState('');
 
   useEffect(() => {
     // Fetch event data from localStorage
@@ -109,17 +110,27 @@ const EditEventPage = () => {
   };
 
   const handleLanguageChange = (field, language, action) => {
-    if (action === 'add') {
-      setEventData(prev => ({
-        ...prev,
-        [field]: [...prev[field], language]
-      }));
-    } else {
-      setEventData(prev => ({
-        ...prev,
-        [field]: prev[field].filter(lang => lang !== language)
-      }));
-    }
+    setEventData(prev => {
+      if (action === 'add') {
+        if (field === 'sourceLanguages') {
+          return { 
+            ...prev, 
+            [field]: [language]
+          };
+        } else {
+          return { 
+            ...prev, 
+            [field]: [...prev[field], language] 
+          };
+        }
+      } else if (action === 'remove') {
+        return { 
+          ...prev, 
+          [field]: prev[field].filter(lang => lang !== language) 
+        };
+      }
+      return prev;
+    });
   };
 
   const handleSaveChanges = () => {
@@ -161,18 +172,27 @@ const EditEventPage = () => {
     }
   };
 
-  const handleOpenSourceMenu = (event) => {
-    setSourceAnchorEl(event.currentTarget);
-    setSearchTerm('');
+  const handleAddSourceLanguage = (language) => {
+    setEventData(prev => ({
+      ...prev,
+      sourceLanguages: [language]
+    }));
+    
+    setSourceMenuAnchorEl(null);
   };
+
+  useEffect(() => {
+    if (eventData && eventData.sourceLanguages && eventData.sourceLanguages.length > 1) {
+      setEventData(prev => ({
+        ...prev,
+        sourceLanguages: [prev.sourceLanguages[prev.sourceLanguages.length - 1]]
+      }));
+    }
+  }, [eventData?.sourceLanguages]);
 
   const handleOpenTargetMenu = (event) => {
     setTargetAnchorEl(event.currentTarget);
     setSearchTerm('');
-  };
-
-  const handleCloseSourceMenu = () => {
-    setSourceAnchorEl(null);
   };
 
   const handleCloseTargetMenu = () => {
@@ -542,7 +562,7 @@ const EditEventPage = () => {
                     )}
                     <IconButton 
                       size="small" 
-                      onClick={handleOpenSourceMenu}
+                      onClick={(event) => setSourceMenuAnchorEl(event.currentTarget)}
                       sx={{ 
                         ml: 'auto', 
                         color: '#6366f1',
@@ -554,9 +574,9 @@ const EditEventPage = () => {
                   </Box>
                   
                   <Popover
-                    open={Boolean(sourceAnchorEl)}
-                    anchorEl={sourceAnchorEl}
-                    onClose={handleCloseSourceMenu}
+                    open={Boolean(sourceMenuAnchorEl)}
+                    anchorEl={sourceMenuAnchorEl}
+                    onClose={() => setSourceMenuAnchorEl(null)}
                     anchorOrigin={{
                       vertical: 'bottom',
                       horizontal: 'left',
@@ -565,108 +585,44 @@ const EditEventPage = () => {
                       vertical: 'top',
                       horizontal: 'left',
                     }}
-                    PaperProps={{
-                      sx: { 
-                        width: 250, 
-                        mt: 1, 
-                        boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.15)',
-                        borderRadius: '8px'
-                      }
-                    }}
                   >
-                    <Box sx={{ p: 2 }}>
-                      <InputBase
-                        placeholder="Search languages..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        fullWidth
-                        startAdornment={
-                          <InputAdornment position="start">
-                            <SearchIcon fontSize="small" sx={{ color: '#637381' }} />
-                          </InputAdornment>
-                        }
-                        sx={{ 
-                          mb: 1, 
-                          p: 1, 
-                          bgcolor: '#F4F6F8', 
-                          borderRadius: '8px',
-                          '& .MuiInputBase-input': {
-                            fontSize: '14px'
-                          }
-                        }}
-                      />
-                      <List sx={{ maxHeight: 250, overflow: 'auto', py: 0 }}>
-                        {filteredLanguages(searchTerm).map(lang => {
-                          const isSelected = eventData.sourceLanguages.includes(lang.code);
-                          const isTargetLanguage = eventData.targetLanguages.includes(lang.code);
-                          
-                          return (
+                    <Box sx={{ p: 2, width: 250 }}>
+                      <Box sx={{ mb: 2 }}>
+                        <TextField
+                          placeholder="Search language"
+                          size="small"
+                          fullWidth
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <SearchIcon fontSize="small" />
+                              </InputAdornment>
+                            ),
+                          }}
+                          onChange={(e) => setLanguageSearch(e.target.value)}
+                          value={languageSearch}
+                          sx={{
+                            '& .MuiOutlinedInput-root': {
+                              borderRadius: '8px',
+                            }
+                          }}
+                        />
+                      </Box>
+                      
+                      <List sx={{ pt: 0 }}>
+                        {languages
+                          .filter(lang => !eventData.sourceLanguages.includes(lang.code) && 
+                            lang.name.toLowerCase().includes(languageSearch.toLowerCase()))
+                          .map(lang => (
                             <ListItem 
-                              key={lang.code} 
                               button 
-                              onClick={() => !isSelected && !isTargetLanguage && handleAddLanguage('sourceLanguages', lang.code)}
-                              sx={{ 
-                                borderRadius: '6px',
-                                py: 0.75,
-                                opacity: isSelected || isTargetLanguage ? 0.5 : 1,
-                                pointerEvents: isSelected || isTargetLanguage ? 'none' : 'auto',
-                                bgcolor: isSelected ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
-                                '&:hover': { 
-                                  bgcolor: isSelected || isTargetLanguage ? 
-                                    (isSelected ? 'rgba(99, 102, 241, 0.08)' : 'transparent') : 
-                                    'rgba(99, 102, 241, 0.08)' 
-                                }
-                              }}
+                              key={lang.code} 
+                              onClick={() => handleAddSourceLanguage(lang.code)}
+                              sx={{ borderRadius: 1 }}
                             >
-                              <ListItemText 
-                                primary={lang.name} 
-                                primaryTypographyProps={{ 
-                                  fontSize: '14px',
-                                  fontWeight: 500,
-                                  color: isSelected ? '#6366f1' : (isTargetLanguage ? '#637381' : '#212B36')
-                                }}
-                              />
-                              {isSelected && (
-                                <Box 
-                                  component="span" 
-                                  sx={{ 
-                                    ml: 1, 
-                                    color: '#6366f1',
-                                    fontSize: '12px',
-                                    fontWeight: 500
-                                  }}
-                                >
-                                  (Source)
-                                </Box>
-                              )}
-                              {isTargetLanguage && (
-                                <Box 
-                                  component="span" 
-                                  sx={{ 
-                                    ml: 1, 
-                                    color: '#637381',
-                                    fontSize: '12px',
-                                    fontWeight: 500
-                                  }}
-                                >
-                                  (Target)
-                                </Box>
-                              )}
+                              <ListItemText primary={lang.name} />
                             </ListItem>
-                          );
-                        })}
-                        {filteredLanguages(searchTerm).length === 0 && (
-                          <ListItem sx={{ py: 1 }}>
-                            <ListItemText 
-                              primary="No languages found" 
-                              primaryTypographyProps={{ 
-                                fontSize: '14px',
-                                color: '#637381',
-                                textAlign: 'center'
-                              }}
-                            />
-                          </ListItem>
-                        )}
+                          ))}
                       </List>
                     </Box>
                   </Popover>
@@ -868,33 +824,34 @@ const EditEventPage = () => {
               
               <Divider sx={{ mx: -3, mb: 3 }} />
               
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 500, color: '#212B36' }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 500, color: '#212B36', mb: 0.5 }}>
                     Record Event
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    By enabling this it will record all languages
+                  <Typography variant="body2" sx={{ color: '#637381' }}>
+                    Enable recording for this event
                   </Typography>
                 </Box>
-                <Box>
-                  <Switch
-                    checked={eventData.recordEvent}
-                    onChange={(e) => setEventData(prev => ({ ...prev, recordEvent: e.target.checked }))}
-                    color="primary"
-                    sx={{
-                      '& .MuiSwitch-switchBase.Mui-checked': {
-                        color: '#6366f1',
-                        '&:hover': {
-                          backgroundColor: 'rgba(99, 102, 241, 0.08)'
-                        }
+                <Switch
+                  checked={eventData.recordEvent}
+                  onChange={(e) => setEventData(prev => ({ ...prev, recordEvent: e.target.checked }))}
+                  disabled={true}
+                  sx={{
+                    '& .MuiSwitch-switchBase.Mui-checked': {
+                      color: '#6366f1',
+                      '&:hover': {
+                        backgroundColor: 'rgba(99, 102, 241, 0.08)',
                       },
-                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                        backgroundColor: '#6366f1'
-                      }
-                    }}
-                  />
-                </Box>
+                    },
+                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                      backgroundColor: '#6366f1',
+                    },
+                    '& .Mui-disabled': {
+                      opacity: 0.5,
+                    }
+                  }}
+                />
               </Box>
             </Box>
           </Paper>

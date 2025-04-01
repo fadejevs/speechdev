@@ -185,29 +185,42 @@ const CreateEventModal = ({
 
   const handleLanguageToggle = (language, field) => {
     setEventData(prev => {
-      const currentLanguages = [...prev[field]];
-      const languageIndex = currentLanguages.indexOf(language);
-      
-      if (languageIndex === -1) {
-        currentLanguages.push(language);
-      } else {
-        currentLanguages.splice(languageIndex, 1);
+      // For source languages, replace existing selection with the new language
+      if (field === 'sourceLanguages') {
+        return { ...prev, [field]: [language] };
+      } 
+      // For target languages, keep the existing toggle behavior
+      else {
+        const currentLanguages = [...prev[field]];
+        const languageIndex = currentLanguages.indexOf(language);
+        
+        if (languageIndex === -1) {
+          currentLanguages.push(language);
+        } else {
+          currentLanguages.splice(languageIndex, 1);
+        }
+        
+        return { ...prev, [field]: currentLanguages };
       }
-      
-      return { ...prev, [field]: currentLanguages };
     });
   };
 
   const handleDeleteLanguage = (language, field) => {
     setEventData(prev => {
-      const currentLanguages = [...prev[field]];
-      const languageIndex = currentLanguages.indexOf(language);
-      
-      if (languageIndex !== -1) {
-        currentLanguages.splice(languageIndex, 1);
+      // For source languages, only remove if more than one (which shouldn't happen)
+      // or allow complete removal if needed
+      if (field === 'sourceLanguages' && prev[field].length <= 1) {
+        return { ...prev, [field]: [] };
+      } else {
+        const currentLanguages = [...prev[field]];
+        const languageIndex = currentLanguages.indexOf(language);
+        
+        if (languageIndex !== -1) {
+          currentLanguages.splice(languageIndex, 1);
+        }
+        
+        return { ...prev, [field]: currentLanguages };
       }
-      
-      return { ...prev, [field]: currentLanguages };
     });
   };
 
@@ -879,14 +892,34 @@ const CreateEventModal = ({
             {renderEventTypeSelector()}
             {renderStatusSelector()}
             
-            <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Box>
+                <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
+                  Record Event
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#637381' }}>
+                  Enable recording for this event (Coming soon)
+                </Typography>
+              </Box>
               <Switch 
-                checked={eventData.recordEvent} 
-                onChange={(e) => handleInputChange(e)}
-                color="primary"
-                size="small"
+                checked={eventData.recordEvent}
+                onChange={(e) => setEventData(prev => ({ ...prev, recordEvent: e.target.checked }))}
+                disabled={true}
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': {
+                    color: '#6366f1',
+                    '&:hover': {
+                      backgroundColor: 'rgba(99, 102, 241, 0.08)',
+                    },
+                  },
+                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                    backgroundColor: '#6366f1',
+                  },
+                  '& .Mui-disabled': {
+                    opacity: 0.5,
+                  }
+                }}
               />
-              <Typography variant="body2" sx={{ ml: 1, color: '#637381' }}>Record Event</Typography>
             </Box>
           </Box>
         </DialogContent>
