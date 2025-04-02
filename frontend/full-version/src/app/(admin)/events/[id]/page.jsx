@@ -39,6 +39,7 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
+import RefreshIcon from '@mui/icons-material/Refresh';
 
 const languages = [
   { code: 'en', name: 'English' },
@@ -76,6 +77,8 @@ const EditEventPage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [languageSearch, setLanguageSearch] = useState('');
+  const [audioInputDevices, setAudioInputDevices] = useState([]);
+  const [selectedAudioInput, setSelectedAudioInput] = useState('');
 
   useEffect(() => {
     // Fetch event data from localStorage
@@ -103,6 +106,46 @@ const EditEventPage = () => {
       setLoading(false);
     }
   }, [id]);
+
+  // Function to get audio devices after ensuring we have microphone permission
+  const getAudioDevices = async () => {
+    try {
+      // First request microphone access - this is necessary to see all devices
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Then enumerate devices
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(device => device.kind === 'audioinput');
+      setAudioInputDevices(audioInputs);
+      
+      // Set default device if none selected
+      if (!selectedAudioInput && audioInputs.length > 0) {
+        setSelectedAudioInput(audioInputs[0].deviceId);
+      }
+    } catch (err) {
+      console.error('Error accessing audio devices:', err);
+    }
+  };
+
+  // Listen for device changes
+  useEffect(() => {
+    if (startDialogOpen) {
+      // Get initial devices
+      getAudioDevices();
+
+      // Add device change listener
+      const handleDeviceChange = () => {
+        getAudioDevices();
+      };
+
+      navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+
+      // Cleanup
+      return () => {
+        navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+      };
+    }
+  }, [startDialogOpen]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -235,7 +278,7 @@ const EditEventPage = () => {
   };
 
   const handleCopyLink = () => {
-    const link = `https://app.interpretd.ai/broadcast/${id}`;
+    const link = `${window.location.origin}/broadcast/${id}`;
     navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -902,7 +945,7 @@ const EditEventPage = () => {
           <TextField
             fullWidth
             variant="outlined"
-            value={`https://app.interpretd.ai/broadcast/${id}`}
+            value={`${window.location.origin}/broadcast/${id}`}
             InputProps={{
               readOnly: true,
               sx: { 
@@ -949,234 +992,130 @@ const EditEventPage = () => {
       <Dialog 
         open={startDialogOpen} 
         onClose={handleCloseStartDialog}
-        maxWidth={false}
+        maxWidth="sm"
+        fullWidth
         PaperProps={{
           sx: {
             borderRadius: '16px',
-            width: '800px',
-            margin: '0 auto',
-            boxShadow: '0px 20px 40px rgba(0, 0, 0, 0.1)',
-            overflow: 'visible'
+            p: 3
           }
         }}
       >
-        <Box sx={{ p: '24px' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#212B36', mb: 0.5 }}>
+              Start Event
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#637381' }}>
+              Tempora ut inventore accusamus sed sed deleniti.
+            </Typography>
+          </Box>
+          <IconButton onClick={handleCloseStartDialog} sx={{ color: '#637381' }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
+
+        <Typography variant="body2" sx={{ color: '#637381', mb: 1, fontSize: '12px' }}>
+          This is a hint text to help user.
+        </Typography>
+
+        {/* Audio Input Selection */}
+        <Box sx={{ mb: 3 }}>
           <Box sx={{ 
             display: 'flex', 
             justifyContent: 'space-between', 
             alignItems: 'center',
-            mb: 2
+            mb: 1 
           }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '18px', color: '#212B36' }}>
-              Start Event
+            <Typography variant="subtitle2" sx={{ color: '#212B36' }}>
+              Select Source You Would Like to Record
             </Typography>
+            {/* Add refresh button */}
             <IconButton 
-              onClick={handleCloseStartDialog} 
+              onClick={getAudioDevices}
               size="small"
               sx={{ 
                 color: '#637381',
-                p: '4px',
                 '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
               }}
             >
-              <CloseIcon fontSize="small" />
+              <RefreshIcon fontSize="small" />
             </IconButton>
           </Box>
-          
-          <Typography variant="body1" sx={{ mb: 3, color: '#212B36', fontSize: '14px' }}>
-            Configure audio settings for each language
-          </Typography>
-          
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, mb: 3 }}>
-            {eventData.sourceLanguages.map(langCode => {
-              const language = languages.find(l => l.code === langCode)?.name || langCode;
-              return (
-                <Paper 
-                  key={langCode}
-                  elevation={0}
-                  sx={{ 
-                    p: 3, 
-                    borderRadius: '12px', 
-                    border: '1px solid #E5E8EB'
-                  }}
-                >
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, fontSize: '16px', color: '#212B36' }}>
-                    {language}
-                  </Typography>
-                  
-                  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 3 }}>
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ mb: 1, color: '#637381', fontWeight: 500, fontSize: '14px' }}>
-                        Audio Input
-                      </Typography>
-                      <Select
-                        fullWidth
-                        value={selectedAudioInputs[langCode] || ''}
-                        onChange={(e) => handleAudioInputChange(langCode, e.target.value)}
-                        displayEmpty
-                        sx={{ 
-                          borderRadius: '8px',
-                          height: '40px',
-                          fontSize: '14px',
-                          '& .MuiOutlinedInput-notchedOutline': {
-                            borderRadius: '8px',
-                            borderColor: '#E5E8EB'
-                          },
-                          '&:hover .MuiOutlinedInput-notchedOutline': {
-                            borderColor: '#B0B7C3'
-                          },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                            borderColor: '#6366f1'
-                          },
-                          '& .MuiSelect-select': {
-                            p: '8px 14px',
-                            display: 'flex',
-                            alignItems: 'center'
-                          }
-                        }}
-                        IconComponent={(props) => (
-                          <KeyboardArrowDownIcon 
-                            {...props} 
-                            sx={{ 
-                              color: '#637381',
-                              right: 8
-                            }} 
-                          />
-                        )}
-                        renderValue={(selected) => {
-                          if (!selected) {
-                            return <Typography sx={{ color: '#637381', fontSize: '14px' }}>Select audio input</Typography>;
-                          }
-                          return selected;
-                        }}
-                        MenuProps={{
-                          PaperProps: {
-                            sx: {
-                              borderRadius: '8px',
-                              boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.1)',
-                              mt: 1
-                            }
-                          }
-                        }}
-                      >
-                        <MenuItem value="Default Microphone">Default Microphone</MenuItem>
-                        <MenuItem value="Built-in Microphone">Built-in Microphone</MenuItem>
-                        <MenuItem value="External Microphone">External Microphone</MenuItem>
-                      </Select>
-                    </Box>
-                    
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ mb: 1, color: '#637381', fontWeight: 500, fontSize: '14px' }}>
-                        Audio Output
-                      </Typography>
-                      <Select
-                        fullWidth
-                        value={selectedAudioOutputs[langCode] || ''}
-                        onChange={(e) => handleAudioOutputChange(langCode, e.target.value)}
-                        displayEmpty
-                        sx={{ 
-                          borderRadius: '8px',
-                          height: '40px',
-                          fontSize: '14px',
-                          '& .MuiOutlinedInput-notchedOutline': {
-                            borderRadius: '8px',
-                            borderColor: '#E5E8EB'
-                          },
-                          '&:hover .MuiOutlinedInput-notchedOutline': {
-                            borderColor: '#B0B7C3'
-                          },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                            borderColor: '#6366f1'
-                          },
-                          '& .MuiSelect-select': {
-                            p: '8px 14px',
-                            display: 'flex',
-                            alignItems: 'center'
-                          }
-                        }}
-                        IconComponent={(props) => (
-                          <KeyboardArrowDownIcon 
-                            {...props} 
-                            sx={{ 
-                              color: '#637381',
-                              right: 8
-                            }} 
-                          />
-                        )}
-                        renderValue={(selected) => {
-                          if (!selected) {
-                            return <Typography sx={{ color: '#637381', fontSize: '14px' }}>Select audio output</Typography>;
-                          }
-                          return selected;
-                        }}
-                        MenuProps={{
-                          PaperProps: {
-                            sx: {
-                              borderRadius: '8px',
-                              boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.1)',
-                              mt: 1
-                            }
-                          }
-                        }}
-                      >
-                        <MenuItem value="Default Speakers">Default Speakers</MenuItem>
-                        <MenuItem value="Built-in Speakers">Built-in Speakers</MenuItem>
-                        <MenuItem value="External Speakers">External Speakers</MenuItem>
-                        <MenuItem value="Headphones">Headphones</MenuItem>
-                      </Select>
-                    </Box>
-                  </Box>
-                </Paper>
-              );
-            })}
-          </Box>
-          
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-            <Button
-              variant="outlined"
-              onClick={handleCloseStartDialog}
-              sx={{ 
-                borderColor: '#E5E8EB',
-                color: '#637381',
-                borderRadius: '8px',
-                textTransform: 'none',
-                fontWeight: 500,
-                px: 3,
-                py: 0,
-                height: '40px',
-                fontSize: '14px',
-                '&:hover': { 
-                  borderColor: '#B0B7C3', 
-                  bgcolor: 'rgba(99, 115, 129, 0.08)',
-                  color: '#212B36'
-                }
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="contained"
-              onClick={() => {
-                handleCloseStartDialog();
-                // Here you would add the logic to actually start the event
-                router.push(`/events/${id}/live`);
-              }}
-              sx={{ 
-                bgcolor: '#6366f1',
-                borderRadius: '8px',
-                textTransform: 'none',
-                fontWeight: 500,
-                px: 3,
-                py: 0,
-                height: '40px',
-                fontSize: '14px',
-                '&:hover': { bgcolor: '#4338ca' }
-              }}
-            >
-              Start Event
-            </Button>
-          </Box>
+          <Select
+            fullWidth
+            value={selectedAudioInput}
+            onChange={(e) => setSelectedAudioInput(e.target.value)}
+            displayEmpty
+            sx={{ 
+              borderRadius: '8px',
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#E5E8EB'
+              }
+            }}
+          >
+            <MenuItem disabled value="">
+              <Typography sx={{ color: '#637381' }}>Select audio input</Typography>
+            </MenuItem>
+            {audioInputDevices.map(device => (
+              <MenuItem 
+                key={device.deviceId} 
+                value={device.deviceId}
+                sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  py: 1.5
+                }}
+              >
+                <span>{device.label || `Microphone ${device.deviceId.slice(0, 5)}...`}</span>
+                <Typography variant="body2" sx={{ color: '#637381' }}>
+                  {device.label.toLowerCase().includes('built-in') ? 'Built-in' : 'External'}
+                </Typography>
+              </MenuItem>
+            ))}
+          </Select>
         </Box>
+
+        {/* Meeting Link Input - Grayed out */}
+        <Box sx={{ mb: 3, opacity: 0.5, pointerEvents: 'none' }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, color: '#212B36' }}>
+            Or Paste Your Meeting Link
+          </Typography>
+          <TextField
+            fullWidth
+            placeholder="Enter feature name e.g. API"
+            disabled
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: '8px',
+              }
+            }}
+          />
+          <Typography variant="caption" sx={{ color: '#637381', mt: 0.5, display: 'block' }}>
+            Supports Google Meets, Zoom, MS Teams, Youtube, Cisco...
+          </Typography>
+        </Box>
+
+        <Button
+          fullWidth
+          variant="contained"
+          onClick={() => {
+            handleCloseStartDialog();
+            router.push(`/events/${id}/live`);
+          }}
+          sx={{
+            bgcolor: '#6366f1',
+            color: 'white',
+            borderRadius: '8px',
+            textTransform: 'none',
+            py: 1,
+            '&:hover': {
+              bgcolor: '#4338ca'
+            }
+          }}
+        >
+          Start Broadcast
+        </Button>
       </Dialog>
     </Box>
   );

@@ -154,11 +154,35 @@ const AnalyticsDashboard = () => {
   const getStatusChip = (status) => {
     switch(status) {
       case 'Draft event':
-        return <Chip label="Draft event" size="small" sx={{ bgcolor: '#e6f7e6', color: '#43a047', borderRadius: '16px' }} />;
+        return <Chip 
+          label="Draft event" 
+          size="small" 
+          sx={{ 
+            bgcolor: '#fff5f5', // Light red background
+            color: '#ff4842',   // Red text
+            borderRadius: '16px' 
+          }} 
+        />;
       case 'Completed':
-        return <Chip label="Completed" size="small" sx={{ bgcolor: '#e8f5e9', color: '#4caf50', borderRadius: '16px' }} />;
+        return <Chip 
+          label="Completed" 
+          size="small" 
+          sx={{ 
+            bgcolor: '#e8f5e9', 
+            color: '#4caf50', 
+            borderRadius: '16px' 
+          }} 
+        />;
       default:
-        return <Chip label={status} size="small" sx={{ bgcolor: '#fff8e1', color: '#ff9800', borderRadius: '16px' }} />;
+        return <Chip 
+          label={status} 
+          size="small" 
+          sx={{ 
+            bgcolor: '#fff8e1', 
+            color: '#ff9800', 
+            borderRadius: '16px' 
+          }} 
+        />;
     }
   };
 

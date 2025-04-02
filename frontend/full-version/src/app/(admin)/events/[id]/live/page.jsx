@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -119,25 +119,19 @@ const LiveEventPage = () => {
     setCompleteDialogOpen(false);
   };
 
-  const handleConfirmComplete = () => {
-    // Logic to mark the event as completed
+  const handleCompleteEvent = () => {
+    // Update event status to completed in localStorage
     const storedEvents = localStorage.getItem('eventData');
     if (storedEvents) {
       const parsedEvents = JSON.parse(storedEvents);
-      const updatedEvents = parsedEvents.map(event => {
-        if (event.id === id) {
-          return { ...event, status: 'Completed' };
-        }
-        return event;
-      });
-      
+      const updatedEvents = parsedEvents.map(event => 
+        event.id === id ? { ...event, status: 'Completed' } : event
+      );
       localStorage.setItem('eventData', JSON.stringify(updatedEvents));
-      setEventStatus('Completed');
     }
     
-    setCompleteDialogOpen(false);
-    // Optionally redirect to events list or dashboard
-    router.push('/dashboard/analytics');
+    // Redirect to completion page
+    router.push(`/events/${id}/complete`);
   };
 
   const handleChangeStatusToDraft = () => {
@@ -736,7 +730,7 @@ const LiveEventPage = () => {
             
             <Button
               variant="contained"
-              onClick={handleConfirmComplete}
+              onClick={handleCompleteEvent}
               fullWidth
               sx={{ 
                 bgcolor: '#6366f1',
