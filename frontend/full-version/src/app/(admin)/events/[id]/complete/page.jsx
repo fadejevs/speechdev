@@ -164,7 +164,7 @@ const EventCompletionPage = () => {
                 Event Name
               </Typography>
               <Typography variant="body2" sx={{ color: '#637381' }}>
-                {eventData?.name || 'Demo Event'}
+                {eventData?.name || 'Not specified'}
               </Typography>
             </Box>
 
@@ -174,7 +174,7 @@ const EventCompletionPage = () => {
                 Event Description
               </Typography>
               <Typography variant="body2" sx={{ color: '#637381' }}>
-                {eventData?.description || 'My first Demo Event with Real time AI Speech to Speech Translation'}
+                {eventData?.description || 'Not specified'}
               </Typography>
             </Box>
 
@@ -184,7 +184,7 @@ const EventCompletionPage = () => {
                 Event Location
               </Typography>
               <Typography variant="body2" sx={{ color: '#637381' }}>
-                {eventData?.location || 'G. Zemgala gatve 76, Riga, LV-1039'}
+                {eventData?.location || 'Not specified'}
               </Typography>
             </Box>
 
@@ -194,7 +194,7 @@ const EventCompletionPage = () => {
                 Event Date
               </Typography>
               <Typography variant="body2" sx={{ color: '#637381' }}>
-                {eventData?.date ? new Date(eventData.date).toLocaleDateString() : '28.03.2025'}
+                {eventData?.date ? new Date(eventData.date).toLocaleDateString() : 'Not specified'}
               </Typography>
             </Box>
 
@@ -204,7 +204,7 @@ const EventCompletionPage = () => {
                 Event Type
               </Typography>
               <Typography variant="body2" sx={{ color: '#637381' }}>
-                {eventData?.eventType || 'Online'}
+                {eventData?.eventType || 'Not specified'}
               </Typography>
             </Box>
           </Box>

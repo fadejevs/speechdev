@@ -55,7 +55,7 @@ const AnalyticsDashboard = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
-  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [selectedEventId, setSelectedEventId] = useState(null);
   const itemsPerPage = 10;
   const [editingEvent, setEditingEvent] = useState(null);
   const router = useRouter();
@@ -65,19 +65,24 @@ const AnalyticsDashboard = () => {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedTranscripts = transcripts.slice(startIndex, startIndex + itemsPerPage);
 
-  const handleMenuOpen = (event, transcript) => {
+  const handleRowClick = (eventId) => {
+    router.push(`/events/${eventId}`);
+  };
+
+  const handleMenuOpen = (event, eventId) => {
+    event.stopPropagation();
     setAnchorEl(event.currentTarget);
-    setSelectedEvent(transcript);
+    setSelectedEventId(eventId);
   };
 
   const handleMenuClose = () => {
     setAnchorEl(null);
-    setSelectedEvent(null);
+    setSelectedEventId(null);
   };
 
   const handleDelete = () => {
-    if (selectedEvent) {
-      setTranscripts(prev => prev.filter(t => t.id !== selectedEvent.id));
+    if (selectedEventId) {
+      setTranscripts(prev => prev.filter(t => t.id !== selectedEventId));
       handleMenuClose();
     }
   };
@@ -124,11 +129,14 @@ const AnalyticsDashboard = () => {
   const handleCreateEvent = (eventData) => {
     const newEvent = {
       id: generateUniqueId(),
-      title: eventData.name,
-      timestamp: new Date().toLocaleDateString(),
-      location: eventData.location || 'Online',
-      type: eventData.type || 'stt',
-      status: 'Draft event'
+      title: eventData.name || 'Not specified',
+      timestamp: eventData.date ? eventData.date : 'Not specified',
+      location: eventData.location || 'Not specified',
+      type: eventData.eventType || 'Not specified',
+      sourceLanguages: eventData.sourceLanguages || [],
+      targetLanguages: eventData.targetLanguages || [],
+      status: eventData.status || 'Draft event',
+      description: eventData.description || 'Not specified'
     };
     
     setTranscripts([newEvent, ...transcripts]);
@@ -139,7 +147,24 @@ const AnalyticsDashboard = () => {
     try {
       const savedEvents = localStorage.getItem('eventData');
       if (savedEvents) {
-        setTranscripts(JSON.parse(savedEvents));
+        const parsedEvents = JSON.parse(savedEvents);
+        
+        // Ensure all events have default values for empty fields
+        const eventsWithDefaults = parsedEvents.map(event => ({
+          ...event,
+          title: event.title || 'Not specified',
+          timestamp: event.timestamp || 'Not specified',
+          location: event.location || 'Not specified',
+          type: event.type || 'Not specified',
+          description: event.description || 'Not specified',
+          sourceLanguages: event.sourceLanguages || [],
+          targetLanguages: event.targetLanguages || []
+        }));
+        
+        setTranscripts(eventsWithDefaults);
+        
+        // Update localStorage with the normalized data
+        localStorage.setItem('eventData', JSON.stringify(eventsWithDefaults));
       } else {
         // Initialize localStorage with mock data if empty
         localStorage.setItem('eventData', JSON.stringify(initialMockData));
@@ -186,6 +211,71 @@ const AnalyticsDashboard = () => {
     }
   };
 
+  // Make sure any data transformations preserve the "Not specified" values
+  // For example, if you're filtering or sorting the events before display:
+
+  const processedEvents = transcripts.map(event => ({
+    ...event,
+    title: event.title || 'Not specified',
+    timestamp: event.timestamp || 'Not specified',
+    location: event.location || 'Not specified',
+    type: event.type || 'Not specified'
+  }));
+
+  // Add a helper function to render cell values with appropriate styling
+  const renderCellValue = (value, isDefault = false) => {
+    if (isDefault) {
+      return (
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            color: '#9e9e9e', // Light gray color for "Not specified" text
+          }}
+        >
+          {value}
+        </Typography>
+      );
+    }
+    return <Typography variant="body2">{value}</Typography>;
+  };
+
+  const renderEventRow = (event) => {
+    return (
+      <TableRow
+        key={event.id}
+        hover
+        onClick={() => handleRowClick(event.id)}
+        sx={{ cursor: 'pointer' }}
+      >
+        <TableCell component="th" scope="row">
+          {renderCellValue(event.title, event.title === 'Not specified')}
+        </TableCell>
+        <TableCell>
+          {renderCellValue(event.timestamp, event.timestamp === 'Not specified')}
+        </TableCell>
+        <TableCell>
+          {renderCellValue(event.location, event.location === 'Not specified')}
+        </TableCell>
+        <TableCell>
+          {renderCellValue(event.type, event.type === 'Not specified')}
+        </TableCell>
+        <TableCell>
+          {getStatusChip(event.status || 'Draft event')}
+        </TableCell>
+        <TableCell align="right">
+          <IconButton
+            aria-label="more"
+            aria-controls={`event-menu-${event.id}`}
+            aria-haspopup="true"
+            onClick={(e) => handleMenuOpen(e, event.id)}
+          >
+            <MoreVertIcon />
+          </IconButton>
+        </TableCell>
+      </TableRow>
+    );
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -212,20 +302,17 @@ const AnalyticsDashboard = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {paginatedTranscripts.map((transcript) => (
-              <TableRow key={transcript.id}>
-                <TableCell>{transcript.title}</TableCell>
-                <TableCell>{transcript.timestamp}</TableCell>
-                <TableCell>{transcript.location}</TableCell>
-                <TableCell>{transcript.type}</TableCell>
-                <TableCell>{getStatusChip(transcript.status)}</TableCell>
-                <TableCell align="right">
-                  <IconButton onClick={(e) => handleMenuOpen(e, transcript)}>
-                    <MoreVertIcon />
-                  </IconButton>
-                </TableCell>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={6} align="center">Loading...</TableCell>
               </TableRow>
-            ))}
+            ) : processedEvents.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} align="center">No events found</TableCell>
+              </TableRow>
+            ) : (
+              processedEvents.map(event => renderEventRow(event))
+            )}
           </TableBody>
         </Table>
       </TableContainer>
@@ -274,7 +361,7 @@ const AnalyticsDashboard = () => {
         open={isEditModalOpen}
         handleClose={() => {
           setIsEditModalOpen(false);
-          setSelectedEvent(null);
+          setSelectedEventId(null);
         }}
         handleCreate={handleUpdateEvent}
         initialData={editingEvent?.formData}
@@ -282,19 +369,16 @@ const AnalyticsDashboard = () => {
       />
 
       <Menu
+        id={`event-menu-${selectedEventId}`}
         anchorEl={anchorEl}
+        keepMounted
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
       >
-        <MenuItem 
-          onClick={() => {
-            router.push(`/events/${selectedEvent.id}`);
-            handleMenuClose();
-          }}
-          sx={{ py: 1 }}
-        >
-          <ListItemText primary="Edit" />
-        </MenuItem>
+        <MenuItem onClick={() => {
+          router.push(`/events/${selectedEventId}`);
+          handleMenuClose();
+        }}>Edit</MenuItem>
         <MenuItem onClick={handleDelete}>Delete</MenuItem>
       </Menu>
     </Box>

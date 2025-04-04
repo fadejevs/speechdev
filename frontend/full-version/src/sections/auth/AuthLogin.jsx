@@ -54,7 +54,10 @@ export default function AuthLogin({ inputSx }) {
     handleSubmit,
     reset,
     formState: { errors }
-  } = useForm({ defaultValues: { email: 'super_admin@saasable.io', password: 'Super@123' } });
+  } = useForm({ defaultValues:
+    // { email: 'super_admin@saasable.io', password: 'Super@123' }
+    { email: 'admin@interpretd.com', password: 'Super@123' }
+  });
 
   // Handle form submission
   const onSubmit = (formData) => {

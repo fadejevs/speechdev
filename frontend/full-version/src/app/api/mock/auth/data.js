@@ -6,7 +6,8 @@ import { AuthRole } from '@/enum';
 const mockUsers = [
   {
     id: '1',
-    email: 'super_admin@saasable.io',
+    // email: 'super_admin@saasable.io',
+    email: 'admin@interpretd.com',
     role: AuthRole.SUPER_ADMIN,
     contact: '123456789',
     dialcode: '+1',

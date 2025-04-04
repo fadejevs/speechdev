@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Box,
@@ -12,19 +12,28 @@ import {
   Menu,
   MenuItem,
   ListItemIcon,
-  ListItemText
+  ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Divider,
+  CircularProgress
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import MicIcon from '@mui/icons-material/Mic';
 import SettingsIcon from '@mui/icons-material/Settings';
+import StopIcon from '@mui/icons-material/Stop';
+import PauseIcon from '@mui/icons-material/Pause';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import Image from 'next/image';
-import Dialog from '@mui/material/Dialog';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
 import SelfieDoodle from '@/images/illustration/SelfieDoodle';
 import PlantDoodle from '@/images/illustration/PlantDoodle';
+import apiService from '@/services/apiService';
+import transcriptionService from '@/services/transcriptionService';
 
 const languages = [
   { code: 'en', name: 'English' },
@@ -37,6 +46,36 @@ const languages = [
   { code: 'es', name: 'Spanish' }
 ];
 
+// Helper function to get language code
+const getLanguageCode = (languageName) => {
+  const languageMap = {
+    'English': 'en',
+    'Latvian': 'lv',
+    'Lithuanian': 'lt',
+    'Estonian': 'et',
+    'German': 'de',
+    'Spanish': 'es',
+    'Russian': 'ru',
+    'French': 'fr'
+  };
+  return languageMap[languageName] || 'en';
+};
+
+// Helper function to get full language name
+const getLanguageName = (languageCode) => {
+  const languageMap = {
+    'en': 'English',
+    'lv': 'Latvian',
+    'lt': 'Lithuanian',
+    'et': 'Estonian',
+    'de': 'German',
+    'es': 'Spanish',
+    'ru': 'Russian',
+    'fr': 'French'
+  };
+  return languageMap[languageCode] || 'Unknown';
+};
+
 const LiveEventPage = () => {
   const { id } = useParams();
   const router = useRouter();
@@ -48,6 +87,15 @@ const LiveEventPage = () => {
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [eventStatus, setEventStatus] = useState('');
+  
+  // Audio recording states
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState(null);
+  const [transcription, setTranscription] = useState('');
+  const [translations, setTranslations] = useState({});
+  const [processingAudio, setProcessingAudio] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   useEffect(() => {
     if (id) {
@@ -70,6 +118,115 @@ const LiveEventPage = () => {
     }
   }, [id, router]);
 
+  // Start recording function
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorderRef.current.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        setAudioBlob(audioBlob);
+        await processAudio(audioBlob);
+      };
+      
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      alert('Could not access microphone. Please check permissions.');
+    }
+  };
+
+  // Stop recording function
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  // Process audio for transcription and translation
+  const processAudio = async (blob) => {
+    try {
+      setProcessingAudio(true);
+      
+      // Get source language code
+      const sourceLanguageCode = selectedLanguage;
+      
+      // Step 1: Speech-to-text using your existing backend
+      const recognitionResult = await transcriptionService.speechToText(blob, sourceLanguageCode);
+      setTranscription(recognitionResult.text);
+      
+      // Step 2: Translate to all target languages
+      const translationPromises = eventData.targetLanguages.map(async (targetLang) => {
+        const translationResult = await transcriptionService.translateText(
+          recognitionResult.text,
+          targetLang
+        );
+        
+        return { language: targetLang, text: translationResult.translated_text };
+      });
+      
+      const translationResults = await Promise.all(translationPromises);
+      
+      // Update translations state
+      const newTranslations = {};
+      translationResults.forEach(result => {
+        newTranslations[result.language] = result.text;
+      });
+      setTranslations(newTranslations);
+      
+      // Step 3: Store transcript
+      await transcriptionService.storeTranscript(
+        recognitionResult.text,
+        JSON.stringify(newTranslations),
+        sourceLanguageCode,
+        eventData.targetLanguages.join(',')
+      );
+      
+    } catch (error) {
+      console.error('Error processing audio:', error);
+      alert('Error processing audio. Please try again.');
+    } finally {
+      setProcessingAudio(false);
+    }
+  };
+
+  // Play synthesized speech
+  const playSynthesizedSpeech = async (text, language) => {
+    try {
+      // Map language code to voice name if needed
+      const voiceMap = {
+        'en': 'en-US-JennyNeural',
+        'lv': 'lv-LV-EveritaNeural',
+        'lt': 'lt-LT-OnaNeural',
+        'et': 'et-EE-AnuNeural',
+        'de': 'de-DE-KatjaNeural',
+        'es': 'es-ES-ElviraNeural',
+        'ru': 'ru-RU-SvetlanaNeural',
+        'fr': 'fr-FR-DeniseNeural'
+      };
+      
+      const voice = voiceMap[language] || 'en-US-JennyNeural';
+      
+      const audioBlob = await transcriptionService.textToSpeech(text, voice);
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.play();
+    } catch (error) {
+      console.error('Error playing synthesized speech:', error);
+      alert('Error playing audio. Please try again.');
+    }
+  };
+
   const handleOpenMenu = (event) => {
     setMenuAnchorEl(event.currentTarget);
   };
@@ -87,8 +244,8 @@ const LiveEventPage = () => {
   };
 
   const handleChangeInput = (language) => {
-    // Logic to change input
-    console.log('Changing input for', language);
+    setSelectedLanguage(language);
+    handleCloseLanguageMenu();
   };
 
   const handleBackToEvents = () => {
@@ -104,11 +261,8 @@ const LiveEventPage = () => {
   };
 
   const handleConfirmPause = () => {
-    // Logic to actually pause the event
     console.log('Event paused');
     setPauseDialogOpen(false);
-    // You might want to update the event status in localStorage here
-    // and/or redirect to another page
   };
 
   const handleOpenCompleteDialog = () => {
@@ -134,619 +288,285 @@ const LiveEventPage = () => {
     router.push(`/events/${id}/complete`);
   };
 
-  const handleChangeStatusToDraft = () => {
-    // Logic to change the event back to draft
-    const storedEvents = localStorage.getItem('eventData');
-    if (storedEvents) {
-      const parsedEvents = JSON.parse(storedEvents);
-      const updatedEvents = parsedEvents.map(event => {
-        if (event.id === id) {
-          return { ...event, status: 'Draft event' };
-        }
-        return event;
-      });
-      
-      localStorage.setItem('eventData', JSON.stringify(updatedEvents));
-      setEventStatus('Draft event');
-    }
-    
-    // Show a success message or notification
-    console.log('Event changed to draft');
-  };
-
-  const handleShareEvent = () => {
-    // Logic to share event
-    console.log('Sharing event');
-  };
-
   if (loading || !eventData) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <Typography>Loading...</Typography>
+        <CircularProgress />
       </Box>
     );
   }
 
   return (
-    <Box sx={{ bgcolor: '#F9FAFB', minHeight: '100vh' }}>
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <Box sx={{ 
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center', 
-        p: 3,
-        borderBottom: '1px solid #E5E8EB'
+        p: 2, 
+        borderBottom: '1px solid #E5E8EB' 
       }}>
-        <Button
-          startIcon={<ArrowBackIcon />}
-          onClick={handleBackToEvents}
-          sx={{ 
-            color: '#212B36',
-            textTransform: 'none',
-            fontWeight: 500,
-            fontSize: '14px',
-            '&:hover': { bgcolor: 'rgba(33, 43, 54, 0.08)' }
-          }}
-        >
-          Back To Events
-        </Button>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <IconButton onClick={handleBackToEvents} sx={{ mr: 1 }}>
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            {eventData.title || 'Live Event'}
+          </Typography>
+        </Box>
         
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          {eventStatus === 'Completed' && (
-            <Button
-              variant="outlined"
-              onClick={handleChangeStatusToDraft}
-              sx={{ 
-                borderColor: '#E5E8EB',
-                color: '#637381',
-                borderRadius: '8px',
-                textTransform: 'none',
-                fontWeight: 500,
-                px: 3,
-                py: 0,
-                height: '40px',
-                fontSize: '14px',
-                '&:hover': { 
-                  borderColor: '#B0B7C3', 
-                  bgcolor: 'rgba(99, 115, 129, 0.08)',
-                  color: '#212B36'
-                }
-              }}
-            >
-              Change to Draft
-            </Button>
-          )}
-          
-          <Button
-            variant="outlined"
+        <Box>
+          <Button 
+            variant="outlined" 
+            color="error" 
             onClick={handleOpenPauseDialog}
-            sx={{ 
-              borderColor: '#E5E8EB',
-              color: '#637381',
-              borderRadius: '8px',
-              textTransform: 'none',
-              fontWeight: 500,
-              px: 3,
-              py: 0,
-              height: '40px',
-              fontSize: '14px',
-              '&:hover': { 
-                borderColor: '#B0B7C3', 
-                bgcolor: 'rgba(99, 115, 129, 0.08)',
-                color: '#212B36'
-              }
-            }}
+            sx={{ mr: 1 }}
           >
-            Pause Event
+            Pause
           </Button>
-          
-          <Button
-            variant="contained"
+          <Button 
+            variant="contained" 
+            color="primary" 
             onClick={handleOpenCompleteDialog}
-            sx={{ 
-              bgcolor: '#6366f1',
-              borderRadius: '8px',
-              textTransform: 'none',
-              fontWeight: 500,
-              px: 3,
-              py: 0,
-              height: '40px',
-              fontSize: '14px',
-              '&:hover': { bgcolor: '#4338ca' }
-            }}
           >
-            Complete Event
+            Complete
           </Button>
         </Box>
       </Box>
-      
+
       {/* Main Content */}
-      <Box sx={{ maxWidth: '1200px', mx: 'auto', p: 3 }}>
-        {/* Event Status Card */}
-        <Paper sx={{ 
-          borderRadius: '16px', 
-          overflow: 'hidden', 
-          mb: 3,
-          boxShadow: '0px 2px 4px rgba(0,0,0,0.05)'
-        }}>
-          <Box sx={{ 
-            p: 4,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            textAlign: 'center'
-          }}>
-                <Box sx={{ 
-                mb: 0,
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                height: 172,
-                width: 230,
-                position: 'relative'
-              }}>
-                <SelfieDoodle sx={{ 
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  maxWidth: '100%',
-                  maxHeight: '100%'
-                }} />
-              </Box>
-            <Box sx={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center', 
-              mb: 3,
-              mt: 4
-            }}>
-              {eventStatus && (
-                <Chip 
-                  label={eventStatus} 
-                  size="small" 
-                  sx={{ 
-                    bgcolor: eventStatus === 'Completed' ? '#e8f5e9' : '#fff8e1', 
-                    color: eventStatus === 'Completed' ? '#4caf50' : '#ff9800', 
-                    borderRadius: '16px',
-                    height: '24px',
-                    fontSize: '12px',
-                    mb: 2
-                  }} 
-                />
+      <Box sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden' }}>
+        {/* Left Panel - Transcription */}
+        <Box sx={{ width: '60%', p: 3, borderRight: '1px solid #E5E8EB', display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+              Source: {getLanguageName(selectedLanguage)}
+            </Typography>
+            
+            <Paper 
+              elevation={0} 
+              sx={{ 
+                p: 2, 
+                minHeight: '200px', 
+                bgcolor: '#F9FAFB', 
+                borderRadius: '8px',
+                mb: 2
+              }}
+            >
+              {transcription ? (
+                <Typography variant="body1">{transcription}</Typography>
+              ) : (
+                <Typography variant="body2" sx={{ color: '#637381', fontStyle: 'italic' }}>
+                  Transcription will appear here...
+                </Typography>
               )}
-              
-          
-              
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#212B36', mb: 1 }}>
-                Your Event Is Live
-              </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', mb: 3, maxWidth: '80%' }}>
-                Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
-              </Typography>
-              <Button
-                variant="contained"
-                onClick={handleShareEvent}
-                sx={{
-                  bgcolor: '#6366f1',
-                  borderRadius: '8px',
-                  textTransform: 'none',
-                  fontWeight: 500,
-                  px: 3,
-                  py: 1,
-                  fontSize: '14px',
-                  '&:hover': { bgcolor: '#4338ca' }
-                }}
-              >
-                Share Event
-              </Button>
+            </Paper>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+              {isRecording ? (
+                <Button
+                  variant="contained"
+                  color="error"
+                  startIcon={<StopIcon />}
+                  onClick={stopRecording}
+                  sx={{ borderRadius: '24px', px: 3 }}
+                >
+                  Stop Recording
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<MicIcon />}
+                  onClick={startRecording}
+                  sx={{ borderRadius: '24px', px: 3 }}
+                  disabled={processingAudio}
+                >
+                  Start Recording
+                </Button>
+              )}
             </Box>
+            
+            {processingAudio && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                <CircularProgress size={24} sx={{ mr: 1 }} />
+                <Typography>Processing audio...</Typography>
+              </Box>
+            )}
           </Box>
-        </Paper>
+          
+          <Divider sx={{ my: 3 }} />
+          
+          {/* Translations */}
+          <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+              Translations
+            </Typography>
+            
+            {eventData.targetLanguages && eventData.targetLanguages.length > 0 ? (
+              eventData.targetLanguages.map((targetLang) => (
+                <Paper
+                  key={targetLang}
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    mb: 2,
+                    bgcolor: '#F9FAFB',
+                    borderRadius: '8px',
+                    position: 'relative'
+                  }}
+                >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                      {getLanguageName(targetLang)}
+                    </Typography>
+                    
+                    <IconButton 
+                      size="small" 
+                      onClick={() => playSynthesizedSpeech(translations[targetLang], targetLang)}
+                      disabled={!translations[targetLang]}
+                    >
+                      <VolumeUpIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                  
+                  {translations[targetLang] ? (
+                    <Typography variant="body1">{translations[targetLang]}</Typography>
+                  ) : (
+                    <Typography variant="body2" sx={{ color: '#637381', fontStyle: 'italic' }}>
+                      Translation will appear here...
+                    </Typography>
+                  )}
+                </Paper>
+              ))
+            ) : (
+              <Typography variant="body2" sx={{ color: '#637381' }}>
+                No target languages selected for this event.
+              </Typography>
+            )}
+          </Box>
+        </Box>
         
-        {/* Published Languages Section */}
-        <Paper sx={{ 
-          borderRadius: '16px', 
-          overflow: 'hidden',
-          boxShadow: '0px 2px 4px rgba(0,0,0,0.05)'
-        }}>
-          <Box sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: '#212B36' }}>
-              Published languages
+        {/* Right Panel - Settings */}
+        <Box sx={{ width: '40%', p: 3, bgcolor: '#F9FAFB' }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+            Event Settings
+          </Typography>
+          
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 500 }}>
+              Event Details
             </Typography>
             
-            <Typography variant="body2" sx={{ color: '#637381', mb: 3 }}>
-              Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
-            </Typography>
-            
-            {/* Language List */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {/* Source Language */}
-              {eventData.sourceLanguages.map(langCode => {
-                const language = languages.find(l => l.code === langCode)?.name || langCode;
-                return (
-                  <Box 
-                    key={langCode}
-                    sx={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      py: 2,
-                      borderBottom: '1px solid #E5E8EB'
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 500, color: '#212B36' }}>
-                        {language}
-                      </Typography>
-                      <Chip 
-                        label="Source" 
-                        size="small"
-                        sx={{
-                          bgcolor: 'rgba(99, 102, 241, 0.08)',
-                          color: '#6366f1',
-                          fontWeight: 500,
-                          fontSize: '12px',
-                          height: '24px',
-                          borderRadius: '6px'
-                        }}
-                      />
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Button
-                        variant="text"
-                        endIcon={<KeyboardArrowDownIcon />}
-                        onClick={handleOpenLanguageMenu}
-                        sx={{ 
-                          color: '#6366f1',
-                          textTransform: 'none',
-                          fontWeight: 500,
-                          fontSize: '14px',
-                          '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.08)' }
-                        }}
-                      >
-                        Change Input
-                      </Button>
-                      
-                      <IconButton
-                        onClick={handleOpenMenu}
-                        sx={{ ml: 1, color: '#637381' }}
-                      >
-                        <MoreVertIcon />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                );
-              })}
+            <Paper elevation={0} sx={{ p: 2, borderRadius: '8px' }}>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ color: '#637381', mb: 0.5 }}>
+                  Name
+                </Typography>
+                <Typography variant="body1">
+                  {eventData.title}
+                </Typography>
+              </Box>
               
-              {/* Target Languages */}
-              {eventData.targetLanguages.map(langCode => {
-                const language = languages.find(l => l.code === langCode)?.name || langCode;
-                return (
-                  <Box 
-                    key={langCode}
-                    sx={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      py: 2,
-                      borderBottom: '1px solid #E5E8EB'
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 500, color: '#212B36' }}>
-                        {language}
-                      </Typography>
-                      <Chip 
-                        label="Translation" 
-                        size="small"
-                        sx={{
-                          bgcolor: 'rgba(0, 184, 217, 0.08)',
-                          color: '#00B8D9',
-                          fontWeight: 500,
-                          fontSize: '12px',
-                          height: '24px',
-                          borderRadius: '6px'
-                        }}
-                      />
-                    </Box>
-                    
-                    <Box>
-                      <IconButton
-                        onClick={handleOpenMenu}
-                        sx={{ color: '#637381' }}
-                      >
-                        <MoreVertIcon />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                );
-              })}
-            </Box>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ color: '#637381', mb: 0.5 }}>
+                  Description
+                </Typography>
+                <Typography variant="body1">
+                  {eventData.description || 'No description provided'}
+                </Typography>
+              </Box>
+              
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ color: '#637381', mb: 0.5 }}>
+                  Location
+                </Typography>
+                <Typography variant="body1">
+                  {eventData.location || 'Online'}
+                </Typography>
+              </Box>
+              
+              <Box>
+                <Typography variant="body2" sx={{ color: '#637381', mb: 0.5 }}>
+                  Date
+                </Typography>
+                <Typography variant="body1">
+                  {eventData.timestamp || 'Not specified'}
+                </Typography>
+              </Box>
+            </Paper>
           </Box>
-        </Paper>
+          
+          <Box>
+            <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 500 }}>
+              Language Settings
+            </Typography>
+            
+            <Paper elevation={0} sx={{ p: 2, borderRadius: '8px' }}>
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="body2" sx={{ color: '#637381', mb: 1 }}>
+                  Source Language
+                </Typography>
+                
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {eventData.sourceLanguages && eventData.sourceLanguages.map((lang) => (
+                    <Chip
+                      key={lang}
+                      label={getLanguageName(lang)}
+                      color={selectedLanguage === lang ? "primary" : "default"}
+                      onClick={() => setSelectedLanguage(lang)}
+                      sx={{ borderRadius: '16px' }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+              
+              <Box>
+                <Typography variant="body2" sx={{ color: '#637381', mb: 1 }}>
+                  Target Languages
+                </Typography>
+                
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {eventData.targetLanguages && eventData.targetLanguages.map((lang) => (
+                    <Chip
+                      key={lang}
+                      label={getLanguageName(lang)}
+                      sx={{ borderRadius: '16px' }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            </Paper>
+          </Box>
+        </Box>
       </Box>
-      
-      {/* Language Menu */}
-      <Menu
-        anchorEl={languageMenuAnchorEl}
-        open={Boolean(languageMenuAnchorEl)}
-        onClose={handleCloseLanguageMenu}
-        PaperProps={{
-          sx: { 
-            width: 200, 
-            mt: 1, 
-            boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.15)',
-            borderRadius: '8px'
-          }
-        }}
-      >
-        <MenuItem onClick={() => {
-          handleChangeInput('microphone');
-          handleCloseLanguageMenu();
-        }}>
-          <ListItemIcon>
-            <MicIcon fontSize="small" sx={{ color: '#637381' }} />
-          </ListItemIcon>
-          <ListItemText 
-            primary="Microphone" 
-            primaryTypographyProps={{ 
-              fontSize: '14px',
-              fontWeight: 500
-            }}
-          />
-        </MenuItem>
-        <MenuItem onClick={() => {
-          handleChangeInput('settings');
-          handleCloseLanguageMenu();
-        }}>
-          <ListItemIcon>
-            <SettingsIcon fontSize="small" sx={{ color: '#637381' }} />
-          </ListItemIcon>
-          <ListItemText 
-            primary="Audio Settings" 
-            primaryTypographyProps={{ 
-              fontSize: '14px',
-              fontWeight: 500
-            }}
-          />
-        </MenuItem>
-      </Menu>
-      
-      {/* More Options Menu */}
-      <Menu
-        anchorEl={menuAnchorEl}
-        open={Boolean(menuAnchorEl)}
-        onClose={handleCloseMenu}
-        PaperProps={{
-          sx: { 
-            width: 200, 
-            mt: 1, 
-            boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.15)',
-            borderRadius: '8px'
-          }
-        }}
-      >
-        <MenuItem onClick={handleCloseMenu}>
-          <ListItemText 
-            primary="Copy Link" 
-            primaryTypographyProps={{ 
-              fontSize: '14px',
-              fontWeight: 500
-            }}
-          />
-        </MenuItem>
-        <MenuItem onClick={handleCloseMenu}>
-          <ListItemText 
-            primary="Settings" 
-            primaryTypographyProps={{ 
-              fontSize: '14px',
-              fontWeight: 500
-            }}
-          />
-        </MenuItem>
-      </Menu>
-      
-      {/* Pause Confirmation Dialog */}
-      <Dialog
-        open={pauseDialogOpen}
-        onClose={handleClosePauseDialog}
-        PaperProps={{
-          sx: {
-            borderRadius: '16px',
-            width: '400px',
-            margin: '0 auto',
-            boxShadow: '0px 20px 40px rgba(0, 0, 0, 0.1)',
-            overflow: 'visible'
-          }
-        }}
-      >
-        <Box sx={{ p: '24px' }}>
-          <Box sx={{ 
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            mb: 2
-          }}>
-            <Box sx={{ 
-              mb: 3,
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              height: 172,
-              width: 230,
-              position: 'relative'
-            }}>
-              <PlantDoodle sx={{ 
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                maxWidth: '100%',
-                maxHeight: '100%'
-              }} />
-            </Box>
-            
-            <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '18px', color: '#212B36', mb: 1 }}>
-              Are you sure you want to pause event?
-            </Typography>
-          </Box>
-          
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Button
-              variant="outlined"
-              onClick={handleClosePauseDialog}
-              fullWidth
-              sx={{ 
-                borderColor: '#E5E8EB',
-                color: '#637381',
-                borderRadius: '8px',
-                textTransform: 'none',
-                fontWeight: 500,
-                py: 1,
-                height: '40px',
-                fontSize: '14px',
-                '&:hover': { 
-                  borderColor: '#B0B7C3', 
-                  bgcolor: 'rgba(99, 115, 129, 0.08)',
-                  color: '#212B36'
-                }
-              }}
-            >
-              Discard
-            </Button>
-            
-            <Button
-              variant="contained"
-              onClick={handleConfirmPause}
-              fullWidth
-              sx={{ 
-                bgcolor: '#6366f1',
-                borderRadius: '8px',
-                textTransform: 'none',
-                fontWeight: 500,
-                py: 1,
-                height: '40px',
-                fontSize: '14px',
-                '&:hover': { bgcolor: '#4338ca' }
-              }}
-            >
-              Pause
-            </Button>
-          </Box>
-        </Box>
+
+      {/* Pause Dialog */}
+      <Dialog open={pauseDialogOpen} onClose={handleClosePauseDialog}>
+        <DialogTitle>Pause Event</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to pause this event? You can resume it later.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClosePauseDialog}>Cancel</Button>
+          <Button onClick={handleConfirmPause} color="primary">Pause</Button>
+        </DialogActions>
       </Dialog>
-      
-      {/* Complete Confirmation Dialog */}
-      <Dialog
-        open={completeDialogOpen}
-        onClose={handleCloseCompleteDialog}
-        PaperProps={{
-          sx: {
-            borderRadius: '16px',
-            width: '400px',
-            margin: '0 auto',
-            boxShadow: '0px 20px 40px rgba(0, 0, 0, 0.1)',
-            overflow: 'visible'
-          }
-        }}
-      >
-        <Box sx={{ p: '24px' }}>
-          <Box sx={{ 
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            mb: 2
-          }}>
-            <Box sx={{ 
-              mb: 3,
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              height: 172,
-              width: 230,
-              position: 'relative'
-            }}>
-              <PlantDoodle sx={{ 
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                maxWidth: '100%',
-                maxHeight: '100%'
-              }} />
-            </Box>
-            
-            <Typography 
-              variant="h6" 
-              sx={{ 
-                fontWeight: 600, 
-                fontSize: '18px', 
-                color: '#212B36', 
-                mb: 1,
-                textAlign: 'center',
-                width: '100%'
-              }}
-            >
-              Are you sure you want to complete this event?
-            </Typography>
-            {/* <Typography 
-              variant="body2" 
-              sx={{ 
-                color: '#637381', 
-                textAlign: 'center', 
-                mb: 2,
-                maxWidth: '90%'
-              }}
-            >
-              This will mark the event as completed and you'll be redirected to the dashboard.
-            </Typography> */}
-          </Box>
-          
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Button
-              variant="outlined"
-              onClick={handleCloseCompleteDialog}
-              fullWidth
-              sx={{ 
-                borderColor: '#E5E8EB',
-                color: '#637381',
-                borderRadius: '8px',
-                textTransform: 'none',
-                fontWeight: 500,
-                py: 1,
-                height: '40px',
-                fontSize: '14px',
-                '&:hover': { 
-                  borderColor: '#B0B7C3', 
-                  bgcolor: 'rgba(99, 115, 129, 0.08)',
-                  color: '#212B36'
-                }
-              }}
-            >
-              Cancel
-            </Button>
-            
-            <Button
-              variant="contained"
-              onClick={handleCompleteEvent}
-              fullWidth
-              sx={{ 
-                bgcolor: '#6366f1',
-                borderRadius: '8px',
-                textTransform: 'none',
-                fontWeight: 500,
-                py: 1,
-                height: '40px',
-                fontSize: '14px',
-                '&:hover': { bgcolor: '#4338ca' }
-              }}
-            >
-              Complete
-            </Button>
-          </Box>
-        </Box>
+
+      {/* Complete Dialog */}
+      <Dialog open={completeDialogOpen} onClose={handleCloseCompleteDialog}>
+        <DialogTitle>Complete Event</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to complete this event? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCompleteDialog}>Cancel</Button>
+          <Button onClick={handleCompleteEvent} color="primary">Complete</Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

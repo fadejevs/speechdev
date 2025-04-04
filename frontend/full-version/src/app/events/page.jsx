@@ -116,10 +116,10 @@ const EventsPage = () => {
     // Create a new event with the form data
     const newEvent = {
       id: transcripts.length + 1,
-      title: eventData.name,
-      date: eventData.date || new Date().toLocaleDateString(),
-      location: eventData.location || 'Online',
-      type: eventData.eventType || 'Online',
+      title: eventData.name || 'Not specified',
+      date: eventData.date || 'Not specified',
+      location: eventData.location || 'Not specified',
+      type: eventData.eventType || 'Not specified',
       status: 'Draft event'
     };
     

@@ -148,13 +148,13 @@ const CreateEventModal = ({
     // Create a properly formatted event object
     const newEvent = {
       id: initialData?.id || generateUniqueId(), // Use unique ID generator
-      title: eventData.name,
-      description: eventData.description,
-      location: eventData.location,
-      timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : new Date().toLocaleDateString(),
-      type: eventData.eventType,
-      sourceLanguages: eventData.sourceLanguages,
-      targetLanguages: eventData.targetLanguages,
+      title: eventData.name || 'Not specified',
+      description: eventData.description || 'Not specified',
+      location: eventData.location || 'Not specified',
+      timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : 'Not specified',
+      type: eventData.eventType || 'Not specified',
+      sourceLanguages: eventData.sourceLanguages || [],
+      targetLanguages: eventData.targetLanguages || [],
       recordEvent: eventData.recordEvent,
       status: eventData.status || 'Draft event'
     };

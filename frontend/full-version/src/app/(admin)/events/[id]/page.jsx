@@ -89,11 +89,11 @@ const EditEventPage = () => {
         const event = events.find(e => e.id.toString() === id);
         if (event) {
           setEventData({
-            name: event.title || '',
-            description: event.description || '',
-            location: event.location || '',
-            date: event.timestamp ? dayjs(event.timestamp, 'DD.MM.YYYY') : null,
-            type: event.type || 'Online',
+            name: event.title === 'Not specified' ? '' : event.title,
+            description: event.description === 'Not specified' ? '' : event.description,
+            location: event.location === 'Not specified' ? '' : event.location,
+            date: event.timestamp && event.timestamp !== 'Not specified' ? dayjs(event.timestamp, 'DD.MM.YYYY') : null,
+            type: event.type === 'Not specified' ? '' : event.type,
             sourceLanguages: event.sourceLanguages || [],
             targetLanguages: event.targetLanguages || [],
             recordEvent: event.recordEvent || false
