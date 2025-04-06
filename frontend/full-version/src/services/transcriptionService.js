@@ -1,26 +1,32 @@
 import axios from 'axios';
 
 // Base URL for your backend API
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+});
 
 const transcriptionService = {
   // Speech-to-text conversion using your existing backend
-  speechToText: async (audioBlob, sourceLanguage) => {
+  speechToText: async (audioBlob, filename, language) => {
+    const formData = new FormData();
+    formData.append('file', audioBlob, filename);
+    formData.append('language', language);
+
+    console.log(`Sending speech-to-text request for language: ${language}`);
+
     try {
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'recording.wav');
-      formData.append('source_language', sourceLanguage);
-      
-      const response = await axios.post(`${API_BASE_URL}/speech-to-text`, formData, {
+      const response = await apiClient.post('/speech-to-text', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data'
-        }
+          'Content-Type': 'multipart/form-data',
+        },
       });
-      
+      console.log('Speech recognition response:', response.data);
       return response.data;
     } catch (error) {
-      console.error('Speech recognition error:', error);
-      throw error;
+      console.error('Speech recognition error:', error.response ? error.response.data : error.message);
+      throw error.response ? error.response.data : new Error('Network error or server unavailable');
     }
   },
   

@@ -1,17 +1,24 @@
-from flask import render_template, jsonify
-from app import app
+from flask import Blueprint, render_template, jsonify, current_app
 from app.services.firebase_service import FirebaseService
+
+# Create a Blueprint
+main_bp = Blueprint('main', __name__)
 
 firebase_service = FirebaseService()
 
-@app.route('/')
+@main_bp.route('/')
 def index():
-    return render_template('index.html')
+    try:
+        return render_template('index.html')
+    except Exception as e:
+        current_app.logger.error(f"Error rendering index.html: {e}")
+        return "Flask server running. Template 'index.html' not found or error rendering.", 500
 
-@app.route('/api/transcripts', methods=['GET'])
+@main_bp.route('/api/transcripts', methods=['GET'])
 def get_transcripts():
     try:
         transcripts = firebase_service.get_transcripts(limit=20)
         return jsonify(transcripts), 200
     except Exception as e:
+        current_app.logger.error(f"Error getting transcripts: {e}")
         return jsonify({'error': str(e)}), 500 

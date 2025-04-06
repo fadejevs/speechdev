@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Box,
@@ -18,7 +18,10 @@ import {
   DialogContent,
   DialogActions,
   Divider,
-  CircularProgress
+  CircularProgress,
+  Card,
+  CardHeader,
+  CardContent
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -34,6 +37,7 @@ import SelfieDoodle from '@/images/illustration/SelfieDoodle';
 import PlantDoodle from '@/images/illustration/PlantDoodle';
 import apiService from '@/services/apiService';
 import transcriptionService from '@/services/transcriptionService';
+import io from 'socket.io-client';
 
 const languages = [
   { code: 'en', name: 'English' },
@@ -62,28 +66,27 @@ const getLanguageCode = (languageName) => {
 };
 
 // Helper function to get full language name
-const getLanguageName = (languageCode) => {
+const getLanguageName = (code) => {
   const languageMap = {
-    'en': 'English',
+    'en-US': 'English (US)',
+    'es-ES': 'Spanish (Spain)',
+    'fr-FR': 'French (France)',
     'lv': 'Latvian',
-    'lt': 'Lithuanian',
-    'et': 'Estonian',
-    'de': 'German',
-    'es': 'Spanish',
-    'ru': 'Russian',
-    'fr': 'French'
+    'de-DE': 'German',
   };
-  return languageMap[languageCode] || 'Unknown';
+  return languageMap[code] || code;
 };
 
 const LiveEventPage = () => {
-  const { id } = useParams();
   const router = useRouter();
+  const params = useParams();
+  const { id } = params;
+
   const [eventData, setEventData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [languageMenuAnchorEl, setLanguageMenuAnchorEl] = useState(null);
-  const [selectedLanguage, setSelectedLanguage] = useState(null);
+  const [selectedLanguage, setSelectedLanguage] = useState('');
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [eventStatus, setEventStatus] = useState('');
@@ -96,45 +99,155 @@ const LiveEventPage = () => {
   const [processingAudio, setProcessingAudio] = useState(false);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const socketRef = useRef(null);
+
+  // Make sure your language selection dropdown/options use valid codes
+  // Example options:
+  const languageOptions = [
+    { value: 'en-US', label: 'English (US)' },
+    { value: 'es-ES', label: 'Spanish (Spain)' },
+    { value: 'fr-FR', label: 'French (France)' },
+    // Add other languages supported by Azure Speech
+  ];
 
   useEffect(() => {
-    if (id) {
-      const storedEvents = localStorage.getItem('eventData');
-      if (storedEvents) {
-        const parsedEvents = JSON.parse(storedEvents);
-        const event = parsedEvents.find(event => event.id === id);
-        if (event) {
-          setEventData(event);
-          setEventStatus(event.status || 'Draft event');
-          setLoading(false);
-          // Set the first source language as selected by default
-          if (event.sourceLanguages && event.sourceLanguages.length > 0) {
-            setSelectedLanguage(event.sourceLanguages[0]);
-          }
-        } else {
-          router.push('/dashboard/analytics');
-        }
+    // Fetch event data from localStorage
+    console.log('Fetching event data from localStorage...');
+    const storedEvents = localStorage.getItem('eventData');
+    if (storedEvents) {
+      const parsedEvents = JSON.parse(storedEvents);
+      const currentEvent = parsedEvents.find(event => event.id === id);
+      if (currentEvent) {
+        console.log('Fetched eventData:', currentEvent); // Log fetched data
+        setEventData(currentEvent);
+        setEventStatus(currentEvent.status || 'Draft event');
+      } else {
+        console.error('Event not found in localStorage');
+        router.push('/dashboard/analytics');
       }
+    } else {
+      console.error('No event data found in localStorage');
+      router.push('/dashboard/analytics');
     }
+    setLoading(false);
   }, [id, router]);
+
+  // Effect to set initial language from eventData
+  useEffect(() => {
+    // Log when this effect runs and what eventData is
+    console.log('Language setting effect running. EventData:', eventData);
+    if (eventData && eventData.sourceLanguages && eventData.sourceLanguages.length > 0) {
+      const initialLang = eventData.sourceLanguages[0];
+      // Log the language being set
+      console.log(`Attempting to set initial selectedLanguage from eventData: ${initialLang}`);
+      // Make sure the value from localStorage is a valid BCP-47 code!
+      setSelectedLanguage(initialLang);
+    } else if (eventData) {
+      console.warn("Event data loaded, but no source languages found. Check event creation/edit.");
+    }
+  }, [eventData]); // Dependency: run when eventData changes
+
+  // WebSocket setup effect
+  useEffect(() => {
+    // --- CHECK THIS URL ---
+    const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+    console.log(`Attempting to connect WebSocket to: ${socketUrl}`); // Log the URL being used
+
+    socketRef.current = io(socketUrl, {
+        // Optional: Add transports if needed, e.g., ['websocket', 'polling']
+        // Optional: Add query parameters if your backend expects them for auth/room joining
+    });
+
+    socketRef.current.on('connect', () => {
+      // --- LOOK FOR THIS LOG ---
+      console.log('WebSocket connected:', socketRef.current.id);
+      // Optional: Join a room specific to this event if your backend uses rooms
+      // socketRef.current.emit('join_event', { event_id: id });
+    });
+
+    socketRef.current.on('disconnect', (reason) => {
+      // --- LOOK FOR THIS LOG ---
+      console.log('WebSocket disconnected:', reason);
+    });
+
+    socketRef.current.on('connect_error', (error) => {
+      // --- LOOK FOR THIS LOG ---
+      console.error('WebSocket connection error:', error);
+    });
+
+    // Listener for Translation Results
+    socketRef.current.on('translation_result', (data) => {
+      console.log('Received translation result:', data);
+      if (data.target_language && data.translated_text) {
+        setTranslations(prev => ({
+          ...prev,
+          [data.target_language]: data.translated_text
+        }));
+      }
+    });
+
+    // Cleanup on component unmount
+    return () => {
+      if (socketRef.current) {
+        console.log('Disconnecting WebSocket...');
+        socketRef.current.disconnect();
+      }
+    };
+  }, [id]); // Dependency array
 
   // Start recording function
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      const options = { mimeType: 'audio/wav' };
+      let recorder;
+      try {
+        recorder = new MediaRecorder(stream, options);
+      } catch (e1) {
+        console.warn('audio/wav not supported, trying default:', e1);
+        try {
+          recorder = new MediaRecorder(stream);
+        } catch (e2) {
+          console.error('MediaRecorder creation failed:', e2);
+          setEventStatus('Error: Recording not supported');
+          return;
+        }
+      }
+      mediaRecorderRef.current = recorder;
+
       audioChunksRef.current = [];
       
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
+          console.log('Audio chunk added, size:', event.data.size);
         }
       };
       
       mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        setAudioBlob(audioBlob);
+        console.log('Recording stopped. Chunks collected:', audioChunksRef.current.length);
+        if (audioChunksRef.current.length === 0) {
+          console.warn("No audio chunks recorded.");
+          setEventStatus('Ready');
+          setIsRecording(false);
+          return;
+        }
+        const actualMimeType = mediaRecorderRef.current?.mimeType || 'audio/wav';
+        console.log('Creating blob with MIME type:', actualMimeType);
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: actualMimeType });
+        audioChunksRef.current = [];
+
+        console.log('Audio blob created, size:', audioBlob.size);
+        if (audioBlob.size === 0) {
+          console.warn("Created audio blob has size 0.");
+          setEventStatus('Ready');
+          setIsRecording(false);
+          return;
+        }
+
         await processAudio(audioBlob);
+        setIsRecording(false);
       };
       
       mediaRecorderRef.current.start();
@@ -153,52 +266,86 @@ const LiveEventPage = () => {
     }
   };
 
-  // Process audio for transcription and translation
-  const processAudio = async (blob) => {
+  // Updated processAudio function
+  const processAudio = useCallback(async (audioBlob) => {
+    if (!audioBlob || audioBlob.size === 0) {
+      console.error('processAudio called with invalid blob');
+      return;
+    }
+    setProcessingAudio(true);
+    setTranscription(''); // Clear previous transcription
+    setTranslations({}); // Clear previous translations
+
+    console.log(`processAudio: Using selectedLanguage state: ${selectedLanguage}`);
+    if (!selectedLanguage) {
+        console.error("processAudio: selectedLanguage is empty! Cannot send request.");
+        setProcessingAudio(false);
+        return;
+    }
+
     try {
-      setProcessingAudio(true);
-      
-      // Get source language code
-      const sourceLanguageCode = selectedLanguage;
-      
-      // Step 1: Speech-to-text using your existing backend
-      const recognitionResult = await transcriptionService.speechToText(blob, sourceLanguageCode);
-      setTranscription(recognitionResult.text);
-      
-      // Step 2: Translate to all target languages
-      const translationPromises = eventData.targetLanguages.map(async (targetLang) => {
-        const translationResult = await transcriptionService.translateText(
-          recognitionResult.text,
-          targetLang
-        );
-        
-        return { language: targetLang, text: translationResult.translated_text };
-      });
-      
-      const translationResults = await Promise.all(translationPromises);
-      
-      // Update translations state
-      const newTranslations = {};
-      translationResults.forEach(result => {
-        newTranslations[result.language] = result.text;
-      });
-      setTranslations(newTranslations);
-      
-      // Step 3: Store transcript
-      await transcriptionService.storeTranscript(
-        recognitionResult.text,
-        JSON.stringify(newTranslations),
-        sourceLanguageCode,
-        eventData.targetLanguages.join(',')
+      console.log('Sending audio blob to backend, size:', audioBlob.size, 'type:', audioBlob.type);
+      const result = await transcriptionService.speechToText(
+          audioBlob,
+          'recording.wav',
+          selectedLanguage
       );
-      
+      console.log('Raw transcription result object:', result);
+
+      // --- Detailed logging before the check ---
+      if (result) {
+          console.log('Result object exists.');
+          console.log('Value of result.transcription:', result.transcription);
+          console.log('Type of result.transcription:', typeof result.transcription);
+          console.log('Is result.transcription truthy?', !!result.transcription);
+      } else {
+          console.log('Result object is null or undefined.');
+      }
+      // --- End detailed logging ---
+
+      // --- THE CHECK ---
+      if (result && result.transcription) {
+        const newTranscription = result.transcription;
+        console.log('IF block entered. Setting transcription state.');
+        setTranscription(newTranscription); // Update transcription state
+
+        // --- Trigger Translation via WebSocket ---
+        // Ensure socket exists and is connected
+        if (socketRef.current && socketRef.current.connected) {
+          // Ensure there are target languages defined in eventData
+          if (eventData?.targetLanguages?.length > 0) {
+            const payload = {
+              text: newTranscription,
+              source_language: selectedLanguage, // e.g., 'en-US'
+              target_languages: eventData.targetLanguages // e.g., ['lv-LV']
+            };
+            // --- EMIT THE CORRECT EVENT ---
+            console.log('Emitting translate_text via WebSocket with payload:', payload); // Log the payload
+            socketRef.current.emit('translate_text', payload);
+            // --- END EMIT ---
+          } else {
+            console.log('No target languages defined in eventData, skipping translation emit.');
+          }
+        } else {
+          // Log the error if socket is not ready
+          console.error('WebSocket not connected or available, cannot send transcription for translation.');
+        }
+        // --- End Translation Trigger ---
+
+      } else {
+         console.warn("ELSE block entered. Transcription not set. Full result:", result);
+         setTranscription(''); // Ensure it's cleared
+      }
+      // --- END CHECK ---
+
     } catch (error) {
       console.error('Error processing audio:', error);
-      alert('Error processing audio. Please try again.');
+      setTranscription(''); // Clear on error
+      setEventStatus(`Error: ${error.response?.data?.error || error.message || 'Processing failed'}`);
     } finally {
       setProcessingAudio(false);
     }
-  };
+  }, [selectedLanguage, id, eventData, socketRef]); // Added socketRef to dependencies
 
   // Play synthesized speech
   const playSynthesizedSpeech = async (text, language) => {
@@ -502,41 +649,36 @@ const LiveEventPage = () => {
               Language Settings
             </Typography>
             
-            <Paper elevation={0} sx={{ p: 2, borderRadius: '8px' }}>
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="body2" sx={{ color: '#637381', mb: 1 }}>
-                  Source Language
-                </Typography>
-                
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  {eventData.sourceLanguages && eventData.sourceLanguages.map((lang) => (
-                    <Chip
-                      key={lang}
-                      label={getLanguageName(lang)}
-                      color={selectedLanguage === lang ? "primary" : "default"}
-                      onClick={() => setSelectedLanguage(lang)}
-                      sx={{ borderRadius: '16px' }}
-                    />
-                  ))}
+            <Card>
+              <CardHeader title='Language Settings' />
+              <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <Box>
+                  <Typography variant='body2' sx={{ mb: 1 }}>Source Language</Typography>
+                  <Chip
+                    label={eventData?.sourceLanguages?.length ? getLanguageName(eventData.sourceLanguages[0]) : 'Unknown'}
+                    variant='outlined'
+                    sx={{ borderRadius: '16px' }}
+                  />
                 </Box>
-              </Box>
-              
-              <Box>
-                <Typography variant="body2" sx={{ color: '#637381', mb: 1 }}>
-                  Target Languages
-                </Typography>
-                
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  {eventData.targetLanguages && eventData.targetLanguages.map((lang) => (
-                    <Chip
-                      key={lang}
-                      label={getLanguageName(lang)}
-                      sx={{ borderRadius: '16px' }}
-                    />
-                  ))}
+                <Box>
+                  <Typography variant='body2' sx={{ mb: 1 }}>Target Languages</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {eventData?.targetLanguages?.length ? (
+                      eventData.targetLanguages.map((langCode) => (
+                        <Chip
+                          key={langCode}
+                          label={getLanguageName(langCode)}
+                          variant='outlined'
+                          sx={{ borderRadius: '16px' }}
+                        />
+                      ))
+                    ) : (
+                      <Chip label='Unknown' variant='outlined' sx={{ borderRadius: '16px' }} />
+                    )}
+                  </Box>
                 </Box>
-              </Box>
-            </Paper>
+              </CardContent>
+            </Card>
           </Box>
         </Box>
       </Box>

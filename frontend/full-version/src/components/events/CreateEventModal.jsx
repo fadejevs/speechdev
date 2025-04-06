@@ -35,17 +35,22 @@ import dayjs from 'dayjs';
 import { generateUniqueId } from '@/utils/idGenerator';
 
 const LANGUAGES = [
-  'Latvian',
-  'Lithuanian',
-  'Estonian',
-  'German',
-  'Spanish',
-  'English',
-  'Russian',
-  'French',
-  'Italian',
-  'Chinese',
-  'Japanese'
+  { value: 'en-US', name: 'English (US)' },
+  { value: 'en-GB', name: 'English (UK)' },
+  { value: 'lv-LV', name: 'Latvian' },
+  { value: 'es-ES', name: 'Spanish (Spain)' },
+  { value: 'es-MX', name: 'Spanish (Mexico)' },
+  { value: 'Latvian', name: 'Latvian' },
+  { value: 'Lithuanian', name: 'Lithuanian' },
+  { value: 'Estonian', name: 'Estonian' },
+  { value: 'German', name: 'German' },
+  { value: 'Spanish', name: 'Spanish' },
+  { value: 'English', name: 'English' },
+  { value: 'Russian', name: 'Russian' },
+  { value: 'French', name: 'French' },
+  { value: 'Italian', name: 'Italian' },
+  { value: 'Chinese', name: 'Chinese' },
+  { value: 'Japanese', name: 'Japanese' }
 ];
 
 const EVENT_TYPES = [
@@ -117,7 +122,7 @@ const CreateEventModal = ({
   useEffect(() => {
     setFilteredLanguages(
       LANGUAGES.filter(lang => 
-        lang.toLowerCase().includes(searchTerm.toLowerCase())
+        lang.name.toLowerCase().includes(searchTerm.toLowerCase())
       )
     );
   }, [searchTerm]);
@@ -187,15 +192,15 @@ const CreateEventModal = ({
     setEventData(prev => {
       // For source languages, replace existing selection with the new language
       if (field === 'sourceLanguages') {
-        return { ...prev, [field]: [language] };
+        return { ...prev, [field]: [language.value] };
       } 
       // For target languages, keep the existing toggle behavior
       else {
         const currentLanguages = [...prev[field]];
-        const languageIndex = currentLanguages.indexOf(language);
+        const languageIndex = currentLanguages.indexOf(language.value);
         
         if (languageIndex === -1) {
-          currentLanguages.push(language);
+          currentLanguages.push(language.value);
         } else {
           currentLanguages.splice(languageIndex, 1);
         }
@@ -213,7 +218,7 @@ const CreateEventModal = ({
         return { ...prev, [field]: [] };
       } else {
         const currentLanguages = [...prev[field]];
-        const languageIndex = currentLanguages.indexOf(language);
+        const languageIndex = currentLanguages.indexOf(language.value);
         
         if (languageIndex !== -1) {
           currentLanguages.splice(languageIndex, 1);
@@ -381,7 +386,7 @@ const CreateEventModal = ({
             <Box sx={{ overflow: 'auto', maxHeight: '200px' }}>
               {filteredLanguages.map((language) => (
                 <Box
-                  key={language}
+                  key={language.value}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleLanguageToggle(language, field);
@@ -398,7 +403,7 @@ const CreateEventModal = ({
                   }}
                 >
                   <Checkbox
-                    checked={eventData[field].includes(language)}
+                    checked={eventData[field].includes(language.value)}
                     onChange={() => {}}
                     onClick={(e) => e.stopPropagation()}
                     sx={{ 
@@ -410,7 +415,7 @@ const CreateEventModal = ({
                       marginRight: '8px'
                     }}
                   />
-                  <Typography variant="body2">{language}</Typography>
+                  <Typography variant="body2">{language.name}</Typography>
                 </Box>
               ))}
             </Box>
