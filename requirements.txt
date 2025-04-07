@@ -9,3 +9,4 @@ azure-cognitiveservices-speech==1.43.0
 deepl==1.11.0
 python-dotenv==0.19.2
 dnspython==2.2.1
+werkzeug==2.0.1
