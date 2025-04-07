@@ -154,10 +154,7 @@ const LiveEventPage = () => {
                   
   console.log(`Attempting to connect WebSocket to: ${socketUrl}`);
 
-  socketRef.current = io(socketUrl, {
-      // Optional: Add transports if needed
-      transports: ['websocket', 'polling']
-  });
+  socketRef.current = io(socketUrl);
 
   // WebSocket setup effect
   useEffect(() => {
