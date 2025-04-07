@@ -150,8 +150,6 @@ const LiveEventPage = () => {
     }
   }, [eventData]); // Dependency: run when eventData changes
 
-
-  
   // Simplify the WebSocket setup
   const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
   console.log(`Attempting to connect WebSocket to: ${socketUrl}`);
@@ -483,6 +481,48 @@ const LiveEventPage = () => {
       console.error('Error sending for translation:', error);
     }
   };
+
+  // In your component, update the translation handling
+  useEffect(() => {
+    if (transcription && selectedLanguage) {
+      const translateToLanguages = ['lv-LV']; // Add more languages as needed
+      
+      const performTranslation = async () => {
+        try {
+          const newTranslations = { ...translations };
+          
+          for (const targetLang of translateToLanguages) {
+            console.log(`Translating to ${targetLang}`);
+            
+            try {
+              const translationResult = await transcriptionService.translateText(
+                transcription, 
+                selectedLanguage,
+                targetLang
+              );
+              
+              console.log(`Translation result for ${targetLang}:`, translationResult);
+              
+              if (translationResult && translationResult.translated_text) {
+                newTranslations[targetLang] = translationResult.translated_text;
+              } else {
+                newTranslations[targetLang] = `[Translation to ${targetLang} failed]`;
+              }
+            } catch (error) {
+              console.error(`Error translating to ${targetLang}:`, error);
+              newTranslations[targetLang] = `[Translation error: ${error.message}]`;
+            }
+          }
+          
+          setTranslations(newTranslations);
+        } catch (error) {
+          console.error('Error in translation process:', error);
+        }
+      };
+      
+      performTranslation();
+    }
+  }, [transcription, selectedLanguage]);
 
   if (loading || !eventData) {
     return (
