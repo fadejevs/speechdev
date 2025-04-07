@@ -152,30 +152,37 @@ const LiveEventPage = () => {
 
 
   
-  // WebSocket setup with environment-aware URL
+  // Simplify the WebSocket setup
   const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
-                  
   console.log(`Attempting to connect WebSocket to: ${socketUrl}`);
 
+  // Use a simpler Socket.IO configuration with longer timeout and reconnection
   socketRef.current = io(socketUrl, {
-    transports: ['websocket', 'polling']
+    transports: ['polling', 'websocket'], // Try polling first, then websocket
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+    timeout: 20000, // Increase timeout to 20 seconds
+    forceNew: true
   });
 
   // WebSocket setup effect
   useEffect(() => {
+    if (!socketRef.current) return;
+
     socketRef.current.on('connect', () => {
       console.log('WebSocket connected:', socketRef.current.id);
-      setSocketConnected(true); // Set connection status to true
+      setSocketConnected(true);
     });
 
     socketRef.current.on('disconnect', (reason) => {
       console.log('WebSocket disconnected:', reason);
-      setSocketConnected(false); // Set connection status to false
+      setSocketConnected(false);
     });
 
     socketRef.current.on('connect_error', (error) => {
-      // --- LOOK FOR THIS LOG ---
       console.error('WebSocket connection error:', error);
+      // Fall back to HTTP for transcription if WebSocket fails
+      setSocketConnected(false);
     });
 
     // Listener for Translation Results
@@ -190,19 +197,14 @@ const LiveEventPage = () => {
       }
     });
 
-    socketRef.current.on('translation_error', (error) => {
-      console.error('Translation error received:', error);
-    });
-
     // Cleanup on component unmount
     return () => {
       if (socketRef.current) {
         console.log('Disconnecting WebSocket...');
         socketRef.current.disconnect();
-        setSocketConnected(false);
       }
     };
-  }, [socketUrl]); // Dependency array
+  }, []);
 
   // Start recording function
   const startRecording = async () => {
@@ -275,86 +277,68 @@ const LiveEventPage = () => {
     }
   };
 
-  // Updated processAudio function
-  const processAudio = useCallback(async (audioBlob) => {
-    if (!audioBlob || audioBlob.size === 0) {
-      console.error('processAudio called with invalid blob');
-      return;
-    }
+  // Modify the processAudio function to handle WebSocket failures
+  const processAudio = async (audioBlob) => {
     setProcessingAudio(true);
-    setTranscription(''); // Clear previous transcription
-    setTranslations({}); // Clear previous translations
-
-    console.log(`processAudio: Using selectedLanguage state: ${selectedLanguage}`);
-    if (!selectedLanguage) {
-        console.error("processAudio: selectedLanguage is empty! Cannot send request.");
-        setProcessingAudio(false);
-        return;
-    }
-
     try {
-      console.log('Sending audio blob to backend, size:', audioBlob.size, 'type:', audioBlob.type);
-      const result = await transcriptionService.speechToText(
-          audioBlob,
-          'recording.wav',
-          selectedLanguage
-      );
+      console.log('processAudio: Using selectedLanguage state:', selectedLanguage);
+      console.log(`Sending audio blob to backend, size: ${audioBlob.size} type: ${audioBlob.type}`);
+      
+      // Use HTTP for transcription instead of relying on WebSocket
+      const result = await transcriptionService.speechToText(audioBlob, 'recording.webm', selectedLanguage);
       console.log('Raw transcription result object:', result);
-
-      // --- Detailed logging before the check ---
-      if (result) {
-          console.log('Result object exists.');
-          console.log('Value of result.transcription:', result.transcription);
-          console.log('Type of result.transcription:', typeof result.transcription);
-          console.log('Is result.transcription truthy?', !!result.transcription);
-      } else {
-          console.log('Result object is null or undefined.');
-      }
-      // --- End detailed logging ---
-
-      // --- THE CHECK ---
+      
       if (result && result.transcription) {
-        const newTranscription = result.transcription;
+        console.log('Result object exists.');
+        console.log('Value of result.transcription:', result.transcription);
+        console.log('Type of result.transcription:', typeof result.transcription);
+        console.log('Is result.transcription truthy?', !!result.transcription);
+        
         console.log('IF block entered. Setting transcription state.');
-        setTranscription(newTranscription); // Update transcription state
-
-        // --- Trigger Translation via WebSocket ---
-        // Ensure socket exists and is connected
-        if (socketConnected && socketRef.current) {
-          // Ensure there are target languages defined in eventData
-          if (eventData?.targetLanguages?.length > 0) {
-            const payload = {
-              text: newTranscription,
-              source_language: selectedLanguage, // e.g., 'en-US'
-              target_languages: eventData.targetLanguages // e.g., ['lv-LV']
-            };
-            // --- EMIT THE CORRECT EVENT ---
-            console.log('Emitting translate_text via WebSocket with payload:', payload); // Log the payload
-            socketRef.current.emit('translate_text', payload);
-            // --- END EMIT ---
-          } else {
-            console.log('No target languages defined in eventData, skipping translation emit.');
-          }
+        setTranscription(result.transcription);
+        
+        // Only try to use WebSocket for translation if connected
+        if (socketRef.current && socketRef.current.connected) {
+          console.log('WebSocket is connected, sending for translation');
+          socketRef.current.emit('translate_text', {
+            text: result.transcription,
+            source_language: selectedLanguage,
+            target_languages: eventData?.targetLanguages || []
+          });
         } else {
-          // Log the error if socket is not ready
-          console.error('WebSocket not connected or available, cannot send transcription for translation.');
+          console.log('WebSocket not connected, using HTTP for translation');
+          // Fall back to HTTP for translations
+          if (eventData?.targetLanguages && eventData.targetLanguages.length > 0) {
+            const newTranslations = { ...translations };
+            
+            for (const targetLang of eventData.targetLanguages) {
+              try {
+                const translationResult = await transcriptionService.translateText(
+                  result.transcription, 
+                  targetLang
+                );
+                
+                if (translationResult && translationResult.translated_text) {
+                  newTranslations[targetLang] = translationResult.translated_text;
+                }
+              } catch (error) {
+                console.error(`Error translating to ${targetLang}:`, error);
+              }
+            }
+            
+            setTranslations(newTranslations);
+          }
         }
-        // --- End Translation Trigger ---
-
       } else {
-         console.warn("ELSE block entered. Transcription not set. Full result:", result);
-         setTranscription(''); // Ensure it's cleared
+        console.error('No transcription in result:', result);
       }
-      // --- END CHECK ---
-
     } catch (error) {
       console.error('Error processing audio:', error);
-      setTranscription(''); // Clear on error
       setEventStatus(`Error: ${error.response?.data?.error || error.message || 'Processing failed'}`);
     } finally {
       setProcessingAudio(false);
     }
-  }, [selectedLanguage, id, eventData, socketConnected, socketRef]); // Added socketRef to dependencies
+  };
 
   // Play synthesized speech
   const playSynthesizedSpeech = async (text, language) => {

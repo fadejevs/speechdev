@@ -39,7 +39,11 @@ app.config.setdefault('SECRET_KEY', 'a_default_secret_key_if_not_in_config')
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Also update SocketIO CORS for consistency
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, 
+                   cors_allowed_origins="*", 
+                   async_mode='gevent',
+                   ping_timeout=60,
+                   ping_interval=25)
 
 # Import routes after app is created
 from app import routes
