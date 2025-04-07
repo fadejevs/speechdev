@@ -147,17 +147,21 @@ const LiveEventPage = () => {
     }
   }, [eventData]); // Dependency: run when eventData changes
 
+  // WebSocket setup with environment-aware URL
+  const socketUrl = process.env.NEXT_PUBLIC_API_URL || 
+                   (typeof window !== 'undefined' && window.location.hostname === 'localhost' 
+                    ? 'http://127.0.0.1:5001' 
+                    : window.location.origin);
+                  
+  console.log(`Attempting to connect WebSocket to: ${socketUrl}`);
+
+  socketRef.current = io(socketUrl, {
+      // Optional: Add transports if needed
+      transports: ['websocket', 'polling']
+  });
+
   // WebSocket setup effect
   useEffect(() => {
-    // --- CHECK THIS URL ---
-    const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
-    console.log(`Attempting to connect WebSocket to: ${socketUrl}`); // Log the URL being used
-
-    socketRef.current = io(socketUrl, {
-        // Optional: Add transports if needed, e.g., ['websocket', 'polling']
-        // Optional: Add query parameters if your backend expects them for auth/room joining
-    });
-
     socketRef.current.on('connect', () => {
       // --- LOOK FOR THIS LOG ---
       console.log('WebSocket connected:', socketRef.current.id);
