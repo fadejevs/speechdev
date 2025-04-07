@@ -4,6 +4,7 @@ import azure.cognitiveservices.speech as speechsdk
 from pydub import AudioSegment
 from werkzeug.utils import secure_filename
 import os
+import requests
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -13,6 +14,10 @@ speech_bp = Blueprint('speech', __name__)
 # Define temporary file paths
 UPLOAD_TEMP_FILENAME = "temp_upload_audio"
 CONVERTED_WAV_FILENAME = "temp_converted.wav"
+
+# Get DeepL API key from environment variable
+DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
+DEEPL_API_URL = "https://api-free.deepl.com/v2/translate"  # Use the appropriate URL based on your subscription
 
 @speech_bp.route('/speech-to-text', methods=['POST'])
 def speech_to_text():
@@ -133,8 +138,11 @@ def speech_to_text():
 
 @speech_bp.route('/translate', methods=['POST'])
 def translate_text():
-    """Translate text from one language to another"""
+    """Translate text from one language to another using DeepL"""
     try:
+        if not DEEPL_API_KEY:
+            return jsonify({'error': 'DeepL API key not configured'}), 500
+            
         data = request.get_json()
         
         if not data:
@@ -149,13 +157,31 @@ def translate_text():
             
         if not target_language:
             return jsonify({'error': 'No target language provided'}), 400
+        
+        # Convert language codes to format expected by DeepL
+        # DeepL uses two-letter codes like 'EN', 'DE', etc.
+        source_lang = source_language.split('-')[0].upper() if source_language else None
+        target_lang = target_language.split('-')[0].upper()
+        
+        # Prepare request to DeepL API
+        payload = {
+            'text': text,
+            'target_lang': target_lang,
+            'auth_key': DEEPL_API_KEY
+        }
+        
+        # Add source language if provided
+        if source_lang:
+            payload['source_lang'] = source_lang
             
-        # Use Google Translate API
-        translated_text = translation_service.translate_text(
-            text=text,
-            target_language=target_language,
-            source_language=source_language
-        )
+        # Make request to DeepL API
+        response = requests.post(DEEPL_API_URL, data=payload)
+        response.raise_for_status()  # Raise exception for HTTP errors
+        
+        translation_data = response.json()
+        
+        # Extract translated text from DeepL response
+        translated_text = translation_data['translations'][0]['text']
         
         return jsonify({
             'translated_text': translated_text,
@@ -163,6 +189,9 @@ def translate_text():
             'target_language': target_language
         })
         
+    except requests.exceptions.RequestException as e:
+        logging.error(f"DeepL API error: {str(e)}")
+        return jsonify({'error': f"DeepL API error: {str(e)}"}), 500
     except Exception as e:
         logging.error(f"Error translating text: {str(e)}")
         return jsonify({'error': str(e)}), 500 
