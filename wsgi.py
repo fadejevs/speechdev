@@ -1,5 +1,5 @@
-from app import app, socketio
 import os
+from app import app, socketio
 
 if __name__ == "__main__":
     # Get port from environment variable or use 5000 as default
