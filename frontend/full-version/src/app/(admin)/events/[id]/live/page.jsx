@@ -179,11 +179,16 @@ const LiveEventPage = () => {
     socketRef.current.on('translation_result', (data) => {
       console.log('Received translation result:', data);
       if (data.target_language && data.translated_text) {
+        console.log(`Setting translation for ${data.target_language}: ${data.translated_text}`);
         setTranslations(prev => ({
           ...prev,
           [data.target_language]: data.translated_text
         }));
       }
+    });
+
+    socketRef.current.on('translation_error', (error) => {
+      console.error('Translation error received:', error);
     });
 
     // Cleanup on component unmount
@@ -435,6 +440,30 @@ const LiveEventPage = () => {
     router.push(`/events/${id}/complete`);
   };
 
+  const handlePlayTranslation = async (text, langCode) => {
+    try {
+      // Call your text-to-speech service
+      const audioBlob = await transcriptionService.textToSpeech(text, langCode);
+      
+      // Create an audio URL and play it
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl); // Clean up
+      };
+      
+      audio.onerror = (error) => {
+        console.error('Audio playback error:', error);
+        URL.revokeObjectURL(audioUrl); // Clean up
+      };
+      
+      await audio.play();
+    } catch (error) {
+      console.error('Error playing translation audio:', error);
+    }
+  };
+
   if (loading || !eventData) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -545,49 +574,45 @@ const LiveEventPage = () => {
           <Divider sx={{ my: 3 }} />
           
           {/* Translations */}
-          <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+          <Box sx={{ mt: 4 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
               Translations
             </Typography>
             
-            {eventData.targetLanguages && eventData.targetLanguages.length > 0 ? (
-              eventData.targetLanguages.map((targetLang) => (
-                <Paper
-                  key={targetLang}
-                  elevation={0}
-                  sx={{
-                    p: 2,
-                    mb: 2,
-                    bgcolor: '#F9FAFB',
-                    borderRadius: '8px',
-                    position: 'relative'
-                  }}
-                >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                      {getLanguageName(targetLang)}
+            {eventData?.targetLanguages?.length > 0 ? (
+              eventData.targetLanguages.map((langCode) => (
+                <Box key={langCode} sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                    {getLanguageName(langCode)}
+                  </Typography>
+                  <Paper 
+                    elevation={0} 
+                    sx={{ 
+                      p: 2, 
+                      bgcolor: '#F9FAFB', 
+                      borderRadius: '8px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <Typography variant="body1">
+                      {translations[langCode] || 'Translation will appear here...'}
                     </Typography>
                     
-                    <IconButton 
-                      size="small" 
-                      onClick={() => playSynthesizedSpeech(translations[targetLang], targetLang)}
-                      disabled={!translations[targetLang]}
-                    >
-                      <VolumeUpIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                  
-                  {translations[targetLang] ? (
-                    <Typography variant="body1">{translations[targetLang]}</Typography>
-                  ) : (
-                    <Typography variant="body2" sx={{ color: '#637381', fontStyle: 'italic' }}>
-                      Translation will appear here...
-                    </Typography>
-                  )}
-                </Paper>
+                    {translations[langCode] && (
+                      <IconButton 
+                        onClick={() => handlePlayTranslation(translations[langCode], langCode)}
+                        size="small"
+                      >
+                        <VolumeUpIcon />
+                      </IconButton>
+                    )}
+                  </Paper>
+                </Box>
               ))
             ) : (
-              <Typography variant="body2" sx={{ color: '#637381' }}>
+              <Typography variant="body2" sx={{ color: '#637381', fontStyle: 'italic' }}>
                 No target languages selected for this event.
               </Typography>
             )}

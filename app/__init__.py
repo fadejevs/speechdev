@@ -44,6 +44,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # --- Register Blueprints ---
 # Import the blueprint variable from your route file
 from app.routes.speech import speech_bp
+from app.routes.websocket import socketio as socketio_bp
 # Import other blueprints if you have them
 # from app.routes.translation import translation_bp
 # from app.routes.tts import tts_bp
