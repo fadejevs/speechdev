@@ -34,15 +34,7 @@ def handle_message(data):
 
 @socketio.on('translate_text')
 def handle_translation(data):
-    """
-    Handle translation requests via WebSocket
-    Expected data format:
-    {
-        "text": "Text to translate",
-        "source_language": "en-US",
-        "target_languages": ["lv-LV", "de-DE", ...]
-    }
-    """
+    """Handle translation requests via WebSocket"""
     logging.info(f"Received translation request: {data}")
     
     try:
@@ -50,10 +42,17 @@ def handle_translation(data):
         source_language = data.get('source_language')
         target_languages = data.get('target_languages', [])
         
-        if not text or not source_language or not target_languages:
-            logging.error("Missing required translation parameters")
-            emit('translation_error', {'error': 'Missing required parameters'})
+        if not text:
+            logging.error("No text provided for translation")
+            emit('translation_error', {'error': 'No text provided'})
             return
+            
+        if not target_languages:
+            logging.error("No target languages provided for translation")
+            emit('translation_error', {'error': 'No target languages provided'})
+            return
+            
+        logging.info(f"Translating '{text[:30]}...' from {source_language} to {target_languages}")
         
         # Process each target language
         for target_language in target_languages:
@@ -62,8 +61,12 @@ def handle_translation(data):
                 source_lang = source_language.split('-')[0] if '-' in source_language else source_language
                 target_lang = target_language.split('-')[0] if '-' in target_language else target_language
                 
+                logging.info(f"Translating to {target_lang}")
+                
                 # Call your existing translation service
                 translated_text = translation_service.translate(text, source_lang, target_lang)
+                
+                logging.info(f"Translation result: {translated_text[:30]}...")
                 
                 if translated_text:
                     # Emit the result back to the client

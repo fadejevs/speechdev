@@ -101,6 +101,9 @@ const LiveEventPage = () => {
   const audioChunksRef = useRef([]);
   const socketRef = useRef(null);
 
+  // Add this state to track WebSocket connection status
+  const [socketConnected, setSocketConnected] = useState(false);
+
   // Make sure your language selection dropdown/options use valid codes
   // Example options:
   const languageOptions = [
@@ -154,20 +157,20 @@ const LiveEventPage = () => {
                   
   console.log(`Attempting to connect WebSocket to: ${socketUrl}`);
 
-  socketRef.current = io(socketUrl);
+  socketRef.current = io(socketUrl, {
+    transports: ['websocket', 'polling']
+  });
 
   // WebSocket setup effect
   useEffect(() => {
     socketRef.current.on('connect', () => {
-      // --- LOOK FOR THIS LOG ---
       console.log('WebSocket connected:', socketRef.current.id);
-      // Optional: Join a room specific to this event if your backend uses rooms
-      // socketRef.current.emit('join_event', { event_id: id });
+      setSocketConnected(true); // Set connection status to true
     });
 
     socketRef.current.on('disconnect', (reason) => {
-      // --- LOOK FOR THIS LOG ---
       console.log('WebSocket disconnected:', reason);
+      setSocketConnected(false); // Set connection status to false
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -196,9 +199,10 @@ const LiveEventPage = () => {
       if (socketRef.current) {
         console.log('Disconnecting WebSocket...');
         socketRef.current.disconnect();
+        setSocketConnected(false);
       }
     };
-  }, [id]); // Dependency array
+  }, [socketUrl]); // Dependency array
 
   // Start recording function
   const startRecording = async () => {
@@ -316,7 +320,7 @@ const LiveEventPage = () => {
 
         // --- Trigger Translation via WebSocket ---
         // Ensure socket exists and is connected
-        if (socketRef.current && socketRef.current.connected) {
+        if (socketConnected && socketRef.current) {
           // Ensure there are target languages defined in eventData
           if (eventData?.targetLanguages?.length > 0) {
             const payload = {
@@ -350,7 +354,7 @@ const LiveEventPage = () => {
     } finally {
       setProcessingAudio(false);
     }
-  }, [selectedLanguage, id, eventData, socketRef]); // Added socketRef to dependencies
+  }, [selectedLanguage, id, eventData, socketConnected, socketRef]); // Added socketRef to dependencies
 
   // Play synthesized speech
   const playSynthesizedSpeech = async (text, language) => {
