@@ -4,8 +4,8 @@ from flask_socketio import SocketIO
 from flask_cors import CORS
 import os
 
-# Configure basic logging if not already done elsewhere
-logging.basicConfig(level=logging.DEBUG)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
@@ -35,18 +35,14 @@ else:
 # Fallback or default secret key if not in config
 app.config.setdefault('SECRET_KEY', 'a_default_secret_key_if_not_in_config')
 
-# Use the simplest CORS setup - allow all origins
+# Configure CORS - allow all origins
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Also update SocketIO CORS for consistency
-socketio = SocketIO(app, 
-                   cors_allowed_origins="*", 
-                   async_mode='gevent',
-                   ping_timeout=60,
-                   ping_interval=25)
+# Initialize SocketIO without the problematic parameters
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Import routes after app is created
-from app import routes
+# Import routes after app is created to avoid circular imports
+from app.routes import main, speech, websocket
 
 # --- Register Blueprints ---
 # Import the blueprint variable from your route file

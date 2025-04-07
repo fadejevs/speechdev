@@ -23,12 +23,19 @@ const speechServices = {
   },
   
   // Translation
-  translateText: async (text, targetLang) => {
-    const response = await axios.post(`${API_URL}/translate`, {
-      text,
-      target_lang: targetLang
-    });
-    return response.data;
+  translateText: async (text, sourceLanguage, targetLanguage) => {
+    try {
+      const response = await axios.post(`${API_URL}/translate`, {
+        text,
+        source_language: sourceLanguage,
+        target_language: targetLanguage
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error('Translation error:', error);
+      throw new Error('Translation failed');
+    }
   },
   
   // transcript history

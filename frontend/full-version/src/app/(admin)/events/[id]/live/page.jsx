@@ -158,11 +158,9 @@ const LiveEventPage = () => {
 
   // Use a simpler Socket.IO configuration with longer timeout and reconnection
   socketRef.current = io(socketUrl, {
-    transports: ['polling', 'websocket'], // Try polling first, then websocket
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-    timeout: 20000, // Increase timeout to 20 seconds
-    forceNew: true
+    transports: ['polling'], // Use only polling for now
+    reconnectionAttempts: 3,
+    timeout: 10000
   });
 
   // WebSocket setup effect
@@ -174,14 +172,13 @@ const LiveEventPage = () => {
       setSocketConnected(true);
     });
 
-    socketRef.current.on('disconnect', (reason) => {
-      console.log('WebSocket disconnected:', reason);
+    socketRef.current.on('disconnect', () => {
+      console.log('WebSocket disconnected');
       setSocketConnected(false);
     });
 
     socketRef.current.on('connect_error', (error) => {
       console.error('WebSocket connection error:', error);
-      // Fall back to HTTP for transcription if WebSocket fails
       setSocketConnected(false);
     });
 
@@ -449,6 +446,41 @@ const LiveEventPage = () => {
       await audio.play();
     } catch (error) {
       console.error('Error playing translation audio:', error);
+    }
+  };
+
+  // Update the sendForTranslation function to use HTTP fallback
+  const sendForTranslation = async (text) => {
+    if (!text) return;
+    
+    console.log('Sending for translation:', text);
+    console.log('Target languages:', eventData?.targetLanguages);
+    
+    try {
+      // Always use HTTP for translation instead of WebSocket
+      if (eventData?.targetLanguages && eventData.targetLanguages.length > 0) {
+        const newTranslations = { ...translations };
+        
+        for (const targetLang of eventData.targetLanguages) {
+          try {
+            const translationResult = await transcriptionService.translateText(
+              text, 
+              selectedLanguage,
+              targetLang
+            );
+            
+            if (translationResult && translationResult.translated_text) {
+              newTranslations[targetLang] = translationResult.translated_text;
+            }
+          } catch (error) {
+            console.error(`Error translating to ${targetLang}:`, error);
+          }
+        }
+        
+        setTranslations(newTranslations);
+      }
+    } catch (error) {
+      console.error('Error sending for translation:', error);
     }
   };
 

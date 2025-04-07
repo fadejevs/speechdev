@@ -130,3 +130,39 @@ def speech_to_text():
             except OSError as e:
                 logging.error(f"Error removing temporary converted file {converted_path}: {e}")
 # --- End of speech_to_text function --- 
+
+@speech_bp.route('/translate', methods=['POST'])
+def translate_text():
+    """Translate text from one language to another"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        text = data.get('text')
+        source_language = data.get('source_language')
+        target_language = data.get('target_language')
+        
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+            
+        if not target_language:
+            return jsonify({'error': 'No target language provided'}), 400
+            
+        # Use Google Translate API
+        translated_text = translation_service.translate_text(
+            text=text,
+            target_language=target_language,
+            source_language=source_language
+        )
+        
+        return jsonify({
+            'translated_text': translated_text,
+            'source_language': source_language,
+            'target_language': target_language
+        })
+        
+    except Exception as e:
+        logging.error(f"Error translating text: {str(e)}")
+        return jsonify({'error': str(e)}), 500 
