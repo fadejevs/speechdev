@@ -147,11 +147,10 @@ const LiveEventPage = () => {
     }
   }, [eventData]); // Dependency: run when eventData changes
 
+
+  
   // WebSocket setup with environment-aware URL
-  const socketUrl = process.env.NEXT_PUBLIC_API_URL || 
-                   (typeof window !== 'undefined' && window.location.hostname === 'localhost' 
-                    ? 'http://127.0.0.1:5001' 
-                    : window.location.origin);
+  const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
                   
   console.log(`Attempting to connect WebSocket to: ${socketUrl}`);
 
