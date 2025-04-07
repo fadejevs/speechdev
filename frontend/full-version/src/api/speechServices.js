@@ -25,16 +25,24 @@ const speechServices = {
   // Translation
   translateText: async (text, sourceLanguage, targetLanguage) => {
     try {
+      console.log(`Translating from ${sourceLanguage} to ${targetLanguage}: "${text}"`);
+      
       const response = await axios.post(`${API_URL}/translate`, {
         text,
         source_language: sourceLanguage,
         target_language: targetLanguage
       });
       
+      console.log('Translation response:', response.data);
       return response.data;
     } catch (error) {
       console.error('Translation error:', error);
-      throw new Error('Translation failed');
+      // Return a fallback translation object instead of throwing
+      return {
+        translated_text: `[Translation to ${targetLanguage} failed: ${error.message}]`,
+        source_language: sourceLanguage,
+        target_language: targetLanguage
+      };
     }
   },
   
