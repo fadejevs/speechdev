@@ -41,6 +41,9 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # Also update SocketIO CORS for consistency
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+# Import routes after app is created
+from app import routes
+
 # --- Register Blueprints ---
 # Import the blueprint variable from your route file
 from app.routes.speech import speech_bp
