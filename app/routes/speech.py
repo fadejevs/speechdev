@@ -5,6 +5,7 @@ from pydub import AudioSegment
 from werkzeug.utils import secure_filename
 import os
 import requests
+from app.utils.translation import simple_translation
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -140,10 +141,18 @@ def speech_to_text():
 def translate_text():
     """Translate text from one language to another using DeepL"""
     try:
+        # Check if DeepL API key is configured
         if not DEEPL_API_KEY:
-            return jsonify({'error': 'DeepL API key not configured'}), 500
+            logging.warning("DeepL API key not configured, using fallback translation")
+            translated_text = simple_translation(text, target_language)
+            return jsonify({
+                'translated_text': translated_text,
+                'source_language': source_language,
+                'target_language': target_language
+            })
             
         data = request.get_json()
+        logging.info(f"Translation request data: {data}")
         
         if not data:
             return jsonify({'error': 'No data provided'}), 400
@@ -151,6 +160,8 @@ def translate_text():
         text = data.get('text')
         source_language = data.get('source_language')
         target_language = data.get('target_language')
+        
+        logging.info(f"Translating: '{text}' from {source_language} to {target_language}")
         
         if not text:
             return jsonify({'error': 'No text provided'}), 400
@@ -163,9 +174,25 @@ def translate_text():
         source_lang = source_language.split('-')[0].upper() if source_language else None
         target_lang = target_language.split('-')[0].upper()
         
+        # Map some language codes that might be different
+        lang_map = {
+            'LV': 'LV',  # Latvian
+            'EN': 'EN',  # English
+            'ES': 'ES',  # Spanish
+            'FR': 'FR',  # French
+            'DE': 'DE',  # German
+            'IT': 'IT',  # Italian
+            'JA': 'JA',  # Japanese
+            'ZH': 'ZH',  # Chinese
+        }
+        
+        target_lang = lang_map.get(target_lang, target_lang)
+        if source_lang:
+            source_lang = lang_map.get(source_lang, source_lang)
+        
         # Prepare request to DeepL API
         payload = {
-            'text': text,
+            'text': [text],
             'target_lang': target_lang,
             'auth_key': DEEPL_API_KEY
         }
@@ -174,11 +201,19 @@ def translate_text():
         if source_lang:
             payload['source_lang'] = source_lang
             
+        logging.info(f"Sending request to DeepL API: {payload}")
+        
         # Make request to DeepL API
         response = requests.post(DEEPL_API_URL, data=payload)
+        
+        # Log the response for debugging
+        logging.info(f"DeepL API response status: {response.status_code}")
+        logging.info(f"DeepL API response content: {response.text}")
+        
         response.raise_for_status()  # Raise exception for HTTP errors
         
         translation_data = response.json()
+        logging.info(f"DeepL API response JSON: {translation_data}")
         
         # Extract translated text from DeepL response
         translated_text = translation_data['translations'][0]['text']
@@ -192,6 +227,9 @@ def translate_text():
     except requests.exceptions.RequestException as e:
         logging.error(f"DeepL API error: {str(e)}")
         return jsonify({'error': f"DeepL API error: {str(e)}"}), 500
+    except KeyError as e:
+        logging.error(f"Unexpected DeepL API response format: {str(e)}")
+        return jsonify({'error': f"Unexpected DeepL API response format: {str(e)}"}), 500
     except Exception as e:
         logging.error(f"Error translating text: {str(e)}")
         return jsonify({'error': str(e)}), 500 

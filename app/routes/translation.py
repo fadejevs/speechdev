@@ -75,3 +75,10 @@ def translate_text():
         # Handle other potential errors
         current_app.logger.exception("An unexpected error occurred during translation:") # Log traceback
         return jsonify({'error': 'An internal server error occurred'}), 500
+
+def simple_translation(text, target_lang):
+    """
+    A very simple fallback translation function that returns a message
+    when DeepL API is not available
+    """
+    return f"[Translation to {target_lang} failed: DeepL API unavailable]"
