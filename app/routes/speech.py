@@ -12,7 +12,8 @@ from app.routes.translation import simple_translation
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
-bp = Blueprint('speech', __name__)
+# Rename bp to speech_bp to match the import in __init__.py
+speech_bp = Blueprint('speech', __name__)
 
 # Define temporary file paths
 UPLOAD_TEMP_FILENAME = "temp_upload_audio"
@@ -22,7 +23,7 @@ CONVERTED_WAV_FILENAME = "temp_converted.wav"
 DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
 DEEPL_API_URL = "https://api-free.deepl.com/v2/translate"  # Use the appropriate URL based on your subscription
 
-@bp.route('/speech-to-text', methods=['POST'])
+@speech_bp.route('/speech-to-text', methods=['POST'])
 def speech_to_text():
     # --- Get keys from Flask app config ---
     # Use current_app to access the application context and its config
@@ -139,7 +140,7 @@ def speech_to_text():
                 logging.error(f"Error removing temporary converted file {converted_path}: {e}")
 # --- End of speech_to_text function --- 
 
-@bp.route('/translate', methods=['POST'])
+@speech_bp.route('/translate', methods=['POST'])
 def translate_text():
     """Simple translation endpoint that doesn't rely on external APIs"""
     try:
