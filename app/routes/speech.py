@@ -5,12 +5,14 @@ from pydub import AudioSegment
 from werkzeug.utils import secure_filename
 import os
 import requests
-from app.utils.translation import simple_translation
+
+# Import from the translation module in the same directory
+from app.routes.translation import simple_translation
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
-speech_bp = Blueprint('speech', __name__)
+bp = Blueprint('speech', __name__)
 
 # Define temporary file paths
 UPLOAD_TEMP_FILENAME = "temp_upload_audio"
@@ -20,7 +22,7 @@ CONVERTED_WAV_FILENAME = "temp_converted.wav"
 DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
 DEEPL_API_URL = "https://api-free.deepl.com/v2/translate"  # Use the appropriate URL based on your subscription
 
-@speech_bp.route('/speech-to-text', methods=['POST'])
+@bp.route('/speech-to-text', methods=['POST'])
 def speech_to_text():
     # --- Get keys from Flask app config ---
     # Use current_app to access the application context and its config
@@ -137,7 +139,7 @@ def speech_to_text():
                 logging.error(f"Error removing temporary converted file {converted_path}: {e}")
 # --- End of speech_to_text function --- 
 
-@speech_bp.route('/translate', methods=['POST'])
+@bp.route('/translate', methods=['POST'])
 def translate_text():
     """Simple translation endpoint that doesn't rely on external APIs"""
     try:
@@ -159,19 +161,8 @@ def translate_text():
         # Log the request
         logging.info(f"Translation request: '{text}' from {source_language} to {target_language}")
         
-        # Create a simple placeholder translation
-        translated_text = f"[Translation to {target_language}: {text}]"
-        
-        # For Latvian, add a simple mock translation
-        if target_language.startswith('lv'):
-            if "hello" in text.lower():
-                translated_text = "Sveiki!"
-            elif "test" in text.lower():
-                translated_text = "Šis ir tests."
-            elif "thank you" in text.lower():
-                translated_text = "Paldies!"
-            else:
-                translated_text = f"Tulkojums latviešu valodā: {text}"
+        # Use the simple translation function
+        translated_text = simple_translation(text, target_language)
         
         return jsonify({
             'translated_text': translated_text,
