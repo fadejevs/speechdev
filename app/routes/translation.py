@@ -1,6 +1,9 @@
 import deepl
 from flask import Blueprint, request, jsonify, current_app
 from app.services.firebase_service import FirebaseService
+from app.services.translation_service import TranslationService
+import logging
+import os
 
 # --- Define the Blueprint ---
 translation_bp = Blueprint('translation', __name__)
@@ -26,55 +29,75 @@ except Exception as e:
 firebase_service = FirebaseService()
 
 # --- Route Definition using the Blueprint ---
-@translation_bp.route('/translate', methods=['POST']) # Use the blueprint decorator
+@translation_bp.route('/translate', methods=['POST'])
 def translate_text():
-    if translator is None:
-        current_app.logger.error("DeepL Translator was not initialized correctly.")
-        return jsonify({'error': 'Translation service configuration error'}), 500
-
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'Invalid JSON payload'}), 400
-
-    text = data.get('text')
-    target_lang = data.get('target_lang') # Removed default 'EN' - require target lang
-
-    if not text or not target_lang:
-        return jsonify({'error': 'Missing "text" or "target_lang" in request'}), 400
-
-    # Validate target_lang format if needed (e.g., 'EN-US', 'DE', 'LV')
-    # DeepL uses specific codes, check their documentation.
-
     try:
-        # Perform the translation
-        result = translator.translate_text(text, target_lang=target_lang)
-        translated_text = result.text
-        detected_source_lang = result.detected_source_lang # Get detected source lang
-
-        # Store in Firebase
-        transcript_id = firebase_service.store_transcript(
-            text=text,
-            transcript_type='translation',
-            source_lang=detected_source_lang, # Store the detected language
-            translated_text=translated_text,
-            target_lang=target_lang
-        )
-
-        # Return the result
-        return jsonify({
-            'translated_text': translated_text,
-            'detected_source_language': detected_source_lang,
-            'transcript_id': transcript_id
-        })
-
-    except deepl.DeepLException as e:
-        # Handle specific DeepL errors (e.g., quota exceeded, invalid lang)
-        current_app.logger.error(f"DeepL API error: {e}")
-        return jsonify({'error': f'DeepL error: {e}'}), 500
+        data = request.get_json()
+        
+        if not data:
+            logging.error("No JSON data received in translation request")
+            return jsonify({"error": "No data provided"}), 400
+            
+        text = data.get('text')
+        source_language = data.get('source_language', 'auto')
+        target_language = data.get('target_language')
+        
+        logging.info(f"Translation request received - Text: '{text[:30]}...' Source: '{source_language}' Target: '{target_language}'")
+        
+        if not text:
+            logging.error("No text provided for translation")
+            return jsonify({"error": "No text provided"}), 400
+            
+        if not target_language:
+            logging.error("No target language provided for translation")
+            return jsonify({"error": "No target language provided"}), 400
+        
+        # Get translation service
+        translation_service = current_app.config.get('TRANSLATION_SERVICE')
+        if not translation_service:
+            translation_service = TranslationService()
+            current_app.config['TRANSLATION_SERVICE'] = translation_service
+            logging.info(f"Created new TranslationService with service type: {translation_service.service}")
+        
+        # Perform translation
+        translated_text = translation_service.translate(text, source_language, target_language)
+        
+        if translated_text:
+            return jsonify({
+                "original_text": text,
+                "translated_text": translated_text,
+                "source_language": source_language,
+                "target_language": target_language
+            })
+        else:
+            logging.error(f"Translation failed for text: '{text[:30]}...' to {target_language}")
+            return jsonify({"error": "Translation failed"}), 500
+        
     except Exception as e:
-        # Handle other potential errors
-        current_app.logger.exception("An unexpected error occurred during translation:") # Log traceback
-        return jsonify({'error': 'An internal server error occurred'}), 500
+        logging.error(f"Translation error: {str(e)}")
+        return jsonify({"error": f"Translation error: {str(e)}"}), 500
+
+@translation_bp.route('/translation-status', methods=['GET'])
+def translation_status():
+    """Check the status of the translation service"""
+    try:
+        # Get or create translation service
+        translation_service = current_app.config.get('TRANSLATION_SERVICE')
+        if not translation_service:
+            translation_service = TranslationService()
+            current_app.config['TRANSLATION_SERVICE'] = translation_service
+        
+        # Return service info
+        return jsonify({
+            "service": translation_service.service,
+            "is_configured": translation_service.service != "mock",
+            "available_services": {
+                "azure": bool(os.environ.get('AZURE_SPEECH_KEY') and os.environ.get('AZURE_REGION')),
+                "deepl": bool(os.environ.get('DEEPL_API_KEY') and os.environ.get('DEEPL_API_URL'))
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def simple_translation(text, target_lang):
     """

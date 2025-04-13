@@ -7,14 +7,31 @@ const apiClient = axios.create({
   baseURL: API_BASE_URL,
 });
 
+// Map language names to Azure language codes
+const languageCodeMap = {
+  'English': 'en-US',
+  'Spanish': 'es-ES',
+  'Latvian': 'lv-LV',
+  'German': 'de-DE',
+  'French': 'fr-FR',
+  'Russian': 'ru-RU',
+  'Chinese': 'zh-CN',
+  'Japanese': 'ja-JP',
+  'Italian': 'it-IT',
+  'Portuguese': 'pt-PT'
+};
+
 const transcriptionService = {
   // Speech-to-text conversion using your existing backend
   speechToText: async (audioBlob, filename, language) => {
     const formData = new FormData();
     formData.append('file', audioBlob, filename);
-    formData.append('language', language);
+    
+    // Convert language name to code if needed
+    const languageCode = languageCodeMap[language] || language;
+    formData.append('language', languageCode);
 
-    console.log(`Sending speech-to-text request for language: ${language}`);
+    console.log(`Sending speech-to-text request for language: ${language} (code: ${languageCode})`);
 
     try {
       const response = await apiClient.post('/speech-to-text', formData, {
@@ -32,15 +49,31 @@ const transcriptionService = {
   
   // Translation service using your existing backend
   translateText: async (text, targetLang) => {
+    // Convert language name to code if needed
+    const targetCode = languageCodeMap[targetLang] || targetLang;
+    
+    // Extract just the language code without region if it has a hyphen
+    const simplifiedTargetCode = targetCode.includes('-') ? targetCode.split('-')[0] : targetCode;
+    
+    console.log(`translateText: Converting target language '${targetLang}' to code '${targetCode}' (simplified: '${simplifiedTargetCode}')`);
+    
     try {
+      console.log(`Sending translation request for text: "${text.substring(0, 30)}..." to target language: ${simplifiedTargetCode}`);
+      
       const response = await axios.post(`${API_BASE_URL}/translate`, {
-        text,
-        target_lang: targetLang
+        text: text,
+        source_language: 'auto', // Auto-detect source language
+        target_language: simplifiedTargetCode // Use simplified code (e.g., 'es' instead of 'es-ES')
       });
       
+      console.log(`Translation response:`, response.data);
       return response.data;
     } catch (error) {
       console.error('Translation error:', error);
+      // Log more details about the error
+      if (error.response) {
+        console.error('Error response data:', error.response.data);
+      }
       throw error;
     }
   },

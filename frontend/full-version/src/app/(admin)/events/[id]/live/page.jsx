@@ -104,6 +104,9 @@ const LiveEventPage = () => {
   // Add this state to track WebSocket connection status
   const [socketConnected, setSocketConnected] = useState(false);
 
+  // Add state to store the selected device ID
+  const [selectedDeviceId, setSelectedDeviceId] = useState(null);
+
   // Make sure your language selection dropdown/options use valid codes
   // Example options:
   const languageOptions = [
@@ -201,11 +204,30 @@ const LiveEventPage = () => {
     };
   }, []);
 
+  // Add a new useEffect to read the device ID from localStorage on mount
+  useEffect(() => {
+    const savedDeviceId = localStorage.getItem(`selectedAudioInput_${id}`);
+    if (savedDeviceId) {
+      setSelectedDeviceId(savedDeviceId);
+      console.log(`Retrieved deviceId ${savedDeviceId} for event ${id} from localStorage.`);
+    } else {
+      console.log(`No specific deviceId found in localStorage for event ${id}. Will use default.`);
+    }
+    // Optional: Clean up the stored item after reading it if you don't need it anymore
+    // localStorage.removeItem(`selectedAudioInput_${id}`); 
+  }, [id]); // Run only when the component mounts or id changes
+
   // Start recording function
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const options = { mimeType: 'audio/wav' };
+      // Use the selectedDeviceId from state in the constraints
+      const constraints = { 
+        audio: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : true 
+      };
+      console.log("Requesting user media with constraints:", constraints); // Log constraints
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const options = { mimeType: 'audio/wav' }; // Prefer WAV if possible
       let recorder;
       try {
         recorder = new MediaRecorder(stream, options);
@@ -260,7 +282,14 @@ const LiveEventPage = () => {
       setIsRecording(true);
     } catch (error) {
       console.error('Error starting recording:', error);
-      alert('Could not access microphone. Please check permissions.');
+      // More specific error handling based on error.name might be useful
+      if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+         alert(`Could not find the selected audio device (${selectedDeviceId || 'default'}). Please check if it's connected and selected correctly.`);
+      } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+         alert('Microphone access denied. Please check browser permissions.');
+      } else {
+         alert('Could not access microphone. Please check permissions and selected device.');
+      }
     }
   };
 
@@ -482,47 +511,73 @@ const LiveEventPage = () => {
     }
   };
 
-  // In your component, update the translation handling
+  // Add this effect to handle translations when transcription changes
   useEffect(() => {
-    if (transcription && selectedLanguage) {
-      const translateToLanguages = ['lv-LV']; // Add more languages as needed
+    if (!transcription || !eventData) return;
+    
+    const performTranslation = async () => {
+      // Debug the event data structure
+      console.log('Event data for translation:', eventData);
       
-      const performTranslation = async () => {
+      // Get target languages from event data
+      let targetLanguages = [];
+      
+      // Check different possible locations of target languages in the event data
+      if (eventData.targetLanguages && Array.isArray(eventData.targetLanguages)) {
+        targetLanguages = eventData.targetLanguages;
+        console.log('Found targetLanguages array in eventData:', targetLanguages);
+      } else if (eventData.languages && Array.isArray(eventData.languages)) {
+        targetLanguages = eventData.languages;
+        console.log('Found languages array in eventData:', targetLanguages);
+      } else if (eventData.target_languages && Array.isArray(eventData.target_languages)) {
+        targetLanguages = eventData.target_languages;
+        console.log('Found target_languages array in eventData:', targetLanguages);
+      } else {
+        // If no target languages found, use Spanish as a fallback for testing
+        targetLanguages = ['es-ES'];
+        console.log('No target languages found in event data, using fallback:', targetLanguages);
+      }
+      
+      if (targetLanguages.length === 0) {
+        console.log('No target languages configured for translation');
+        return;
+      }
+      
+      const newTranslations = { ...translations };
+      
+      for (const targetLang of targetLanguages) {
         try {
-          const newTranslations = { ...translations };
+          console.log(`Attempting to translate to language: ${targetLang}`);
           
-          for (const targetLang of translateToLanguages) {
-            console.log(`Translating to ${targetLang}`);
-            
-            try {
-              const translationResult = await transcriptionService.translateText(
-                transcription, 
-                selectedLanguage,
-                targetLang
-              );
-              
-              console.log(`Translation result for ${targetLang}:`, translationResult);
-              
-              if (translationResult && translationResult.translated_text) {
-                newTranslations[targetLang] = translationResult.translated_text;
-              } else {
-                newTranslations[targetLang] = `[Translation to ${targetLang} failed]`;
-              }
-            } catch (error) {
-              console.error(`Error translating to ${targetLang}:`, error);
-              newTranslations[targetLang] = `[Translation error: ${error.message}]`;
-            }
+          // Skip if the target language is the same as the source language
+          if (targetLang === eventData.sourceLanguage || targetLang === selectedLanguage) {
+            console.log(`Skipping translation to ${targetLang} as it's the same as the source language`);
+            continue;
           }
           
-          setTranslations(newTranslations);
+          // Use the language code mapping from transcriptionService
+          const translationResult = await transcriptionService.translateText(
+            transcription, 
+            targetLang
+          );
+          
+          console.log(`Translation result for ${targetLang}:`, translationResult);
+          
+          if (translationResult && translationResult.translated_text) {
+            newTranslations[targetLang] = translationResult.translated_text;
+          } else {
+            console.warn(`Translation result for ${targetLang} is missing translated_text property`);
+          }
         } catch (error) {
-          console.error('Error in translation process:', error);
+          console.error(`Error translating to ${targetLang}:`, error);
         }
-      };
+      }
       
-      performTranslation();
-    }
-  }, [transcription, selectedLanguage]);
+      setTranslations(newTranslations);
+    };
+    
+    performTranslation();
+  }, [transcription, eventData]);  // Removed translations from dependency array to prevent infinite loops
 
   if (loading || !eventData) {
     return (

@@ -1,15 +1,20 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import Switch from '@mui/material/Switch';
-import Button from '@mui/material/Button';
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
-import Menu from '@mui/material/Menu';
-import MenuItem from '@mui/material/MenuItem';
-import Link from 'next/link';
+import { 
+  Box, 
+  Typography, 
+  CircularProgress,
+  Paper, 
+  Switch, 
+  Button,
+  KeyboardArrowDownIcon,
+  Menu,
+  MenuItem,
+  Link
+} from '@mui/material';
+import io from 'socket.io-client';
 
 // Language mapping for full names
 const languageMap = {
@@ -75,6 +80,13 @@ const BroadcastPage = () => {
   const [availableSourceLanguages, setAvailableSourceLanguages] = useState(['Latvian']);
   const [availableTargetLanguages, setAvailableTargetLanguages] = useState(['English', 'Lithuanian']);
 
+  // State for live data from WebSocket
+  const [liveTranscription, setLiveTranscription] = useState('');
+  const [liveTranscriptionLang, setLiveTranscriptionLang] = useState('');
+  const [liveTranslations, setLiveTranslations] = useState({});
+  const [socketConnected, setSocketConnected] = useState(false);
+  const socketRef = useRef(null);
+
   useEffect(() => {
     // Fetch event data from localStorage (in production this would be an API call)
     const storedEvents = localStorage.getItem('eventData');
@@ -97,9 +109,82 @@ const BroadcastPage = () => {
           setAvailableTargetLanguages(fullTargetLanguages);
           setTranslationLanguage(fullTargetLanguages[0]);
         }
+
+        // Set initial display languages based on event data if needed
+        if (event.sourceLanguages && event.sourceLanguages.length > 0) {
+          setLiveTranscriptionLang(event.sourceLanguages[0]); 
+        }
       }
     }
     setLoading(false);
+  }, [id]);
+
+  // WebSocket Connection useEffect
+  useEffect(() => {
+    const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
+    socketRef.current = io(socketUrl, { 
+        transports: ['polling'], // Match server config
+        reconnectionAttempts: 5,
+        timeout: 10000 
+    });
+
+    socketRef.current.on('connect', () => {
+      console.log('Broadcast WebSocket connected:', socketRef.current.id);
+      setSocketConnected(true);
+      // Join the room for this specific event
+      socketRef.current.emit('join', { room: id }); 
+      console.log(`Broadcast page joined room: ${id}`);
+    });
+
+    socketRef.current.on('disconnect', (reason) => {
+      console.log('Broadcast WebSocket disconnected:', reason);
+      setSocketConnected(false);
+    });
+
+    socketRef.current.on('connect_error', (error) => {
+      console.error('Broadcast WebSocket connection error:', error);
+      setSocketConnected(false);
+    });
+
+    // Listener for Live Transcription
+    socketRef.current.on('live_transcription', (data) => {
+      console.log('Received live transcription:', data);
+      if (data.text !== undefined) { // Check if text property exists
+        setLiveTranscription(prev => prev ? `${prev} ${data.text}` : data.text); // Append new text
+      }
+      if (data.language) {
+        setLiveTranscriptionLang(data.language); // Update language if provided
+      }
+    });
+
+    // Listener for Live Translation
+    socketRef.current.on('live_translation', (data) => {
+      console.log('Received live translation:', data);
+      if (data.target_language && data.translated_text !== undefined) {
+        setLiveTranslations(prev => ({
+          ...prev,
+          // Append new translated text for the specific language
+          [data.target_language]: prev[data.target_language] 
+            ? `${prev[data.target_language]} ${data.translated_text}` 
+            : data.translated_text
+        }));
+      }
+    });
+    
+    // Listener for potential errors from backend
+    socketRef.current.on('translation_error', (data) => {
+       console.error('Translation error received from backend:', data);
+       // Optionally display error to user
+    });
+
+    // Cleanup on component unmount
+    return () => {
+      if (socketRef.current) {
+        console.log('Disconnecting broadcast WebSocket...');
+        socketRef.current.emit('leave', { room: id }); // Optional: Tell server to leave room
+        socketRef.current.disconnect();
+      }
+    };
   }, [id]);
 
   const handleTranscriptionMenuOpen = (event) => {
@@ -129,7 +214,7 @@ const BroadcastPage = () => {
   };
 
   if (loading) {
-    return <Box sx={{ p: 4, textAlign: 'center' }}>Loading event...</Box>;
+    return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>;
   }
 
   if (!eventData) {
@@ -225,55 +310,27 @@ const BroadcastPage = () => {
                 fontSize: '14px',
                 fontWeight: 500
               }}>
-                {transcriptionLanguage}
+                {getFullLanguageName(liveTranscriptionLang || eventData?.sourceLanguages?.[0] || '')}
               </Box>
-              
-              <Button
-                endIcon={<KeyboardArrowDownIcon />}
-                onClick={handleTranscriptionMenuOpen}
-                sx={{ 
-                  color: '#637381',
-                  textTransform: 'none',
-                  '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
-                }}
-              >
-                Change Language
-              </Button>
-              
-              <Menu
-                anchorEl={transcriptionMenuAnchor}
-                open={Boolean(transcriptionMenuAnchor)}
-                onClose={handleTranscriptionMenuClose}
-                PaperProps={{
-                  sx: { 
-                    borderRadius: '8px',
-                    boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
-                    mt: 1
-                  }
-                }}
-              >
-                {availableSourceLanguages.map((language) => (
-                  <MenuItem 
-                    key={language} 
-                    onClick={() => handleChangeTranscriptionLanguage(language)}
-                    sx={{ 
-                      py: 1.5, 
-                      px: 2,
-                      minWidth: '180px',
-                      '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
-                    }}
-                  >
-                    {language}
-                  </MenuItem>
-                ))}
-              </Menu>
             </Box>
           </Box>
           
           <Box sx={{ px: { xs: 2, sm: 3 }, py: 3, minHeight: '200px' }}>
-            <Typography variant="body1" sx={{ color: '#637381' }}>
-              Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
-            </Typography>
+            <Paper 
+              elevation={0} 
+              sx={{ 
+                p: 2, 
+                minHeight: '150px', 
+                maxHeight: '300px',
+                overflowY: 'auto',
+                bgcolor: '#F9FAFB', 
+                borderRadius: '0 0 8px 8px'
+              }}
+            >
+              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                {liveTranscription || 'Waiting for live transcription...'}
+              </Typography>
+            </Paper>
           </Box>
         </Box>
 
@@ -297,66 +354,37 @@ const BroadcastPage = () => {
             <Typography variant="h6" sx={{ fontWeight: 600, color: '#212B36' }}>
               Live Translation
             </Typography>
-            
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ 
-                bgcolor: '#E5F7FF', 
-                color: '#0EA5E9', 
-                px: 1.5, 
-                py: 0.5, 
-                borderRadius: 1,
-                fontSize: '14px',
-                fontWeight: 500
-              }}>
-                {translationLanguage}
-              </Box>
-              
-              <Button
-                endIcon={<KeyboardArrowDownIcon />}
-                onClick={handleTranslationMenuOpen}
-                sx={{ 
-                  color: '#637381',
-                  textTransform: 'none',
-                  '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
-                }}
-              >
-                Change Language
-              </Button>
-              
-              <Menu
-                anchorEl={translationMenuAnchor}
-                open={Boolean(translationMenuAnchor)}
-                onClose={handleTranslationMenuClose}
-                PaperProps={{
-                  sx: { 
-                    borderRadius: '8px',
-                    boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
-                    mt: 1
-                  }
-                }}
-              >
-                {availableTargetLanguages.map((language) => (
-                  <MenuItem 
-                    key={language} 
-                    onClick={() => handleChangeTranslationLanguage(language)}
-                    sx={{ 
-                      py: 1.5, 
-                      px: 2,
-                      minWidth: '180px',
-                      '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
-                    }}
-                  >
-                    {language}
-                  </MenuItem>
-                ))}
-              </Menu>
-            </Box>
           </Box>
           
           <Box sx={{ px: { xs: 2, sm: 3 }, py: 3, minHeight: '200px' }}>
-            <Typography variant="body1" sx={{ color: '#637381' }}>
-              Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
-            </Typography>
+            {eventData?.targetLanguages?.length > 0 ? (
+              eventData.targetLanguages.map(langCode => (
+                <Box key={langCode} sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 500 }}>
+                    {getFullLanguageName(langCode)}
+                  </Typography>
+                  <Paper 
+                    elevation={0} 
+                    sx={{ 
+                      p: 2, 
+                      minHeight: '100px', 
+                      maxHeight: '250px',
+                      overflowY: 'auto',
+                      bgcolor: '#F9FAFB', 
+                      borderRadius: '8px' 
+                    }}
+                  >
+                    <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                      {liveTranslations[langCode] || 'Waiting for live translation...'}
+                    </Typography>
+                  </Paper>
+                </Box>
+              ))
+            ) : (
+              <Typography sx={{ color: '#637381', fontStyle: 'italic' }}>
+                No target languages configured for this event.
+              </Typography>
+            )}
           </Box>
         </Box>
 
