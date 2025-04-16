@@ -1,106 +1,74 @@
 import logging
-from flask import Flask, request, jsonify
-from flask_socketio import SocketIO
-from flask_cors import CORS
 import os
+
+from dotenv import load_dotenv
+from flask import Flask
+from flask_cors import CORS
+from flask_socketio import SocketIO
+
+from app.config import Config
 from app.services.translation_service import TranslationService
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Load environment variables
+load_dotenv()
 
-# Initialize translation service at module level
-translation_service = None
+# --- Logging Configuration ---
+# (Keep your existing logging setup)
+log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.getLogger('engineio').setLevel(logging.WARNING)
+logging.getLogger('socketio').setLevel(logging.WARNING)
+logging.getLogger('azure').setLevel(logging.WARNING)
 
-def create_app():
-    app = Flask(__name__)
-    
-    # --- Load Configuration ---
-    # Option 2: Config file inside the 'app' folder (app/config.py)
-    config_path = os.path.join(os.path.dirname(__file__), 'config.py')
-    
-    if os.path.exists(config_path):
-        # Use from_pyfile with the absolute path determined
-        app.config.from_pyfile(config_path)
-        logging.info(f"Loaded configuration from: {config_path}")
-    else:
-        logging.warning(f"Configuration file not found at: {config_path}. Using defaults or environment variables if set.")
-    
-    # Fallback or default secret key if not in config
-    app.config.setdefault('SECRET_KEY', 'a_default_secret_key_if_not_in_config')
-    
-    # Configure CORS - allow all origins
-    CORS(app, resources={r"/*": {"origins": "*"}})
-    
-    # Initialize SocketIO without the problematic parameters
-    socketio = SocketIO(app, cors_allowed_origins="*")
-    
-    # Initialize translation service
-    global translation_service
-    translation_service = TranslationService()
-    app.config['TRANSLATION_SERVICE'] = translation_service
-    logging.info(f"Initialized TranslationService with service type: {translation_service.service}")
-    
-    # Import routes after app is created to avoid circular imports
-    from app.routes import main, speech, websocket
-    
-    # --- Register Blueprints ---
-    # Import the blueprint variable from your route file
-    from app.routes.speech import speech_bp
-    from app.routes.websocket import socketio as socketio_bp
-    from app.routes.translation import translation_bp
-    
-    # Register the blueprint with the Flask app
-    app.register_blueprint(speech_bp)
-    app.register_blueprint(translation_bp)
-    logging.info("Registered Blueprints")
-    
-    @app.before_request
-    def log_request_info():
-        """Log information about the incoming request before routing."""
-        logging.debug(f"--- Before Request ---")
-        logging.debug(f"Path: {request.path}")
-        logging.debug(f"Method: {request.method}")
-        logging.debug(f"Headers:\n{request.headers}")
-    
-    # --- Optional: Add after_request logging ---
-    @app.after_request
-    def log_response_info(response):
-        logging.debug('--- After Request ---')
-        logging.debug('Status Code: %s', response.status)
-        return response
-    
-    # --- SocketIO Event Handlers (if any directly in init) ---
-    @socketio.on('connect')
-    def handle_connect():
-        logging.info('Client connected: %s', request.sid)
-    
-    @socketio.on('disconnect')
-    def handle_disconnect():
-        logging.info('Client disconnected: %s', request.sid)
-    
-    return app, socketio
 
-# Create the app and socketio instances
-app, socketio = create_app()
-
-# --- COMMENT OUT OR DELETE THE if __name__ BLOCK ---
-# if __name__ == '__main__':
-#     # This block is okay when running 'python3 main.py' or 'python3 app/__init__.py'
-#     # It will be ignored when using 'flask run'
-#     socketio.run(app, host='127.0.0.1', port=5000, debug=True)
-# --- END CHANGE --- 
+# --- Initialize Extensions (without app) ---
+# Create the SocketIO instance here, but don't attach it to 'app' yet
+socketio = SocketIO()
+cors = CORS()
+translation_service = None # Initialize as None
 
 def create_app(config_class=Config):
+    """Creates and configures the Flask application."""
+    global translation_service # Allow modification of the global instance
+
     app = Flask(__name__)
     app.config.from_object(config_class)
-    
-    # ... existing initialization code ...
-    
-    # Initialize translation service
-    translation_service = TranslationService()
-    app.config['TRANSLATION_SERVICE'] = translation_service
-    app.logger.info(f"Initialized TranslationService with service type: {translation_service.service}")
-    
-    # ... rest of your initialization code ...
-    
-    return app 
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_default_secret_key') # Ensure secret key
+
+    # --- Initialize Services ---
+    try:
+        translation_service = TranslationService(
+            azure_speech_key=app.config.get('AZURE_SPEECH_KEY'),
+            azure_region=app.config.get('AZURE_REGION'),
+            deepl_api_key=app.config.get('DEEPL_API_KEY'),
+            deepl_api_url=app.config.get('DEEPL_API_URL')
+        )
+        app.config['TRANSLATION_SERVICE'] = translation_service # Store in app config
+        logging.info("TranslationService initialized and added to app config.")
+    except Exception as e:
+        logging.error(f"Failed to initialize TranslationService: {e}", exc_info=True)
+        # Decide if the app should fail to start or continue without translation
+        # raise e # Option: re-raise the exception to stop startup
+
+    # --- Initialize Flask Extensions with App ---
+    # Now attach SocketIO and CORS to the created app instance
+    socketio.init_app(app, async_mode='gevent', cors_allowed_origins="*") # Use gevent, allow all origins for now
+    cors.init_app(app) # Initialize CORS
+
+    # --- Import Blueprints/Routes AFTER app and extensions are initialized ---
+    # This breaks the circular import
+    with app.app_context():
+        from .routes import main, speech, websocket # Import routes here
+        app.register_blueprint(main.bp)
+        app.register_blueprint(speech.bp)
+        # WebSocket routes are typically handled by SocketIO directly, not registered as blueprints
+
+    logging.info("Flask app created and configured.")
+    return app, socketio # Return both app and socketio
+
+# --- Create App Instance ---
+# Call create_app() at the module level so wsgi.py can import app and socketio
+app, socketio = create_app()
+
+# --- Remove the duplicate create_app definition and the __main__ block ---
+# (Ensure these are removed if they still exist) 
