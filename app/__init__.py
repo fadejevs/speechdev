@@ -6,7 +6,7 @@ from flask import Flask
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-from app.config import Config
+from .config import Config
 from app.services.translation_service import TranslationService
 
 # Load environment variables
