@@ -241,7 +241,8 @@ const EventLivePage = () => {
 
       const options = { 
         mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 16000 // Lower bitrate for better compatibility
+        audioBitsPerSecond: 16000, // 16kHz sample rate
+        bitsPerSecond: 16000
       };
       const recorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = recorder;
@@ -394,6 +395,18 @@ const EventLivePage = () => {
         setError("Backend test failed: No response received. Please check server logs.");
       }
     }, 3000);
+  };
+
+  const testAzureSpeech = () => {
+    if (socketRef.current && socketRef.current.connected) {
+      // Send a test message to verify the connection
+      socketRef.current.emit('test_azure', {
+        room_id: id,
+        source_language: eventData.sourceLanguages[0],
+        target_languages: eventData.targetLanguages
+      });
+      console.log('Test Azure message sent');
+    }
   };
 
   if (!eventData && !error) {
@@ -771,6 +784,15 @@ const EventLivePage = () => {
         sx={{ ml: 2 }}
       >
         Test Backend
+      </Button>
+
+      <Button
+        variant="outlined"
+        onClick={testAzureSpeech}
+        disabled={!socketConnected}
+        sx={{ ml: 2 }}
+      >
+        Test Azure Connection
       </Button>
     </Box>
   );

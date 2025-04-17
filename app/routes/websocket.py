@@ -148,12 +148,21 @@ def on_start_recognition(data):
         def session_stopped_cb(evt: speechsdk.SessionEventArgs):
             logger.info(f'[{sid}] Recognition Session Stopped.')
 
+        def recognizing_cb(evt):
+            """Callback for when speech is being recognized (interim results)"""
+            result = evt.result
+            logger.info(f"[{sid}] RECOGNIZING (interim): {result.text}")
+
         recognizer.recognized.connect(recognized_cb)
         recognizer.canceled.connect(canceled_cb)
         recognizer.session_stopped.connect(session_stopped_cb)
+        recognizer.recognizing.connect(recognizing_cb)
 
         recognizer.start_continuous_recognition_async()
         logger.info(f"[{sid}] Continuous recognition started.")
+
+        logger.info(f"[{sid}] Azure Speech recognizer created with language: {source_language}")
+        logger.info(f"[{sid}] Azure Speech config: {speech_config}")
 
         with session_lock:
             active_sessions[sid] = {
@@ -194,22 +203,22 @@ def on_audio_chunk(data):
         # Handle binary data directly
         if isinstance(data, bytes):
             audio_data = data
-            logger.debug(f"[{sid}] Received binary audio chunk: {len(audio_data)} bytes")
+            logger.info(f"[{sid}] Received binary audio chunk: {len(audio_data)} bytes")
         # Handle Blob/Buffer sent by Socket.IO
         elif hasattr(data, 'read'):
             audio_data = data.read()
-            logger.debug(f"[{sid}] Read audio data from buffer: {len(audio_data)} bytes")
+            logger.info(f"[{sid}] Read audio data from buffer: {len(audio_data)} bytes")
         # If it's a dictionary with metadata (your current approach)
         elif isinstance(data, dict) and 'audio' in data:
             audio_data = data['audio']
-            logger.debug(f"[{sid}] Extracted audio from dict: {len(audio_data)} bytes")
+            logger.info(f"[{sid}] Extracted audio from dict: {len(audio_data)} bytes")
         else:
-            logger.warning(f"[{sid}] Unrecognized audio data format: {type(data)}")
+            logger.warning(f"[{sid}] Unrecognized audio data format: {type(data)}, data: {str(data)[:100]}")
             return
             
         # Write to the stream
         stream.write(audio_data)
-        logger.debug(f"[{sid}] Audio chunk written to stream: {len(audio_data)} bytes")
+        logger.info(f"[{sid}] Audio chunk written to stream: {len(audio_data)} bytes")
         
     except Exception as e:
         logger.error(f"[{sid}] Error processing audio chunk: {e}", exc_info=True)
@@ -221,6 +230,49 @@ def on_stop_recognition():
     logger.info(f"[{sid}] Received stop_recognition request from client.")
     stop_session(sid)
     emit('recognition_stopped', {'message': 'Recognition stopped by client request.'}, room=sid)
+
+@socketio.on('test_azure')
+def on_test_azure(data):
+    """Test the Azure Speech service with a simple text"""
+    sid = request.sid
+    source_language = data.get('source_language', 'en-US')
+    target_languages = data.get('target_languages', ['es'])
+    target_language = target_languages[0] if target_languages else 'es'
+    
+    logger.info(f"[{sid}] Testing Azure Speech with {source_language} -> {target_language}")
+    
+    try:
+        # Get the translation service
+        translation_service = current_app.translation_service
+        if not translation_service:
+            logger.error(f"[{sid}] Translation service not available")
+            emit('error', {'message': 'Translation service not configured'})
+            return
+            
+        # Test translation with a simple text
+        test_text = "This is a test message."
+        base_source_lang = 'en'  # Hardcoded for test
+        base_target_lang = target_language.split('-')[0]
+        
+        translated = translation_service.translate(test_text, base_target_lang, base_source_lang)
+        
+        if translated:
+            logger.info(f"[{sid}] Test translation successful: {test_text} -> {translated}")
+            emit('translation_result', {
+                'original': test_text,
+                'translated': translated,
+                'source_language': 'en-US',
+                'target_language': target_language
+            })
+        else:
+            logger.error(f"[{sid}] Test translation failed")
+            emit('translation_error', {
+                'original': test_text,
+                'message': 'Test translation failed'
+            })
+    except Exception as e:
+        logger.error(f"[{sid}] Test Azure error: {e}", exc_info=True)
+        emit('error', {'message': f'Test error: {str(e)}'})
 
 def stop_session(sid):
     """Stop and clean up a session"""
