@@ -107,7 +107,10 @@ def create_app(config_class=Config):
         async_mode='gevent',
         cors_allowed_origins="*", # Be specific in production
         logger=True,              # Enable Flask-SocketIO logger (uses logging module)
-        engineio_logger=True      # Enable Engine.IO logger (uses logging module)
+        engineio_logger=True,      # Enable Engine.IO logger (uses logging module)
+        engineio_options={
+            'max_decode_packets': 500 # Or another higher value
+        }
     )
     logger.info(f"--- create_app --- Initialized SocketIO. Object ID: {id(socketio)}")
 

@@ -8,6 +8,12 @@ import logging
 import os
 import threading
 from queue import Queue
+import asyncio
+import base64
+import traceback
+from app.services.session_manager import SessionManager
+from app.services.translation_service import TranslationService
+from app.services.recognition_service import RecognitionService, create_recognizer, create_stream, process_stream_results
 
 # Import Azure Speech SDK
 import azure.cognitiveservices.speech as speechsdk
@@ -24,6 +30,10 @@ recognizer_lock = threading.Lock() # To protect access to the dictionary
 
 # Define session_state globally (if this is how you manage state)
 session_state = {}
+
+# Global storage for room sessions and locks
+room_sessions = {}
+room_locks = {} # New dictionary for locks
 
 # --- Helper Function to Get Services (Corrected) ---
 # Ensures services are accessed within app context when needed
@@ -656,3 +666,2967 @@ def handle_start_recognition(data):
                     except Exception as close_err:
                         logging.error(f"Error closing stream during cleanup for room {room_id}: {close_err}")
     """ 
+
+# Helper to get or create a lock for a room
+# Ensures only one task modifies a specific room's state at a time
+async def get_room_lock(room_id):
+    if room_id not in room_locks:
+        room_locks[room_id] = asyncio.Lock()
+        logging.debug(f"Created new lock for room {room_id}")
+    return room_locks[room_id]
+
+@socketio.on('start_recognition')
+async def handle_start_recognition(data):
+    """Starts the speech recognition and translation stream for a room."""
+    # ... validation ...
+    room_id = data.get('room_id')
+    source_language = data.get('source_language')
+    target_languages = data.get('target_languages', [])
+    # ... more validation ...
+
+    logging.info(f"--- RAW START RECOGNITION RECEIVED --- SID: {request.sid}, Raw Data: {data}")
+
+    session_state = session_manager.get_session_state(request.sid)
+    if not session_state:
+        # ... error handling ...
+        return
+
+    # Update session state early
+    session_state['room_id'] = room_id
+    session_state['source_language'] = source_language
+    session_state['target_languages'] = target_languages
+    session_manager.update_session_state(request.sid, session_state)
+    logging.info(f"Updated session state for SID {request.sid} with room {room_id} and languages.")
+
+    # Get and acquire the lock for the room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock:
+        logging.info(f"Acquired lock for room {room_id} by SID {request.sid} for start_recognition")
+
+        # Check if recognition is already active for this room INSIDE the lock
+        if room_id in room_sessions and room_sessions[room_id].get('recognizer'):
+            logging.warning(f"Recognition already active for room {room_id}. Associating SID {request.sid}.")
+            # Add user to the existing room session if they aren't already there
+            if request.sid not in room_sessions[room_id]['sids']:
+                 room_sessions[room_id]['sids'].add(request.sid)
+                 logging.info(f"User {request.sid} added to existing room {room_id} session.")
+            # Confirm to the client they joined an active session
+            await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Joined active recognition session.'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after joining existing session.")
+            return # Lock is released automatically
+
+        # Initialize session for the room if it doesn't exist (safe within lock)
+        if room_id not in room_sessions:
+            room_sessions[room_id] = {
+                'sids': set(),
+                'recognizer': None,
+                'stream': None,
+                'source_language': source_language,
+                'target_languages': target_languages,
+                'translations': {lang: "" for lang in target_languages}
+            }
+            logging.info(f"Initialized new session structure for room {room_id}")
+
+        # Add user to the room session's SID set
+        room_sessions[room_id]['sids'].add(request.sid)
+        logging.info(f"User {request.sid} added to room {room_id} session SIDs.")
+
+        # Create recognizer and stream (we know they don't exist here due to the check above)
+        try:
+            logging.info(f"Attempting to create Recognizer and Stream for room {room_id}")
+            # --- Critical Section Start ---
+            recognizer = await create_recognizer(source_language)
+            stream = await create_stream(recognizer, source_language, target_languages, room_id, request.sid) # Pass sid
+
+            # Store recognizer and stream in the room's session
+            room_sessions[room_id]['recognizer'] = recognizer
+            room_sessions[room_id]['stream'] = stream
+            # --- Critical Section End ---
+            logging.info(f"Successfully created and stored Recognizer and Stream for room {room_id}")
+
+            # Start the background task for processing stream results
+            socketio.start_background_task(process_stream_results, stream, room_id, target_languages, request.sid) # Pass sid
+            logging.info(f"Started background task for processing stream results for room {room_id}")
+
+        except Exception as e:
+            logging.error(f"Failed to create recognizer or stream for room {room_id}: {e}", exc_info=True)
+            # Clean up partial state: remove the room entry if we created it and failed
+            if room_id in room_sessions and not room_sessions[room_id].get('recognizer'): # Check if we failed before setting recognizer
+                 logging.warning(f"Cleaning up potentially incomplete room session entry for {room_id} due to creation failure.")
+                 # Remove SID first
+                 if request.sid in room_sessions[room_id]['sids']:
+                     room_sessions[room_id]['sids'].remove(request.sid)
+                 # If now empty, remove room and lock
+                 if not room_sessions[room_id]['sids']:
+                     del room_sessions[room_id]
+                     if room_id in room_locks:
+                         del room_locks[room_id]
+                         logging.info(f"Removed lock for room {room_id} during cleanup.")
+
+            await socketio.emit('error', {'message': f'Failed to start recognition: {e}'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after creation failure.")
+            return # Lock released automatically
+
+    # Lock is released here automatically after 'async with' block completes
+
+    # Confirm recognition started to the client (outside the lock is fine)
+    await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Recognition started successfully.'}, room=request.sid)
+    logging.info(f"Sent 'recognition_started' confirmation to SID: {request.sid} for room {room_id}")
+    logging.info(f"Completed start_recognition setup for room {room_id} by SID {request.sid}.")
+
+@socketio.on('disconnect')
+async def handle_disconnect():
+    """Handles client disconnection."""
+    logging.info(f"--- Disconnect Event Start --- Client disconnecting: {request.sid}")
+    session_state = session_manager.get_session_state(request.sid)
+    room_id_to_check = None
+    if session_state:
+        room_id_to_check = session_state.get('room_id')
+        if room_id_to_check:
+            logging.info(f"Client {request.sid} was associated with room {room_id_to_check}. Checking room state.")
+        else:
+            logging.info(f"Client {request.sid} disconnecting was not associated with any room in session state.")
+    else:
+        logging.warning(f"Session state not found for disconnecting SID: {request.sid}. Cannot determine room association.")
+        # Attempt to find the SID in any room session as a fallback (might be slow if many rooms)
+        # for r_id, session_data in room_sessions.items():
+        #     if request.sid in session_data.get('sids', set()):
+        #         room_id_to_check = r_id
+        #         logging.warning(f"Found disconnected SID {request.sid} in room {r_id} via direct check.")
+        #         break
+
+    if room_id_to_check:
+        room_lock = await get_room_lock(room_id_to_check) # Get lock for the room
+        async with room_lock: # Acquire lock for safe modification
+            logging.info(f"Acquired lock for room {room_id_to_check} by SID {request.sid} for disconnect")
+            if room_id_to_check in room_sessions:
+                session = room_sessions[room_id_to_check]
+                if request.sid in session['sids']:
+                    session['sids'].remove(request.sid)
+                    logging.info(f"Removed SID {request.sid} from room {room_id_to_check} session due to disconnect.")
+
+                    # If the room becomes empty, clean up recognition resources and the room entry/lock
+                    if not session['sids']:
+                        logging.info(f"Room {room_id_to_check} is now empty after disconnect of {request.sid}. Cleaning up.")
+                        recognizer = session.get('recognizer')
+                        stream = session.get('stream')
+                        if stream:
+                            try:
+                                stream.input_finished() # Signal end if stream exists
+                                logging.info(f"Signaled input_finished to stream for room {room_id_to_check} during cleanup.")
+                            except Exception as e:
+                                logging.error(f"Error calling input_finished during disconnect cleanup for room {room_id_to_check}: {e}", exc_info=True)
+                        # Clear refs
+                        session['recognizer'] = None
+                        session['stream'] = None
+                        del room_sessions[room_id_to_check]
+                        if room_id_to_check in room_locks:
+                            del room_locks[room_id_to_check] # Clean up lock
+                            logging.info(f"Removed lock for room {room_id_to_check}.")
+                    else:
+                        logging.info(f"Room {room_id_to_check} still has active SIDs after disconnect of {request.sid}: {session['sids']}")
+                else:
+                    logging.warning(f"SID {request.sid} disconnected but was not found in the sids set for room {room_id_to_check} (inside lock).")
+            else:
+                logging.warning(f"Room {room_id_to_check} associated with disconnecting SID {request.sid} not found in active room_sessions (inside lock).")
+            logging.info(f"Releasing lock for room {room_id_to_check} by SID {request.sid} after disconnect processing")
+            # Lock released automatically
+    else:
+         logging.info(f"No room ID found for SID {request.sid}, skipping room cleanup.")
+
+    # Clean up session state managed by SessionManager regardless of room association
+    deleted = session_manager.delete_session_state(request.sid)
+    if deleted:
+        logging.info(f"Deleted session state for SID: {request.sid}")
+    else:
+        logging.info(f"No session state found to delete for SID: {request.sid} (already cleaned up or never existed).")
+
+    logging.info(f"--- Disconnect Event End --- Client disconnected: {request.sid}")
+
+@socketio.on('audio_chunk')
+async def handle_audio_chunk(data):
+    """Handles incoming audio chunks for transcription and translation."""
+    # ... validation ...
+    room_id = data.get('room')
+    audio_chunk = data.get('audio_chunk')
+    # ... more validation ...
+
+    # Get the lock for the specific room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock: # Acquire lock before accessing/modifying room state
+        # logger.debug(f"Acquired lock for room {room_id} by SID {request.sid} for on_audio_chunk") # Optional: Verbose logging
+
+        if room_id in room_sessions:
+            session = room_sessions[room_id]
+            recognizer = session.get('recognizer')
+            stream = session.get('stream')
+
+            if recognizer and stream: # Check if recognition is fully set up
+                try:
+                    # Ensure audio_chunk is bytes
+                    if isinstance(audio_chunk, str):
+                        # Assuming base64 encoding if it's a string
+                        logging.debug(f"Decoding base64 audio chunk for room {room_id}")
+                        audio_chunk = base64.b64decode(audio_chunk)
+                    elif not isinstance(audio_chunk, bytes):
+                        logging.error(f"Invalid audio chunk type received: {type(audio_chunk)} for room {room_id}")
+                        await socketio.emit('error', {'message': 'Invalid audio chunk format.'}, room=request.sid)
+                        return # Exit if format is invalid
+
+                    if audio_chunk:
+                        # logger.debug(f"Adding audio chunk to stream for room {room_id}. Size: {len(audio_chunk)}")
+                        stream.add_audio_chunk(audio_chunk)
+                    else:
+                        logging.warning(f"Received empty audio chunk for room {room_id} from {request.sid}")
+
+                except Exception as e:
+                    logging.error(f"Error processing audio chunk for room {room_id}: {e}", exc_info=True)
+                    await socketio.emit('error', {'message': f'Error processing audio chunk: {e}'}, room=request.sid)
+            else:
+                # This path should be less likely now, but handle defensively
+                logging.warning(f"No active recognizer or stream found for room {room_id} (inside lock) for audio chunk from {request.sid}")
+                await socketio.emit('error', {'message': 'Recognition setup not complete or failed for this room'}, room=request.sid)
+        else:
+            logging.warning(f"Room {room_id} not found in sessions (inside lock) for audio chunk from {request.sid}")
+            await socketio.emit('error', {'message': f'Room {room_id} not found or recognition not started.'}, room=request.sid)
+
+    # logger.debug(f"Releasing lock for room {room_id} by SID {request.sid} after on_audio_chunk") # Lock released automatically
+
+@socketio.on('join_room')
+def on_join(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    target_languages = data.get('target_languages', []) # e.g., ['es', 'fr']
+    source_language = data.get('source_language', 'en-US') # e.g., 'en-US'
+
+    if not room_id:
+        logging.error(f"Join attempt failed for {sid}: No room_id provided.")
+        emit('error', {'message': 'room_id is required'}, room=sid)
+        return
+
+    join_room(room_id)
+    logging.info(f"Client {sid} joined room {room_id}. Source: {source_language}, Targets: {target_languages}")
+    emit('room_joined', {'room_id': room_id, 'message': f'Successfully joined room {room_id}'}, room=sid)
+
+    # --- Initialize Recognizer for the Room (if not already) ---
+    with recognizer_lock:
+        if room_id not in active_recognizers:
+            logging.info(f"Initializing recognizer for room {room_id}")
+            translation_service, speech_service = get_services() # Use helper
+
+            if not speech_service or not speech_service.speech_config:
+                logging.error(f"Cannot initialize recognizer for room {room_id}: SpeechService not configured.")
+                emit('error', {'message': 'Backend speech service not ready'}, room=room_id)
+                # Maybe leave room?
+                return
+
+            try:
+                # Create a push stream for audio data
+                stream = speechsdk.audio.PushAudioInputStream()
+                audio_config = speechsdk.audio.AudioConfig(stream=stream)
+
+                # Configure for continuous translation recognition
+                # Use the speech_config from the initialized service
+                # Ensure subscription and region are accessed correctly from the service's config
+                azure_key = speech_service.speech_config.subscription
+                azure_region = speech_service.speech_config.region
+
+                translation_config = speechsdk.translation.SpeechTranslationConfig(
+                    subscription=azure_key,
+                    region=azure_region
+                )
+                translation_config.speech_recognition_language = source_language
+                for lang in target_languages:
+                    # Map to Azure's expected format if needed (e.g., 'es' from 'es-ES')
+                    azure_target_lang = lang.split('-')[0] if '-' in lang else lang # Handle cases like 'es' vs 'es-ES'
+                    translation_config.add_target_language(azure_target_lang)
+
+                recognizer = speechsdk.translation.TranslationRecognizer(
+                    translation_config=translation_config,
+                    audio_config=audio_config
+                )
+
+                # --- Define Callbacks ---
+                def recognizing_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    # Handle intermediate results if needed
+                    if evt.result.reason == speechsdk.ResultReason.TranslatingSpeech:
+                         translations = evt.result.translations
+                         logging.debug(f"TRANSLATING in room {room_id}: {translations}")
+                         # Emit intermediate results if desired
+                         # socketio.emit('recognizing', {'translations': translations}, room=room_id)
+
+                def recognized_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    if evt.result.reason == speechsdk.ResultReason.TranslatedSpeech:
+                        recognition = evt.result.text # Original recognized text
+                        translations = evt.result.translations # Dictionary: {'de': 'text', 'fr': 'text'}
+                        logging.info(f"RECOGNIZED in room {room_id}: '{recognition}' -> {translations}")
+                        # Emit final recognized segment and its translations
+                        socketio.emit('recognized_speech', {
+                            'recognition': recognition,
+                            'translations': translations,
+                            'source_language': source_language # Include source lang context
+                        }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                         # This happens if only recognition occurs (no translation targets?)
+                         logging.info(f"RECOGNIZED (no translation) in room {room_id}: {evt.result.text}")
+                         socketio.emit('recognized_speech', {
+                             'recognition': evt.result.text,
+                             'translations': {},
+                             'source_language': source_language
+                         }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.NoMatch:
+                        logging.warning(f"NOMATCH in room {room_id}: Speech could not be recognized.")
+                        # Optionally emit a no-match event
+                        # socketio.emit('no_match', {'message': 'No speech recognized'}, room=room_id)
+
+                def canceled_cb(evt: speechsdk.translation.TranslationRecognitionCanceledEventArgs):
+                     logging.error(f"RECOGNITION CANCELED in room {room_id}: Reason={evt.reason}")
+                     if evt.reason == speechsdk.CancellationReason.Error:
+                         logging.error(f"CANCELED ErrorDetails={evt.error_details}")
+                     # Stop recognition and clean up for this room
+                     stop_recognition(room_id) # Call cleanup helper
+                     socketio.emit('recognition_error', {'error': f'Recognition canceled: {evt.reason}'}, room=room_id)
+
+                def session_started_cb(evt):
+                    logging.info(f'Recognition SESSION STARTED in room {room_id}: {evt}')
+
+                def session_stopped_cb(evt):
+                    logging.info(f'Recognition SESSION STOPPED in room {room_id}: {evt}')
+                    # Clean up when session stops naturally or due to error
+                    stop_recognition(room_id) # Call cleanup helper
+
+
+                # --- Connect Callbacks ---
+                recognizer.recognizing.connect(recognizing_cb)
+                recognizer.recognized.connect(recognized_cb)
+                recognizer.canceled.connect(canceled_cb)
+                recognizer.session_started.connect(session_started_cb)
+                recognizer.session_stopped.connect(session_stopped_cb)
+
+                # --- Start Continuous Recognition ---
+                recognizer.start_continuous_recognition_async()
+                logging.info(f"Started continuous recognition for room {room_id}")
+
+                # Store recognizer and stream
+                active_recognizers[room_id] = {
+                    'recognizer': recognizer,
+                    'stream': stream,
+                    'target_languages': target_languages,
+                    'source_language': source_language
+                }
+
+            except Exception as e:
+                logging.error(f"Failed to initialize recognizer for room {room_id}: {e}", exc_info=True)
+                emit('error', {'message': f'Failed to start recognition: {e}'}, room=room_id)
+
+
+@socketio.on('leave_room')
+def on_leave(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    if not room_id:
+        logging.warning(f"Leave attempt failed for {sid}: No room_id provided.")
+        return
+
+    leave_room(room_id)
+    logging.info(f"Client {sid} left room {room_id}")
+    emit('room_left', {'room_id': room_id, 'message': f'Successfully left room {room_id}'}, room=sid)
+
+    # Check if room is now empty and stop recognizer if so
+    # This requires tracking users per room, which SocketIO does internally
+    # Need to access the server's room data correctly
+    room_users = socketio.server.manager.rooms.get('/', {}).get(room_id)
+    if not room_users or len(room_users) == 0:
+         logging.info(f"Room {room_id} is empty. Stopping recognition.")
+         stop_recognition(room_id) # Call cleanup helper
+
+
+@socketio.on('audio_chunk')
+async def handle_audio_chunk(data):
+    """Handles incoming audio chunks for transcription and translation."""
+    # ... validation ...
+    room_id = data.get('room')
+    audio_chunk = data.get('audio_chunk')
+    # ... more validation ...
+
+    # Get the lock for the specific room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock: # Acquire lock before accessing/modifying room state
+        # logger.debug(f"Acquired lock for room {room_id} by SID {request.sid} for on_audio_chunk") # Optional: Verbose logging
+
+        if room_id in room_sessions:
+            session = room_sessions[room_id]
+            recognizer = session.get('recognizer')
+            stream = session.get('stream')
+
+            if recognizer and stream: # Check if recognition is fully set up
+                try:
+                    # Ensure audio_chunk is bytes
+                    if isinstance(audio_chunk, str):
+                        # Assuming base64 encoding if it's a string
+                        logging.debug(f"Decoding base64 audio chunk for room {room_id}")
+                        audio_chunk = base64.b64decode(audio_chunk)
+                    elif not isinstance(audio_chunk, bytes):
+                        logging.error(f"Invalid audio chunk type received: {type(audio_chunk)} for room {room_id}")
+                        await socketio.emit('error', {'message': 'Invalid audio chunk format.'}, room=request.sid)
+                        return # Exit if format is invalid
+
+                    if audio_chunk:
+                        # logger.debug(f"Adding audio chunk to stream for room {room_id}. Size: {len(audio_chunk)}")
+                        stream.add_audio_chunk(audio_chunk)
+                    else:
+                        logging.warning(f"Received empty audio chunk for room {room_id} from {request.sid}")
+
+                except Exception as e:
+                    logging.error(f"Error processing audio chunk for room {room_id}: {e}", exc_info=True)
+                    await socketio.emit('error', {'message': f'Error processing audio chunk: {e}'}, room=request.sid)
+            else:
+                # This path should be less likely now, but handle defensively
+                logging.warning(f"No active recognizer or stream found for room {room_id} (inside lock) for audio chunk from {request.sid}")
+                await socketio.emit('error', {'message': 'Recognition setup not complete or failed for this room'}, room=request.sid)
+        else:
+            logging.warning(f"Room {room_id} not found in sessions (inside lock) for audio chunk from {request.sid}")
+            await socketio.emit('error', {'message': f'Room {room_id} not found or recognition not started.'}, room=request.sid)
+
+    # logger.debug(f"Releasing lock for room {room_id} by SID {request.sid} after on_audio_chunk") # Lock released automatically
+
+@socketio.on('stop_recognition')
+def handle_stop_recognition(data):
+    """Client explicitly requests to stop."""
+    sid = request.sid
+    room_id = data.get('room_id')
+    logging.info(f"Received stop request from {sid} for room {room_id}")
+    if room_id:
+        stop_recognition(room_id) # Call cleanup helper
+
+@socketio.on('start_recognition')
+async def handle_start_recognition(data):
+    """Starts the speech recognition and translation stream for a room."""
+    # ... validation ...
+    room_id = data.get('room_id')
+    source_language = data.get('source_language')
+    target_languages = data.get('target_languages', [])
+    # ... more validation ...
+
+    logging.info(f"--- RAW START RECOGNITION RECEIVED --- SID: {request.sid}, Raw Data: {data}")
+
+    session_state = session_manager.get_session_state(request.sid)
+    if not session_state:
+        # ... error handling ...
+        return
+
+    # Update session state early
+    session_state['room_id'] = room_id
+    session_state['source_language'] = source_language
+    session_state['target_languages'] = target_languages
+    session_manager.update_session_state(request.sid, session_state)
+    logging.info(f"Updated session state for SID {request.sid} with room {room_id} and languages.")
+
+    # Get and acquire the lock for the room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock:
+        logging.info(f"Acquired lock for room {room_id} by SID {request.sid} for start_recognition")
+
+        # Check if recognition is already active for this room INSIDE the lock
+        if room_id in room_sessions and room_sessions[room_id].get('recognizer'):
+            logging.warning(f"Recognition already active for room {room_id}. Associating SID {request.sid}.")
+            # Add user to the existing room session if they aren't already there
+            if request.sid not in room_sessions[room_id]['sids']:
+                 room_sessions[room_id]['sids'].add(request.sid)
+                 logging.info(f"User {request.sid} added to existing room {room_id} session.")
+            # Confirm to the client they joined an active session
+            await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Joined active recognition session.'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after joining existing session.")
+            return # Lock is released automatically
+
+        # Initialize session for the room if it doesn't exist (safe within lock)
+        if room_id not in room_sessions:
+            room_sessions[room_id] = {
+                'sids': set(),
+                'recognizer': None,
+                'stream': None,
+                'source_language': source_language,
+                'target_languages': target_languages,
+                'translations': {lang: "" for lang in target_languages}
+            }
+            logging.info(f"Initialized new session structure for room {room_id}")
+
+        # Add user to the room session's SID set
+        room_sessions[room_id]['sids'].add(request.sid)
+        logging.info(f"User {request.sid} added to room {room_id} session SIDs.")
+
+        # Create recognizer and stream (we know they don't exist here due to the check above)
+        try:
+            logging.info(f"Attempting to create Recognizer and Stream for room {room_id}")
+            # --- Critical Section Start ---
+            recognizer = await create_recognizer(source_language)
+            stream = await create_stream(recognizer, source_language, target_languages, room_id, request.sid) # Pass sid
+
+            # Store recognizer and stream in the room's session
+            room_sessions[room_id]['recognizer'] = recognizer
+            room_sessions[room_id]['stream'] = stream
+            # --- Critical Section End ---
+            logging.info(f"Successfully created and stored Recognizer and Stream for room {room_id}")
+
+            # Start the background task for processing stream results
+            socketio.start_background_task(process_stream_results, stream, room_id, target_languages, request.sid) # Pass sid
+            logging.info(f"Started background task for processing stream results for room {room_id}")
+
+        except Exception as e:
+            logging.error(f"Failed to create recognizer or stream for room {room_id}: {e}", exc_info=True)
+            # Clean up partial state: remove the room entry if we created it and failed
+            if room_id in room_sessions and not room_sessions[room_id].get('recognizer'): # Check if we failed before setting recognizer
+                 logging.warning(f"Cleaning up potentially incomplete room session entry for {room_id} due to creation failure.")
+                 # Remove SID first
+                 if request.sid in room_sessions[room_id]['sids']:
+                     room_sessions[room_id]['sids'].remove(request.sid)
+                 # If now empty, remove room and lock
+                 if not room_sessions[room_id]['sids']:
+                     del room_sessions[room_id]
+                     if room_id in room_locks:
+                         del room_locks[room_id]
+                         logging.info(f"Removed lock for room {room_id} during cleanup.")
+
+            await socketio.emit('error', {'message': f'Failed to start recognition: {e}'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after creation failure.")
+            return # Lock released automatically
+
+    # Lock is released here automatically after 'async with' block completes
+
+    # Confirm recognition started to the client (outside the lock is fine)
+    await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Recognition started successfully.'}, room=request.sid)
+    logging.info(f"Sent 'recognition_started' confirmation to SID: {request.sid} for room {room_id}")
+    logging.info(f"Completed start_recognition setup for room {room_id} by SID {request.sid}.")
+
+@socketio.on('disconnect')
+async def handle_disconnect():
+    """Handles client disconnection."""
+    logging.info(f"--- Disconnect Event Start --- Client disconnecting: {request.sid}")
+    session_state = session_manager.get_session_state(request.sid)
+    room_id_to_check = None
+    if session_state:
+        room_id_to_check = session_state.get('room_id')
+        if room_id_to_check:
+            logging.info(f"Client {request.sid} was associated with room {room_id_to_check}. Checking room state.")
+        else:
+            logging.info(f"Client {request.sid} disconnecting was not associated with any room in session state.")
+    else:
+        logging.warning(f"Session state not found for disconnecting SID: {request.sid}. Cannot determine room association.")
+        # Attempt to find the SID in any room session as a fallback (might be slow if many rooms)
+        # for r_id, session_data in room_sessions.items():
+        #     if request.sid in session_data.get('sids', set()):
+        #         room_id_to_check = r_id
+        #         logging.warning(f"Found disconnected SID {request.sid} in room {r_id} via direct check.")
+        #         break
+
+    if room_id_to_check:
+        room_lock = await get_room_lock(room_id_to_check) # Get lock for the room
+        async with room_lock: # Acquire lock for safe modification
+            logging.info(f"Acquired lock for room {room_id_to_check} by SID {request.sid} for disconnect")
+            if room_id_to_check in room_sessions:
+                session = room_sessions[room_id_to_check]
+                if request.sid in session['sids']:
+                    session['sids'].remove(request.sid)
+                    logging.info(f"Removed SID {request.sid} from room {room_id_to_check} session due to disconnect.")
+
+                    # If the room becomes empty, clean up recognition resources and the room entry/lock
+                    if not session['sids']:
+                        logging.info(f"Room {room_id_to_check} is now empty after disconnect of {request.sid}. Cleaning up.")
+                        recognizer = session.get('recognizer')
+                        stream = session.get('stream')
+                        if stream:
+                            try:
+                                stream.input_finished() # Signal end if stream exists
+                                logging.info(f"Signaled input_finished to stream for room {room_id_to_check} during cleanup.")
+                            except Exception as e:
+                                logging.error(f"Error calling input_finished during disconnect cleanup for room {room_id_to_check}: {e}", exc_info=True)
+                        # Clear refs
+                        session['recognizer'] = None
+                        session['stream'] = None
+                        del room_sessions[room_id_to_check]
+                        if room_id_to_check in room_locks:
+                            del room_locks[room_id_to_check] # Clean up lock
+                            logging.info(f"Removed lock for room {room_id_to_check}.")
+                    else:
+                        logging.info(f"Room {room_id_to_check} still has active SIDs after disconnect of {request.sid}: {session['sids']}")
+                else:
+                    logging.warning(f"SID {request.sid} disconnected but was not found in the sids set for room {room_id_to_check} (inside lock).")
+            else:
+                logging.warning(f"Room {room_id_to_check} associated with disconnecting SID {request.sid} not found in active room_sessions (inside lock).")
+            logging.info(f"Releasing lock for room {room_id_to_check} by SID {request.sid} after disconnect processing")
+            # Lock released automatically
+    else:
+         logging.info(f"No room ID found for SID {request.sid}, skipping room cleanup.")
+
+    # Clean up session state managed by SessionManager regardless of room association
+    deleted = session_manager.delete_session_state(request.sid)
+    if deleted:
+        logging.info(f"Deleted session state for SID: {request.sid}")
+    else:
+        logging.info(f"No session state found to delete for SID: {request.sid} (already cleaned up or never existed).")
+
+    logging.info(f"--- Disconnect Event End --- Client disconnected: {request.sid}")
+
+@socketio.on('join_room')
+def on_join(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    target_languages = data.get('target_languages', []) # e.g., ['es', 'fr']
+    source_language = data.get('source_language', 'en-US') # e.g., 'en-US'
+
+    if not room_id:
+        logging.error(f"Join attempt failed for {sid}: No room_id provided.")
+        emit('error', {'message': 'room_id is required'}, room=sid)
+        return
+
+    join_room(room_id)
+    logging.info(f"Client {sid} joined room {room_id}. Source: {source_language}, Targets: {target_languages}")
+    emit('room_joined', {'room_id': room_id, 'message': f'Successfully joined room {room_id}'}, room=sid)
+
+    # --- Initialize Recognizer for the Room (if not already) ---
+    with recognizer_lock:
+        if room_id not in active_recognizers:
+            logging.info(f"Initializing recognizer for room {room_id}")
+            translation_service, speech_service = get_services() # Use helper
+
+            if not speech_service or not speech_service.speech_config:
+                logging.error(f"Cannot initialize recognizer for room {room_id}: SpeechService not configured.")
+                emit('error', {'message': 'Backend speech service not ready'}, room=room_id)
+                # Maybe leave room?
+                return
+
+            try:
+                # Create a push stream for audio data
+                stream = speechsdk.audio.PushAudioInputStream()
+                audio_config = speechsdk.audio.AudioConfig(stream=stream)
+
+                # Configure for continuous translation recognition
+                # Use the speech_config from the initialized service
+                # Ensure subscription and region are accessed correctly from the service's config
+                azure_key = speech_service.speech_config.subscription
+                azure_region = speech_service.speech_config.region
+
+                translation_config = speechsdk.translation.SpeechTranslationConfig(
+                    subscription=azure_key,
+                    region=azure_region
+                )
+                translation_config.speech_recognition_language = source_language
+                for lang in target_languages:
+                    # Map to Azure's expected format if needed (e.g., 'es' from 'es-ES')
+                    azure_target_lang = lang.split('-')[0] if '-' in lang else lang # Handle cases like 'es' vs 'es-ES'
+                    translation_config.add_target_language(azure_target_lang)
+
+                recognizer = speechsdk.translation.TranslationRecognizer(
+                    translation_config=translation_config,
+                    audio_config=audio_config
+                )
+
+                # --- Define Callbacks ---
+                def recognizing_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    # Handle intermediate results if needed
+                    if evt.result.reason == speechsdk.ResultReason.TranslatingSpeech:
+                         translations = evt.result.translations
+                         logging.debug(f"TRANSLATING in room {room_id}: {translations}")
+                         # Emit intermediate results if desired
+                         # socketio.emit('recognizing', {'translations': translations}, room=room_id)
+
+                def recognized_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    if evt.result.reason == speechsdk.ResultReason.TranslatedSpeech:
+                        recognition = evt.result.text # Original recognized text
+                        translations = evt.result.translations # Dictionary: {'de': 'text', 'fr': 'text'}
+                        logging.info(f"RECOGNIZED in room {room_id}: '{recognition}' -> {translations}")
+                        # Emit final recognized segment and its translations
+                        socketio.emit('recognized_speech', {
+                            'recognition': recognition,
+                            'translations': translations,
+                            'source_language': source_language # Include source lang context
+                        }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                         # This happens if only recognition occurs (no translation targets?)
+                         logging.info(f"RECOGNIZED (no translation) in room {room_id}: {evt.result.text}")
+                         socketio.emit('recognized_speech', {
+                             'recognition': evt.result.text,
+                             'translations': {},
+                             'source_language': source_language
+                         }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.NoMatch:
+                        logging.warning(f"NOMATCH in room {room_id}: Speech could not be recognized.")
+                        # Optionally emit a no-match event
+                        # socketio.emit('no_match', {'message': 'No speech recognized'}, room=room_id)
+
+                def canceled_cb(evt: speechsdk.translation.TranslationRecognitionCanceledEventArgs):
+                     logging.error(f"RECOGNITION CANCELED in room {room_id}: Reason={evt.reason}")
+                     if evt.reason == speechsdk.CancellationReason.Error:
+                         logging.error(f"CANCELED ErrorDetails={evt.error_details}")
+                     # Stop recognition and clean up for this room
+                     stop_recognition(room_id) # Call cleanup helper
+                     socketio.emit('recognition_error', {'error': f'Recognition canceled: {evt.reason}'}, room=room_id)
+
+                def session_started_cb(evt):
+                    logging.info(f'Recognition SESSION STARTED in room {room_id}: {evt}')
+
+                def session_stopped_cb(evt):
+                    logging.info(f'Recognition SESSION STOPPED in room {room_id}: {evt}')
+                    # Clean up when session stops naturally or due to error
+                    stop_recognition(room_id) # Call cleanup helper
+
+
+                # --- Connect Callbacks ---
+                recognizer.recognizing.connect(recognizing_cb)
+                recognizer.recognized.connect(recognized_cb)
+                recognizer.canceled.connect(canceled_cb)
+                recognizer.session_started.connect(session_started_cb)
+                recognizer.session_stopped.connect(session_stopped_cb)
+
+                # --- Start Continuous Recognition ---
+                recognizer.start_continuous_recognition_async()
+                logging.info(f"Started continuous recognition for room {room_id}")
+
+                # Store recognizer and stream
+                active_recognizers[room_id] = {
+                    'recognizer': recognizer,
+                    'stream': stream,
+                    'target_languages': target_languages,
+                    'source_language': source_language
+                }
+
+            except Exception as e:
+                logging.error(f"Failed to initialize recognizer for room {room_id}: {e}", exc_info=True)
+                emit('error', {'message': f'Failed to start recognition: {e}'}, room=room_id)
+
+
+@socketio.on('leave_room')
+def on_leave(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    if not room_id:
+        logging.warning(f"Leave attempt failed for {sid}: No room_id provided.")
+        return
+
+    leave_room(room_id)
+    logging.info(f"Client {sid} left room {room_id}")
+    emit('room_left', {'room_id': room_id, 'message': f'Successfully left room {room_id}'}, room=sid)
+
+    # Check if room is now empty and stop recognizer if so
+    # This requires tracking users per room, which SocketIO does internally
+    # Need to access the server's room data correctly
+    room_users = socketio.server.manager.rooms.get('/', {}).get(room_id)
+    if not room_users or len(room_users) == 0:
+         logging.info(f"Room {room_id} is empty. Stopping recognition.")
+         stop_recognition(room_id) # Call cleanup helper
+
+
+@socketio.on('audio_chunk')
+async def handle_audio_chunk(data):
+    """Handles incoming audio chunks for transcription and translation."""
+    # ... validation ...
+    room_id = data.get('room')
+    audio_chunk = data.get('audio_chunk')
+    # ... more validation ...
+
+    # Get the lock for the specific room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock: # Acquire lock before accessing/modifying room state
+        # logger.debug(f"Acquired lock for room {room_id} by SID {request.sid} for on_audio_chunk") # Optional: Verbose logging
+
+        if room_id in room_sessions:
+            session = room_sessions[room_id]
+            recognizer = session.get('recognizer')
+            stream = session.get('stream')
+
+            if recognizer and stream: # Check if recognition is fully set up
+                try:
+                    # Ensure audio_chunk is bytes
+                    if isinstance(audio_chunk, str):
+                        # Assuming base64 encoding if it's a string
+                        logging.debug(f"Decoding base64 audio chunk for room {room_id}")
+                        audio_chunk = base64.b64decode(audio_chunk)
+                    elif not isinstance(audio_chunk, bytes):
+                        logging.error(f"Invalid audio chunk type received: {type(audio_chunk)} for room {room_id}")
+                        await socketio.emit('error', {'message': 'Invalid audio chunk format.'}, room=request.sid)
+                        return # Exit if format is invalid
+
+                    if audio_chunk:
+                        # logger.debug(f"Adding audio chunk to stream for room {room_id}. Size: {len(audio_chunk)}")
+                        stream.add_audio_chunk(audio_chunk)
+                    else:
+                        logging.warning(f"Received empty audio chunk for room {room_id} from {request.sid}")
+
+                except Exception as e:
+                    logging.error(f"Error processing audio chunk for room {room_id}: {e}", exc_info=True)
+                    await socketio.emit('error', {'message': f'Error processing audio chunk: {e}'}, room=request.sid)
+            else:
+                # This path should be less likely now, but handle defensively
+                logging.warning(f"No active recognizer or stream found for room {room_id} (inside lock) for audio chunk from {request.sid}")
+                await socketio.emit('error', {'message': 'Recognition setup not complete or failed for this room'}, room=request.sid)
+        else:
+            logging.warning(f"Room {room_id} not found in sessions (inside lock) for audio chunk from {request.sid}")
+            await socketio.emit('error', {'message': f'Room {room_id} not found or recognition not started.'}, room=request.sid)
+
+    # logger.debug(f"Releasing lock for room {room_id} by SID {request.sid} after on_audio_chunk") # Lock released automatically
+
+@socketio.on('stop_recognition')
+def handle_stop_recognition(data):
+    """Client explicitly requests to stop."""
+    sid = request.sid
+    room_id = data.get('room_id')
+    logging.info(f"Received stop request from {sid} for room {room_id}")
+    if room_id:
+        stop_recognition(room_id) # Call cleanup helper
+
+@socketio.on('start_recognition')
+async def handle_start_recognition(data):
+    """Starts the speech recognition and translation stream for a room."""
+    # ... validation ...
+    room_id = data.get('room_id')
+    source_language = data.get('source_language')
+    target_languages = data.get('target_languages', [])
+    # ... more validation ...
+
+    logging.info(f"--- RAW START RECOGNITION RECEIVED --- SID: {request.sid}, Raw Data: {data}")
+
+    session_state = session_manager.get_session_state(request.sid)
+    if not session_state:
+        # ... error handling ...
+        return
+
+    # Update session state early
+    session_state['room_id'] = room_id
+    session_state['source_language'] = source_language
+    session_state['target_languages'] = target_languages
+    session_manager.update_session_state(request.sid, session_state)
+    logging.info(f"Updated session state for SID {request.sid} with room {room_id} and languages.")
+
+    # Get and acquire the lock for the room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock:
+        logging.info(f"Acquired lock for room {room_id} by SID {request.sid} for start_recognition")
+
+        # Check if recognition is already active for this room INSIDE the lock
+        if room_id in room_sessions and room_sessions[room_id].get('recognizer'):
+            logging.warning(f"Recognition already active for room {room_id}. Associating SID {request.sid}.")
+            # Add user to the existing room session if they aren't already there
+            if request.sid not in room_sessions[room_id]['sids']:
+                 room_sessions[room_id]['sids'].add(request.sid)
+                 logging.info(f"User {request.sid} added to existing room {room_id} session.")
+            # Confirm to the client they joined an active session
+            await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Joined active recognition session.'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after joining existing session.")
+            return # Lock is released automatically
+
+        # Initialize session for the room if it doesn't exist (safe within lock)
+        if room_id not in room_sessions:
+            room_sessions[room_id] = {
+                'sids': set(),
+                'recognizer': None,
+                'stream': None,
+                'source_language': source_language,
+                'target_languages': target_languages,
+                'translations': {lang: "" for lang in target_languages}
+            }
+            logging.info(f"Initialized new session structure for room {room_id}")
+
+        # Add user to the room session's SID set
+        room_sessions[room_id]['sids'].add(request.sid)
+        logging.info(f"User {request.sid} added to room {room_id} session SIDs.")
+
+        # Create recognizer and stream (we know they don't exist here due to the check above)
+        try:
+            logging.info(f"Attempting to create Recognizer and Stream for room {room_id}")
+            # --- Critical Section Start ---
+            recognizer = await create_recognizer(source_language)
+            stream = await create_stream(recognizer, source_language, target_languages, room_id, request.sid) # Pass sid
+
+            # Store recognizer and stream in the room's session
+            room_sessions[room_id]['recognizer'] = recognizer
+            room_sessions[room_id]['stream'] = stream
+            # --- Critical Section End ---
+            logging.info(f"Successfully created and stored Recognizer and Stream for room {room_id}")
+
+            # Start the background task for processing stream results
+            socketio.start_background_task(process_stream_results, stream, room_id, target_languages, request.sid) # Pass sid
+            logging.info(f"Started background task for processing stream results for room {room_id}")
+
+        except Exception as e:
+            logging.error(f"Failed to create recognizer or stream for room {room_id}: {e}", exc_info=True)
+            # Clean up partial state: remove the room entry if we created it and failed
+            if room_id in room_sessions and not room_sessions[room_id].get('recognizer'): # Check if we failed before setting recognizer
+                 logging.warning(f"Cleaning up potentially incomplete room session entry for {room_id} due to creation failure.")
+                 # Remove SID first
+                 if request.sid in room_sessions[room_id]['sids']:
+                     room_sessions[room_id]['sids'].remove(request.sid)
+                 # If now empty, remove room and lock
+                 if not room_sessions[room_id]['sids']:
+                     del room_sessions[room_id]
+                     if room_id in room_locks:
+                         del room_locks[room_id]
+                         logging.info(f"Removed lock for room {room_id} during cleanup.")
+
+            await socketio.emit('error', {'message': f'Failed to start recognition: {e}'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after creation failure.")
+            return # Lock released automatically
+
+    # Lock is released here automatically after 'async with' block completes
+
+    # Confirm recognition started to the client (outside the lock is fine)
+    await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Recognition started successfully.'}, room=request.sid)
+    logging.info(f"Sent 'recognition_started' confirmation to SID: {request.sid} for room {room_id}")
+    logging.info(f"Completed start_recognition setup for room {room_id} by SID {request.sid}.")
+
+@socketio.on('disconnect')
+async def handle_disconnect():
+    """Handles client disconnection."""
+    logging.info(f"--- Disconnect Event Start --- Client disconnecting: {request.sid}")
+    session_state = session_manager.get_session_state(request.sid)
+    room_id_to_check = None
+    if session_state:
+        room_id_to_check = session_state.get('room_id')
+        if room_id_to_check:
+            logging.info(f"Client {request.sid} was associated with room {room_id_to_check}. Checking room state.")
+        else:
+            logging.info(f"Client {request.sid} disconnecting was not associated with any room in session state.")
+    else:
+        logging.warning(f"Session state not found for disconnecting SID: {request.sid}. Cannot determine room association.")
+        # Attempt to find the SID in any room session as a fallback (might be slow if many rooms)
+        # for r_id, session_data in room_sessions.items():
+        #     if request.sid in session_data.get('sids', set()):
+        #         room_id_to_check = r_id
+        #         logging.warning(f"Found disconnected SID {request.sid} in room {r_id} via direct check.")
+        #         break
+
+    if room_id_to_check:
+        room_lock = await get_room_lock(room_id_to_check) # Get lock for the room
+        async with room_lock: # Acquire lock for safe modification
+            logging.info(f"Acquired lock for room {room_id_to_check} by SID {request.sid} for disconnect")
+            if room_id_to_check in room_sessions:
+                session = room_sessions[room_id_to_check]
+                if request.sid in session['sids']:
+                    session['sids'].remove(request.sid)
+                    logging.info(f"Removed SID {request.sid} from room {room_id_to_check} session due to disconnect.")
+
+                    # If the room becomes empty, clean up recognition resources and the room entry/lock
+                    if not session['sids']:
+                        logging.info(f"Room {room_id_to_check} is now empty after disconnect of {request.sid}. Cleaning up.")
+                        recognizer = session.get('recognizer')
+                        stream = session.get('stream')
+                        if stream:
+                            try:
+                                stream.input_finished() # Signal end if stream exists
+                                logging.info(f"Signaled input_finished to stream for room {room_id_to_check} during cleanup.")
+                            except Exception as e:
+                                logging.error(f"Error calling input_finished during disconnect cleanup for room {room_id_to_check}: {e}", exc_info=True)
+                        # Clear refs
+                        session['recognizer'] = None
+                        session['stream'] = None
+                        del room_sessions[room_id_to_check]
+                        if room_id_to_check in room_locks:
+                            del room_locks[room_id_to_check] # Clean up lock
+                            logging.info(f"Removed lock for room {room_id_to_check}.")
+                    else:
+                        logging.info(f"Room {room_id_to_check} still has active SIDs after disconnect of {request.sid}: {session['sids']}")
+                else:
+                    logging.warning(f"SID {request.sid} disconnected but was not found in the sids set for room {room_id_to_check} (inside lock).")
+            else:
+                logging.warning(f"Room {room_id_to_check} associated with disconnecting SID {request.sid} not found in active room_sessions (inside lock).")
+            logging.info(f"Releasing lock for room {room_id_to_check} by SID {request.sid} after disconnect processing")
+            # Lock released automatically
+    else:
+         logging.info(f"No room ID found for SID {request.sid}, skipping room cleanup.")
+
+    # Clean up session state managed by SessionManager regardless of room association
+    deleted = session_manager.delete_session_state(request.sid)
+    if deleted:
+        logging.info(f"Deleted session state for SID: {request.sid}")
+    else:
+        logging.info(f"No session state found to delete for SID: {request.sid} (already cleaned up or never existed).")
+
+    logging.info(f"--- Disconnect Event End --- Client disconnected: {request.sid}")
+
+@socketio.on('join_room')
+def on_join(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    target_languages = data.get('target_languages', []) # e.g., ['es', 'fr']
+    source_language = data.get('source_language', 'en-US') # e.g., 'en-US'
+
+    if not room_id:
+        logging.error(f"Join attempt failed for {sid}: No room_id provided.")
+        emit('error', {'message': 'room_id is required'}, room=sid)
+        return
+
+    join_room(room_id)
+    logging.info(f"Client {sid} joined room {room_id}. Source: {source_language}, Targets: {target_languages}")
+    emit('room_joined', {'room_id': room_id, 'message': f'Successfully joined room {room_id}'}, room=sid)
+
+    # --- Initialize Recognizer for the Room (if not already) ---
+    with recognizer_lock:
+        if room_id not in active_recognizers:
+            logging.info(f"Initializing recognizer for room {room_id}")
+            translation_service, speech_service = get_services() # Use helper
+
+            if not speech_service or not speech_service.speech_config:
+                logging.error(f"Cannot initialize recognizer for room {room_id}: SpeechService not configured.")
+                emit('error', {'message': 'Backend speech service not ready'}, room=room_id)
+                # Maybe leave room?
+                return
+
+            try:
+                # Create a push stream for audio data
+                stream = speechsdk.audio.PushAudioInputStream()
+                audio_config = speechsdk.audio.AudioConfig(stream=stream)
+
+                # Configure for continuous translation recognition
+                # Use the speech_config from the initialized service
+                # Ensure subscription and region are accessed correctly from the service's config
+                azure_key = speech_service.speech_config.subscription
+                azure_region = speech_service.speech_config.region
+
+                translation_config = speechsdk.translation.SpeechTranslationConfig(
+                    subscription=azure_key,
+                    region=azure_region
+                )
+                translation_config.speech_recognition_language = source_language
+                for lang in target_languages:
+                    # Map to Azure's expected format if needed (e.g., 'es' from 'es-ES')
+                    azure_target_lang = lang.split('-')[0] if '-' in lang else lang # Handle cases like 'es' vs 'es-ES'
+                    translation_config.add_target_language(azure_target_lang)
+
+                recognizer = speechsdk.translation.TranslationRecognizer(
+                    translation_config=translation_config,
+                    audio_config=audio_config
+                )
+
+                # --- Define Callbacks ---
+                def recognizing_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    # Handle intermediate results if needed
+                    if evt.result.reason == speechsdk.ResultReason.TranslatingSpeech:
+                         translations = evt.result.translations
+                         logging.debug(f"TRANSLATING in room {room_id}: {translations}")
+                         # Emit intermediate results if desired
+                         # socketio.emit('recognizing', {'translations': translations}, room=room_id)
+
+                def recognized_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    if evt.result.reason == speechsdk.ResultReason.TranslatedSpeech:
+                        recognition = evt.result.text # Original recognized text
+                        translations = evt.result.translations # Dictionary: {'de': 'text', 'fr': 'text'}
+                        logging.info(f"RECOGNIZED in room {room_id}: '{recognition}' -> {translations}")
+                        # Emit final recognized segment and its translations
+                        socketio.emit('recognized_speech', {
+                            'recognition': recognition,
+                            'translations': translations,
+                            'source_language': source_language # Include source lang context
+                        }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                         # This happens if only recognition occurs (no translation targets?)
+                         logging.info(f"RECOGNIZED (no translation) in room {room_id}: {evt.result.text}")
+                         socketio.emit('recognized_speech', {
+                             'recognition': evt.result.text,
+                             'translations': {},
+                             'source_language': source_language
+                         }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.NoMatch:
+                        logging.warning(f"NOMATCH in room {room_id}: Speech could not be recognized.")
+                        # Optionally emit a no-match event
+                        # socketio.emit('no_match', {'message': 'No speech recognized'}, room=room_id)
+
+                def canceled_cb(evt: speechsdk.translation.TranslationRecognitionCanceledEventArgs):
+                     logging.error(f"RECOGNITION CANCELED in room {room_id}: Reason={evt.reason}")
+                     if evt.reason == speechsdk.CancellationReason.Error:
+                         logging.error(f"CANCELED ErrorDetails={evt.error_details}")
+                     # Stop recognition and clean up for this room
+                     stop_recognition(room_id) # Call cleanup helper
+                     socketio.emit('recognition_error', {'error': f'Recognition canceled: {evt.reason}'}, room=room_id)
+
+                def session_started_cb(evt):
+                    logging.info(f'Recognition SESSION STARTED in room {room_id}: {evt}')
+
+                def session_stopped_cb(evt):
+                    logging.info(f'Recognition SESSION STOPPED in room {room_id}: {evt}')
+                    # Clean up when session stops naturally or due to error
+                    stop_recognition(room_id) # Call cleanup helper
+
+
+                # --- Connect Callbacks ---
+                recognizer.recognizing.connect(recognizing_cb)
+                recognizer.recognized.connect(recognized_cb)
+                recognizer.canceled.connect(canceled_cb)
+                recognizer.session_started.connect(session_started_cb)
+                recognizer.session_stopped.connect(session_stopped_cb)
+
+                # --- Start Continuous Recognition ---
+                recognizer.start_continuous_recognition_async()
+                logging.info(f"Started continuous recognition for room {room_id}")
+
+                # Store recognizer and stream
+                active_recognizers[room_id] = {
+                    'recognizer': recognizer,
+                    'stream': stream,
+                    'target_languages': target_languages,
+                    'source_language': source_language
+                }
+
+            except Exception as e:
+                logging.error(f"Failed to initialize recognizer for room {room_id}: {e}", exc_info=True)
+                emit('error', {'message': f'Failed to start recognition: {e}'}, room=room_id)
+
+
+@socketio.on('leave_room')
+def on_leave(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    if not room_id:
+        logging.warning(f"Leave attempt failed for {sid}: No room_id provided.")
+        return
+
+    leave_room(room_id)
+    logging.info(f"Client {sid} left room {room_id}")
+    emit('room_left', {'room_id': room_id, 'message': f'Successfully left room {room_id}'}, room=sid)
+
+    # Check if room is now empty and stop recognizer if so
+    # This requires tracking users per room, which SocketIO does internally
+    # Need to access the server's room data correctly
+    room_users = socketio.server.manager.rooms.get('/', {}).get(room_id)
+    if not room_users or len(room_users) == 0:
+         logging.info(f"Room {room_id} is empty. Stopping recognition.")
+         stop_recognition(room_id) # Call cleanup helper
+
+
+@socketio.on('audio_chunk')
+async def handle_audio_chunk(data):
+    """Handles incoming audio chunks for transcription and translation."""
+    # ... validation ...
+    room_id = data.get('room')
+    audio_chunk = data.get('audio_chunk')
+    # ... more validation ...
+
+    # Get the lock for the specific room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock: # Acquire lock before accessing/modifying room state
+        # logger.debug(f"Acquired lock for room {room_id} by SID {request.sid} for on_audio_chunk") # Optional: Verbose logging
+
+        if room_id in room_sessions:
+            session = room_sessions[room_id]
+            recognizer = session.get('recognizer')
+            stream = session.get('stream')
+
+            if recognizer and stream: # Check if recognition is fully set up
+                try:
+                    # Ensure audio_chunk is bytes
+                    if isinstance(audio_chunk, str):
+                        # Assuming base64 encoding if it's a string
+                        logging.debug(f"Decoding base64 audio chunk for room {room_id}")
+                        audio_chunk = base64.b64decode(audio_chunk)
+                    elif not isinstance(audio_chunk, bytes):
+                        logging.error(f"Invalid audio chunk type received: {type(audio_chunk)} for room {room_id}")
+                        await socketio.emit('error', {'message': 'Invalid audio chunk format.'}, room=request.sid)
+                        return # Exit if format is invalid
+
+                    if audio_chunk:
+                        # logger.debug(f"Adding audio chunk to stream for room {room_id}. Size: {len(audio_chunk)}")
+                        stream.add_audio_chunk(audio_chunk)
+                    else:
+                        logging.warning(f"Received empty audio chunk for room {room_id} from {request.sid}")
+
+                except Exception as e:
+                    logging.error(f"Error processing audio chunk for room {room_id}: {e}", exc_info=True)
+                    await socketio.emit('error', {'message': f'Error processing audio chunk: {e}'}, room=request.sid)
+            else:
+                # This path should be less likely now, but handle defensively
+                logging.warning(f"No active recognizer or stream found for room {room_id} (inside lock) for audio chunk from {request.sid}")
+                await socketio.emit('error', {'message': 'Recognition setup not complete or failed for this room'}, room=request.sid)
+        else:
+            logging.warning(f"Room {room_id} not found in sessions (inside lock) for audio chunk from {request.sid}")
+            await socketio.emit('error', {'message': f'Room {room_id} not found or recognition not started.'}, room=request.sid)
+
+    # logger.debug(f"Releasing lock for room {room_id} by SID {request.sid} after on_audio_chunk") # Lock released automatically
+
+@socketio.on('stop_recognition')
+def handle_stop_recognition(data):
+    """Client explicitly requests to stop."""
+    sid = request.sid
+    room_id = data.get('room_id')
+    logging.info(f"Received stop request from {sid} for room {room_id}")
+    if room_id:
+        stop_recognition(room_id) # Call cleanup helper
+
+@socketio.on('start_recognition')
+async def handle_start_recognition(data):
+    """Starts the speech recognition and translation stream for a room."""
+    # ... validation ...
+    room_id = data.get('room_id')
+    source_language = data.get('source_language')
+    target_languages = data.get('target_languages', [])
+    # ... more validation ...
+
+    logging.info(f"--- RAW START RECOGNITION RECEIVED --- SID: {request.sid}, Raw Data: {data}")
+
+    session_state = session_manager.get_session_state(request.sid)
+    if not session_state:
+        # ... error handling ...
+        return
+
+    # Update session state early
+    session_state['room_id'] = room_id
+    session_state['source_language'] = source_language
+    session_state['target_languages'] = target_languages
+    session_manager.update_session_state(request.sid, session_state)
+    logging.info(f"Updated session state for SID {request.sid} with room {room_id} and languages.")
+
+    # Get and acquire the lock for the room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock:
+        logging.info(f"Acquired lock for room {room_id} by SID {request.sid} for start_recognition")
+
+        # Check if recognition is already active for this room INSIDE the lock
+        if room_id in room_sessions and room_sessions[room_id].get('recognizer'):
+            logging.warning(f"Recognition already active for room {room_id}. Associating SID {request.sid}.")
+            # Add user to the existing room session if they aren't already there
+            if request.sid not in room_sessions[room_id]['sids']:
+                 room_sessions[room_id]['sids'].add(request.sid)
+                 logging.info(f"User {request.sid} added to existing room {room_id} session.")
+            # Confirm to the client they joined an active session
+            await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Joined active recognition session.'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after joining existing session.")
+            return # Lock is released automatically
+
+        # Initialize session for the room if it doesn't exist (safe within lock)
+        if room_id not in room_sessions:
+            room_sessions[room_id] = {
+                'sids': set(),
+                'recognizer': None,
+                'stream': None,
+                'source_language': source_language,
+                'target_languages': target_languages,
+                'translations': {lang: "" for lang in target_languages}
+            }
+            logging.info(f"Initialized new session structure for room {room_id}")
+
+        # Add user to the room session's SID set
+        room_sessions[room_id]['sids'].add(request.sid)
+        logging.info(f"User {request.sid} added to room {room_id} session SIDs.")
+
+        # Create recognizer and stream (we know they don't exist here due to the check above)
+        try:
+            logging.info(f"Attempting to create Recognizer and Stream for room {room_id}")
+            # --- Critical Section Start ---
+            recognizer = await create_recognizer(source_language)
+            stream = await create_stream(recognizer, source_language, target_languages, room_id, request.sid) # Pass sid
+
+            # Store recognizer and stream in the room's session
+            room_sessions[room_id]['recognizer'] = recognizer
+            room_sessions[room_id]['stream'] = stream
+            # --- Critical Section End ---
+            logging.info(f"Successfully created and stored Recognizer and Stream for room {room_id}")
+
+            # Start the background task for processing stream results
+            socketio.start_background_task(process_stream_results, stream, room_id, target_languages, request.sid) # Pass sid
+            logging.info(f"Started background task for processing stream results for room {room_id}")
+
+        except Exception as e:
+            logging.error(f"Failed to create recognizer or stream for room {room_id}: {e}", exc_info=True)
+            # Clean up partial state: remove the room entry if we created it and failed
+            if room_id in room_sessions and not room_sessions[room_id].get('recognizer'): # Check if we failed before setting recognizer
+                 logging.warning(f"Cleaning up potentially incomplete room session entry for {room_id} due to creation failure.")
+                 # Remove SID first
+                 if request.sid in room_sessions[room_id]['sids']:
+                     room_sessions[room_id]['sids'].remove(request.sid)
+                 # If now empty, remove room and lock
+                 if not room_sessions[room_id]['sids']:
+                     del room_sessions[room_id]
+                     if room_id in room_locks:
+                         del room_locks[room_id]
+                         logging.info(f"Removed lock for room {room_id} during cleanup.")
+
+            await socketio.emit('error', {'message': f'Failed to start recognition: {e}'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after creation failure.")
+            return # Lock released automatically
+
+    # Lock is released here automatically after 'async with' block completes
+
+    # Confirm recognition started to the client (outside the lock is fine)
+    await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Recognition started successfully.'}, room=request.sid)
+    logging.info(f"Sent 'recognition_started' confirmation to SID: {request.sid} for room {room_id}")
+    logging.info(f"Completed start_recognition setup for room {room_id} by SID {request.sid}.")
+
+@socketio.on('disconnect')
+async def handle_disconnect():
+    """Handles client disconnection."""
+    logging.info(f"--- Disconnect Event Start --- Client disconnecting: {request.sid}")
+    session_state = session_manager.get_session_state(request.sid)
+    room_id_to_check = None
+    if session_state:
+        room_id_to_check = session_state.get('room_id')
+        if room_id_to_check:
+            logging.info(f"Client {request.sid} was associated with room {room_id_to_check}. Checking room state.")
+        else:
+            logging.info(f"Client {request.sid} disconnecting was not associated with any room in session state.")
+    else:
+        logging.warning(f"Session state not found for disconnecting SID: {request.sid}. Cannot determine room association.")
+        # Attempt to find the SID in any room session as a fallback (might be slow if many rooms)
+        # for r_id, session_data in room_sessions.items():
+        #     if request.sid in session_data.get('sids', set()):
+        #         room_id_to_check = r_id
+        #         logging.warning(f"Found disconnected SID {request.sid} in room {r_id} via direct check.")
+        #         break
+
+    if room_id_to_check:
+        room_lock = await get_room_lock(room_id_to_check) # Get lock for the room
+        async with room_lock: # Acquire lock for safe modification
+            logging.info(f"Acquired lock for room {room_id_to_check} by SID {request.sid} for disconnect")
+            if room_id_to_check in room_sessions:
+                session = room_sessions[room_id_to_check]
+                if request.sid in session['sids']:
+                    session['sids'].remove(request.sid)
+                    logging.info(f"Removed SID {request.sid} from room {room_id_to_check} session due to disconnect.")
+
+                    # If the room becomes empty, clean up recognition resources and the room entry/lock
+                    if not session['sids']:
+                        logging.info(f"Room {room_id_to_check} is now empty after disconnect of {request.sid}. Cleaning up.")
+                        recognizer = session.get('recognizer')
+                        stream = session.get('stream')
+                        if stream:
+                            try:
+                                stream.input_finished() # Signal end if stream exists
+                                logging.info(f"Signaled input_finished to stream for room {room_id_to_check} during cleanup.")
+                            except Exception as e:
+                                logging.error(f"Error calling input_finished during disconnect cleanup for room {room_id_to_check}: {e}", exc_info=True)
+                        # Clear refs
+                        session['recognizer'] = None
+                        session['stream'] = None
+                        del room_sessions[room_id_to_check]
+                        if room_id_to_check in room_locks:
+                            del room_locks[room_id_to_check] # Clean up lock
+                            logging.info(f"Removed lock for room {room_id_to_check}.")
+                    else:
+                        logging.info(f"Room {room_id_to_check} still has active SIDs after disconnect of {request.sid}: {session['sids']}")
+                else:
+                    logging.warning(f"SID {request.sid} disconnected but was not found in the sids set for room {room_id_to_check} (inside lock).")
+            else:
+                logging.warning(f"Room {room_id_to_check} associated with disconnecting SID {request.sid} not found in active room_sessions (inside lock).")
+            logging.info(f"Releasing lock for room {room_id_to_check} by SID {request.sid} after disconnect processing")
+            # Lock released automatically
+    else:
+         logging.info(f"No room ID found for SID {request.sid}, skipping room cleanup.")
+
+    # Clean up session state managed by SessionManager regardless of room association
+    deleted = session_manager.delete_session_state(request.sid)
+    if deleted:
+        logging.info(f"Deleted session state for SID: {request.sid}")
+    else:
+        logging.info(f"No session state found to delete for SID: {request.sid} (already cleaned up or never existed).")
+
+    logging.info(f"--- Disconnect Event End --- Client disconnected: {request.sid}")
+
+@socketio.on('join_room')
+def on_join(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    target_languages = data.get('target_languages', []) # e.g., ['es', 'fr']
+    source_language = data.get('source_language', 'en-US') # e.g., 'en-US'
+
+    if not room_id:
+        logging.error(f"Join attempt failed for {sid}: No room_id provided.")
+        emit('error', {'message': 'room_id is required'}, room=sid)
+        return
+
+    join_room(room_id)
+    logging.info(f"Client {sid} joined room {room_id}. Source: {source_language}, Targets: {target_languages}")
+    emit('room_joined', {'room_id': room_id, 'message': f'Successfully joined room {room_id}'}, room=sid)
+
+    # --- Initialize Recognizer for the Room (if not already) ---
+    with recognizer_lock:
+        if room_id not in active_recognizers:
+            logging.info(f"Initializing recognizer for room {room_id}")
+            translation_service, speech_service = get_services() # Use helper
+
+            if not speech_service or not speech_service.speech_config:
+                logging.error(f"Cannot initialize recognizer for room {room_id}: SpeechService not configured.")
+                emit('error', {'message': 'Backend speech service not ready'}, room=room_id)
+                # Maybe leave room?
+                return
+
+            try:
+                # Create a push stream for audio data
+                stream = speechsdk.audio.PushAudioInputStream()
+                audio_config = speechsdk.audio.AudioConfig(stream=stream)
+
+                # Configure for continuous translation recognition
+                # Use the speech_config from the initialized service
+                # Ensure subscription and region are accessed correctly from the service's config
+                azure_key = speech_service.speech_config.subscription
+                azure_region = speech_service.speech_config.region
+
+                translation_config = speechsdk.translation.SpeechTranslationConfig(
+                    subscription=azure_key,
+                    region=azure_region
+                )
+                translation_config.speech_recognition_language = source_language
+                for lang in target_languages:
+                    # Map to Azure's expected format if needed (e.g., 'es' from 'es-ES')
+                    azure_target_lang = lang.split('-')[0] if '-' in lang else lang # Handle cases like 'es' vs 'es-ES'
+                    translation_config.add_target_language(azure_target_lang)
+
+                recognizer = speechsdk.translation.TranslationRecognizer(
+                    translation_config=translation_config,
+                    audio_config=audio_config
+                )
+
+                # --- Define Callbacks ---
+                def recognizing_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    # Handle intermediate results if needed
+                    if evt.result.reason == speechsdk.ResultReason.TranslatingSpeech:
+                         translations = evt.result.translations
+                         logging.debug(f"TRANSLATING in room {room_id}: {translations}")
+                         # Emit intermediate results if desired
+                         # socketio.emit('recognizing', {'translations': translations}, room=room_id)
+
+                def recognized_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    if evt.result.reason == speechsdk.ResultReason.TranslatedSpeech:
+                        recognition = evt.result.text # Original recognized text
+                        translations = evt.result.translations # Dictionary: {'de': 'text', 'fr': 'text'}
+                        logging.info(f"RECOGNIZED in room {room_id}: '{recognition}' -> {translations}")
+                        # Emit final recognized segment and its translations
+                        socketio.emit('recognized_speech', {
+                            'recognition': recognition,
+                            'translations': translations,
+                            'source_language': source_language # Include source lang context
+                        }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                         # This happens if only recognition occurs (no translation targets?)
+                         logging.info(f"RECOGNIZED (no translation) in room {room_id}: {evt.result.text}")
+                         socketio.emit('recognized_speech', {
+                             'recognition': evt.result.text,
+                             'translations': {},
+                             'source_language': source_language
+                         }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.NoMatch:
+                        logging.warning(f"NOMATCH in room {room_id}: Speech could not be recognized.")
+                        # Optionally emit a no-match event
+                        # socketio.emit('no_match', {'message': 'No speech recognized'}, room=room_id)
+
+                def canceled_cb(evt: speechsdk.translation.TranslationRecognitionCanceledEventArgs):
+                     logging.error(f"RECOGNITION CANCELED in room {room_id}: Reason={evt.reason}")
+                     if evt.reason == speechsdk.CancellationReason.Error:
+                         logging.error(f"CANCELED ErrorDetails={evt.error_details}")
+                     # Stop recognition and clean up for this room
+                     stop_recognition(room_id) # Call cleanup helper
+                     socketio.emit('recognition_error', {'error': f'Recognition canceled: {evt.reason}'}, room=room_id)
+
+                def session_started_cb(evt):
+                    logging.info(f'Recognition SESSION STARTED in room {room_id}: {evt}')
+
+                def session_stopped_cb(evt):
+                    logging.info(f'Recognition SESSION STOPPED in room {room_id}: {evt}')
+                    # Clean up when session stops naturally or due to error
+                    stop_recognition(room_id) # Call cleanup helper
+
+
+                # --- Connect Callbacks ---
+                recognizer.recognizing.connect(recognizing_cb)
+                recognizer.recognized.connect(recognized_cb)
+                recognizer.canceled.connect(canceled_cb)
+                recognizer.session_started.connect(session_started_cb)
+                recognizer.session_stopped.connect(session_stopped_cb)
+
+                # --- Start Continuous Recognition ---
+                recognizer.start_continuous_recognition_async()
+                logging.info(f"Started continuous recognition for room {room_id}")
+
+                # Store recognizer and stream
+                active_recognizers[room_id] = {
+                    'recognizer': recognizer,
+                    'stream': stream,
+                    'target_languages': target_languages,
+                    'source_language': source_language
+                }
+
+            except Exception as e:
+                logging.error(f"Failed to initialize recognizer for room {room_id}: {e}", exc_info=True)
+                emit('error', {'message': f'Failed to start recognition: {e}'}, room=room_id)
+
+
+@socketio.on('leave_room')
+def on_leave(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    if not room_id:
+        logging.warning(f"Leave attempt failed for {sid}: No room_id provided.")
+        return
+
+    leave_room(room_id)
+    logging.info(f"Client {sid} left room {room_id}")
+    emit('room_left', {'room_id': room_id, 'message': f'Successfully left room {room_id}'}, room=sid)
+
+    # Check if room is now empty and stop recognizer if so
+    # This requires tracking users per room, which SocketIO does internally
+    # Need to access the server's room data correctly
+    room_users = socketio.server.manager.rooms.get('/', {}).get(room_id)
+    if not room_users or len(room_users) == 0:
+         logging.info(f"Room {room_id} is empty. Stopping recognition.")
+         stop_recognition(room_id) # Call cleanup helper
+
+
+@socketio.on('audio_chunk')
+async def handle_audio_chunk(data):
+    """Handles incoming audio chunks for transcription and translation."""
+    # ... validation ...
+    room_id = data.get('room')
+    audio_chunk = data.get('audio_chunk')
+    # ... more validation ...
+
+    # Get the lock for the specific room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock: # Acquire lock before accessing/modifying room state
+        # logger.debug(f"Acquired lock for room {room_id} by SID {request.sid} for on_audio_chunk") # Optional: Verbose logging
+
+        if room_id in room_sessions:
+            session = room_sessions[room_id]
+            recognizer = session.get('recognizer')
+            stream = session.get('stream')
+
+            if recognizer and stream: # Check if recognition is fully set up
+                try:
+                    # Ensure audio_chunk is bytes
+                    if isinstance(audio_chunk, str):
+                        # Assuming base64 encoding if it's a string
+                        logging.debug(f"Decoding base64 audio chunk for room {room_id}")
+                        audio_chunk = base64.b64decode(audio_chunk)
+                    elif not isinstance(audio_chunk, bytes):
+                        logging.error(f"Invalid audio chunk type received: {type(audio_chunk)} for room {room_id}")
+                        await socketio.emit('error', {'message': 'Invalid audio chunk format.'}, room=request.sid)
+                        return # Exit if format is invalid
+
+                    if audio_chunk:
+                        # logger.debug(f"Adding audio chunk to stream for room {room_id}. Size: {len(audio_chunk)}")
+                        stream.add_audio_chunk(audio_chunk)
+                    else:
+                        logging.warning(f"Received empty audio chunk for room {room_id} from {request.sid}")
+
+                except Exception as e:
+                    logging.error(f"Error processing audio chunk for room {room_id}: {e}", exc_info=True)
+                    await socketio.emit('error', {'message': f'Error processing audio chunk: {e}'}, room=request.sid)
+            else:
+                # This path should be less likely now, but handle defensively
+                logging.warning(f"No active recognizer or stream found for room {room_id} (inside lock) for audio chunk from {request.sid}")
+                await socketio.emit('error', {'message': 'Recognition setup not complete or failed for this room'}, room=request.sid)
+        else:
+            logging.warning(f"Room {room_id} not found in sessions (inside lock) for audio chunk from {request.sid}")
+            await socketio.emit('error', {'message': f'Room {room_id} not found or recognition not started.'}, room=request.sid)
+
+    # logger.debug(f"Releasing lock for room {room_id} by SID {request.sid} after on_audio_chunk") # Lock released automatically
+
+@socketio.on('stop_recognition')
+def handle_stop_recognition(data):
+    """Client explicitly requests to stop."""
+    sid = request.sid
+    room_id = data.get('room_id')
+    logging.info(f"Received stop request from {sid} for room {room_id}")
+    if room_id:
+        stop_recognition(room_id) # Call cleanup helper
+
+@socketio.on('start_recognition')
+async def handle_start_recognition(data):
+    """Starts the speech recognition and translation stream for a room."""
+    # ... validation ...
+    room_id = data.get('room_id')
+    source_language = data.get('source_language')
+    target_languages = data.get('target_languages', [])
+    # ... more validation ...
+
+    logging.info(f"--- RAW START RECOGNITION RECEIVED --- SID: {request.sid}, Raw Data: {data}")
+
+    session_state = session_manager.get_session_state(request.sid)
+    if not session_state:
+        # ... error handling ...
+        return
+
+    # Update session state early
+    session_state['room_id'] = room_id
+    session_state['source_language'] = source_language
+    session_state['target_languages'] = target_languages
+    session_manager.update_session_state(request.sid, session_state)
+    logging.info(f"Updated session state for SID {request.sid} with room {room_id} and languages.")
+
+    # Get and acquire the lock for the room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock:
+        logging.info(f"Acquired lock for room {room_id} by SID {request.sid} for start_recognition")
+
+        # Check if recognition is already active for this room INSIDE the lock
+        if room_id in room_sessions and room_sessions[room_id].get('recognizer'):
+            logging.warning(f"Recognition already active for room {room_id}. Associating SID {request.sid}.")
+            # Add user to the existing room session if they aren't already there
+            if request.sid not in room_sessions[room_id]['sids']:
+                 room_sessions[room_id]['sids'].add(request.sid)
+                 logging.info(f"User {request.sid} added to existing room {room_id} session.")
+            # Confirm to the client they joined an active session
+            await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Joined active recognition session.'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after joining existing session.")
+            return # Lock is released automatically
+
+        # Initialize session for the room if it doesn't exist (safe within lock)
+        if room_id not in room_sessions:
+            room_sessions[room_id] = {
+                'sids': set(),
+                'recognizer': None,
+                'stream': None,
+                'source_language': source_language,
+                'target_languages': target_languages,
+                'translations': {lang: "" for lang in target_languages}
+            }
+            logging.info(f"Initialized new session structure for room {room_id}")
+
+        # Add user to the room session's SID set
+        room_sessions[room_id]['sids'].add(request.sid)
+        logging.info(f"User {request.sid} added to room {room_id} session SIDs.")
+
+        # Create recognizer and stream (we know they don't exist here due to the check above)
+        try:
+            logging.info(f"Attempting to create Recognizer and Stream for room {room_id}")
+            # --- Critical Section Start ---
+            recognizer = await create_recognizer(source_language)
+            stream = await create_stream(recognizer, source_language, target_languages, room_id, request.sid) # Pass sid
+
+            # Store recognizer and stream in the room's session
+            room_sessions[room_id]['recognizer'] = recognizer
+            room_sessions[room_id]['stream'] = stream
+            # --- Critical Section End ---
+            logging.info(f"Successfully created and stored Recognizer and Stream for room {room_id}")
+
+            # Start the background task for processing stream results
+            socketio.start_background_task(process_stream_results, stream, room_id, target_languages, request.sid) # Pass sid
+            logging.info(f"Started background task for processing stream results for room {room_id}")
+
+        except Exception as e:
+            logging.error(f"Failed to create recognizer or stream for room {room_id}: {e}", exc_info=True)
+            # Clean up partial state: remove the room entry if we created it and failed
+            if room_id in room_sessions and not room_sessions[room_id].get('recognizer'): # Check if we failed before setting recognizer
+                 logging.warning(f"Cleaning up potentially incomplete room session entry for {room_id} due to creation failure.")
+                 # Remove SID first
+                 if request.sid in room_sessions[room_id]['sids']:
+                     room_sessions[room_id]['sids'].remove(request.sid)
+                 # If now empty, remove room and lock
+                 if not room_sessions[room_id]['sids']:
+                     del room_sessions[room_id]
+                     if room_id in room_locks:
+                         del room_locks[room_id]
+                         logging.info(f"Removed lock for room {room_id} during cleanup.")
+
+            await socketio.emit('error', {'message': f'Failed to start recognition: {e}'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after creation failure.")
+            return # Lock released automatically
+
+    # Lock is released here automatically after 'async with' block completes
+
+    # Confirm recognition started to the client (outside the lock is fine)
+    await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Recognition started successfully.'}, room=request.sid)
+    logging.info(f"Sent 'recognition_started' confirmation to SID: {request.sid} for room {room_id}")
+    logging.info(f"Completed start_recognition setup for room {room_id} by SID {request.sid}.")
+
+@socketio.on('disconnect')
+async def handle_disconnect():
+    """Handles client disconnection."""
+    logging.info(f"--- Disconnect Event Start --- Client disconnecting: {request.sid}")
+    session_state = session_manager.get_session_state(request.sid)
+    room_id_to_check = None
+    if session_state:
+        room_id_to_check = session_state.get('room_id')
+        if room_id_to_check:
+            logging.info(f"Client {request.sid} was associated with room {room_id_to_check}. Checking room state.")
+        else:
+            logging.info(f"Client {request.sid} disconnecting was not associated with any room in session state.")
+    else:
+        logging.warning(f"Session state not found for disconnecting SID: {request.sid}. Cannot determine room association.")
+        # Attempt to find the SID in any room session as a fallback (might be slow if many rooms)
+        # for r_id, session_data in room_sessions.items():
+        #     if request.sid in session_data.get('sids', set()):
+        #         room_id_to_check = r_id
+        #         logging.warning(f"Found disconnected SID {request.sid} in room {r_id} via direct check.")
+        #         break
+
+    if room_id_to_check:
+        room_lock = await get_room_lock(room_id_to_check) # Get lock for the room
+        async with room_lock: # Acquire lock for safe modification
+            logging.info(f"Acquired lock for room {room_id_to_check} by SID {request.sid} for disconnect")
+            if room_id_to_check in room_sessions:
+                session = room_sessions[room_id_to_check]
+                if request.sid in session['sids']:
+                    session['sids'].remove(request.sid)
+                    logging.info(f"Removed SID {request.sid} from room {room_id_to_check} session due to disconnect.")
+
+                    # If the room becomes empty, clean up recognition resources and the room entry/lock
+                    if not session['sids']:
+                        logging.info(f"Room {room_id_to_check} is now empty after disconnect of {request.sid}. Cleaning up.")
+                        recognizer = session.get('recognizer')
+                        stream = session.get('stream')
+                        if stream:
+                            try:
+                                stream.input_finished() # Signal end if stream exists
+                                logging.info(f"Signaled input_finished to stream for room {room_id_to_check} during cleanup.")
+                            except Exception as e:
+                                logging.error(f"Error calling input_finished during disconnect cleanup for room {room_id_to_check}: {e}", exc_info=True)
+                        # Clear refs
+                        session['recognizer'] = None
+                        session['stream'] = None
+                        del room_sessions[room_id_to_check]
+                        if room_id_to_check in room_locks:
+                            del room_locks[room_id_to_check] # Clean up lock
+                            logging.info(f"Removed lock for room {room_id_to_check}.")
+                    else:
+                        logging.info(f"Room {room_id_to_check} still has active SIDs after disconnect of {request.sid}: {session['sids']}")
+                else:
+                    logging.warning(f"SID {request.sid} disconnected but was not found in the sids set for room {room_id_to_check} (inside lock).")
+            else:
+                logging.warning(f"Room {room_id_to_check} associated with disconnecting SID {request.sid} not found in active room_sessions (inside lock).")
+            logging.info(f"Releasing lock for room {room_id_to_check} by SID {request.sid} after disconnect processing")
+            # Lock released automatically
+    else:
+         logging.info(f"No room ID found for SID {request.sid}, skipping room cleanup.")
+
+    # Clean up session state managed by SessionManager regardless of room association
+    deleted = session_manager.delete_session_state(request.sid)
+    if deleted:
+        logging.info(f"Deleted session state for SID: {request.sid}")
+    else:
+        logging.info(f"No session state found to delete for SID: {request.sid} (already cleaned up or never existed).")
+
+    logging.info(f"--- Disconnect Event End --- Client disconnected: {request.sid}")
+
+@socketio.on('join_room')
+def on_join(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    target_languages = data.get('target_languages', []) # e.g., ['es', 'fr']
+    source_language = data.get('source_language', 'en-US') # e.g., 'en-US'
+
+    if not room_id:
+        logging.error(f"Join attempt failed for {sid}: No room_id provided.")
+        emit('error', {'message': 'room_id is required'}, room=sid)
+        return
+
+    join_room(room_id)
+    logging.info(f"Client {sid} joined room {room_id}. Source: {source_language}, Targets: {target_languages}")
+    emit('room_joined', {'room_id': room_id, 'message': f'Successfully joined room {room_id}'}, room=sid)
+
+    # --- Initialize Recognizer for the Room (if not already) ---
+    with recognizer_lock:
+        if room_id not in active_recognizers:
+            logging.info(f"Initializing recognizer for room {room_id}")
+            translation_service, speech_service = get_services() # Use helper
+
+            if not speech_service or not speech_service.speech_config:
+                logging.error(f"Cannot initialize recognizer for room {room_id}: SpeechService not configured.")
+                emit('error', {'message': 'Backend speech service not ready'}, room=room_id)
+                # Maybe leave room?
+                return
+
+            try:
+                # Create a push stream for audio data
+                stream = speechsdk.audio.PushAudioInputStream()
+                audio_config = speechsdk.audio.AudioConfig(stream=stream)
+
+                # Configure for continuous translation recognition
+                # Use the speech_config from the initialized service
+                # Ensure subscription and region are accessed correctly from the service's config
+                azure_key = speech_service.speech_config.subscription
+                azure_region = speech_service.speech_config.region
+
+                translation_config = speechsdk.translation.SpeechTranslationConfig(
+                    subscription=azure_key,
+                    region=azure_region
+                )
+                translation_config.speech_recognition_language = source_language
+                for lang in target_languages:
+                    # Map to Azure's expected format if needed (e.g., 'es' from 'es-ES')
+                    azure_target_lang = lang.split('-')[0] if '-' in lang else lang # Handle cases like 'es' vs 'es-ES'
+                    translation_config.add_target_language(azure_target_lang)
+
+                recognizer = speechsdk.translation.TranslationRecognizer(
+                    translation_config=translation_config,
+                    audio_config=audio_config
+                )
+
+                # --- Define Callbacks ---
+                def recognizing_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    # Handle intermediate results if needed
+                    if evt.result.reason == speechsdk.ResultReason.TranslatingSpeech:
+                         translations = evt.result.translations
+                         logging.debug(f"TRANSLATING in room {room_id}: {translations}")
+                         # Emit intermediate results if desired
+                         # socketio.emit('recognizing', {'translations': translations}, room=room_id)
+
+                def recognized_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    if evt.result.reason == speechsdk.ResultReason.TranslatedSpeech:
+                        recognition = evt.result.text # Original recognized text
+                        translations = evt.result.translations # Dictionary: {'de': 'text', 'fr': 'text'}
+                        logging.info(f"RECOGNIZED in room {room_id}: '{recognition}' -> {translations}")
+                        # Emit final recognized segment and its translations
+                        socketio.emit('recognized_speech', {
+                            'recognition': recognition,
+                            'translations': translations,
+                            'source_language': source_language # Include source lang context
+                        }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                         # This happens if only recognition occurs (no translation targets?)
+                         logging.info(f"RECOGNIZED (no translation) in room {room_id}: {evt.result.text}")
+                         socketio.emit('recognized_speech', {
+                             'recognition': evt.result.text,
+                             'translations': {},
+                             'source_language': source_language
+                         }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.NoMatch:
+                        logging.warning(f"NOMATCH in room {room_id}: Speech could not be recognized.")
+                        # Optionally emit a no-match event
+                        # socketio.emit('no_match', {'message': 'No speech recognized'}, room=room_id)
+
+                def canceled_cb(evt: speechsdk.translation.TranslationRecognitionCanceledEventArgs):
+                     logging.error(f"RECOGNITION CANCELED in room {room_id}: Reason={evt.reason}")
+                     if evt.reason == speechsdk.CancellationReason.Error:
+                         logging.error(f"CANCELED ErrorDetails={evt.error_details}")
+                     # Stop recognition and clean up for this room
+                     stop_recognition(room_id) # Call cleanup helper
+                     socketio.emit('recognition_error', {'error': f'Recognition canceled: {evt.reason}'}, room=room_id)
+
+                def session_started_cb(evt):
+                    logging.info(f'Recognition SESSION STARTED in room {room_id}: {evt}')
+
+                def session_stopped_cb(evt):
+                    logging.info(f'Recognition SESSION STOPPED in room {room_id}: {evt}')
+                    # Clean up when session stops naturally or due to error
+                    stop_recognition(room_id) # Call cleanup helper
+
+
+                # --- Connect Callbacks ---
+                recognizer.recognizing.connect(recognizing_cb)
+                recognizer.recognized.connect(recognized_cb)
+                recognizer.canceled.connect(canceled_cb)
+                recognizer.session_started.connect(session_started_cb)
+                recognizer.session_stopped.connect(session_stopped_cb)
+
+                # --- Start Continuous Recognition ---
+                recognizer.start_continuous_recognition_async()
+                logging.info(f"Started continuous recognition for room {room_id}")
+
+                # Store recognizer and stream
+                active_recognizers[room_id] = {
+                    'recognizer': recognizer,
+                    'stream': stream,
+                    'target_languages': target_languages,
+                    'source_language': source_language
+                }
+
+            except Exception as e:
+                logging.error(f"Failed to initialize recognizer for room {room_id}: {e}", exc_info=True)
+                emit('error', {'message': f'Failed to start recognition: {e}'}, room=room_id)
+
+
+@socketio.on('leave_room')
+def on_leave(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    if not room_id:
+        logging.warning(f"Leave attempt failed for {sid}: No room_id provided.")
+        return
+
+    leave_room(room_id)
+    logging.info(f"Client {sid} left room {room_id}")
+    emit('room_left', {'room_id': room_id, 'message': f'Successfully left room {room_id}'}, room=sid)
+
+    # Check if room is now empty and stop recognizer if so
+    # This requires tracking users per room, which SocketIO does internally
+    # Need to access the server's room data correctly
+    room_users = socketio.server.manager.rooms.get('/', {}).get(room_id)
+    if not room_users or len(room_users) == 0:
+         logging.info(f"Room {room_id} is empty. Stopping recognition.")
+         stop_recognition(room_id) # Call cleanup helper
+
+
+@socketio.on('audio_chunk')
+async def handle_audio_chunk(data):
+    """Handles incoming audio chunks for transcription and translation."""
+    # ... validation ...
+    room_id = data.get('room')
+    audio_chunk = data.get('audio_chunk')
+    # ... more validation ...
+
+    # Get the lock for the specific room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock: # Acquire lock before accessing/modifying room state
+        # logger.debug(f"Acquired lock for room {room_id} by SID {request.sid} for on_audio_chunk") # Optional: Verbose logging
+
+        if room_id in room_sessions:
+            session = room_sessions[room_id]
+            recognizer = session.get('recognizer')
+            stream = session.get('stream')
+
+            if recognizer and stream: # Check if recognition is fully set up
+                try:
+                    # Ensure audio_chunk is bytes
+                    if isinstance(audio_chunk, str):
+                        # Assuming base64 encoding if it's a string
+                        logging.debug(f"Decoding base64 audio chunk for room {room_id}")
+                        audio_chunk = base64.b64decode(audio_chunk)
+                    elif not isinstance(audio_chunk, bytes):
+                        logging.error(f"Invalid audio chunk type received: {type(audio_chunk)} for room {room_id}")
+                        await socketio.emit('error', {'message': 'Invalid audio chunk format.'}, room=request.sid)
+                        return # Exit if format is invalid
+
+                    if audio_chunk:
+                        # logger.debug(f"Adding audio chunk to stream for room {room_id}. Size: {len(audio_chunk)}")
+                        stream.add_audio_chunk(audio_chunk)
+                    else:
+                        logging.warning(f"Received empty audio chunk for room {room_id} from {request.sid}")
+
+                except Exception as e:
+                    logging.error(f"Error processing audio chunk for room {room_id}: {e}", exc_info=True)
+                    await socketio.emit('error', {'message': f'Error processing audio chunk: {e}'}, room=request.sid)
+            else:
+                # This path should be less likely now, but handle defensively
+                logging.warning(f"No active recognizer or stream found for room {room_id} (inside lock) for audio chunk from {request.sid}")
+                await socketio.emit('error', {'message': 'Recognition setup not complete or failed for this room'}, room=request.sid)
+        else:
+            logging.warning(f"Room {room_id} not found in sessions (inside lock) for audio chunk from {request.sid}")
+            await socketio.emit('error', {'message': f'Room {room_id} not found or recognition not started.'}, room=request.sid)
+
+    # logger.debug(f"Releasing lock for room {room_id} by SID {request.sid} after on_audio_chunk") # Lock released automatically
+
+@socketio.on('stop_recognition')
+def handle_stop_recognition(data):
+    """Client explicitly requests to stop."""
+    sid = request.sid
+    room_id = data.get('room_id')
+    logging.info(f"Received stop request from {sid} for room {room_id}")
+    if room_id:
+        stop_recognition(room_id) # Call cleanup helper
+
+@socketio.on('start_recognition')
+async def handle_start_recognition(data):
+    """Starts the speech recognition and translation stream for a room."""
+    # ... validation ...
+    room_id = data.get('room_id')
+    source_language = data.get('source_language')
+    target_languages = data.get('target_languages', [])
+    # ... more validation ...
+
+    logging.info(f"--- RAW START RECOGNITION RECEIVED --- SID: {request.sid}, Raw Data: {data}")
+
+    session_state = session_manager.get_session_state(request.sid)
+    if not session_state:
+        # ... error handling ...
+        return
+
+    # Update session state early
+    session_state['room_id'] = room_id
+    session_state['source_language'] = source_language
+    session_state['target_languages'] = target_languages
+    session_manager.update_session_state(request.sid, session_state)
+    logging.info(f"Updated session state for SID {request.sid} with room {room_id} and languages.")
+
+    # Get and acquire the lock for the room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock:
+        logging.info(f"Acquired lock for room {room_id} by SID {request.sid} for start_recognition")
+
+        # Check if recognition is already active for this room INSIDE the lock
+        if room_id in room_sessions and room_sessions[room_id].get('recognizer'):
+            logging.warning(f"Recognition already active for room {room_id}. Associating SID {request.sid}.")
+            # Add user to the existing room session if they aren't already there
+            if request.sid not in room_sessions[room_id]['sids']:
+                 room_sessions[room_id]['sids'].add(request.sid)
+                 logging.info(f"User {request.sid} added to existing room {room_id} session.")
+            # Confirm to the client they joined an active session
+            await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Joined active recognition session.'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after joining existing session.")
+            return # Lock is released automatically
+
+        # Initialize session for the room if it doesn't exist (safe within lock)
+        if room_id not in room_sessions:
+            room_sessions[room_id] = {
+                'sids': set(),
+                'recognizer': None,
+                'stream': None,
+                'source_language': source_language,
+                'target_languages': target_languages,
+                'translations': {lang: "" for lang in target_languages}
+            }
+            logging.info(f"Initialized new session structure for room {room_id}")
+
+        # Add user to the room session's SID set
+        room_sessions[room_id]['sids'].add(request.sid)
+        logging.info(f"User {request.sid} added to room {room_id} session SIDs.")
+
+        # Create recognizer and stream (we know they don't exist here due to the check above)
+        try:
+            logging.info(f"Attempting to create Recognizer and Stream for room {room_id}")
+            # --- Critical Section Start ---
+            recognizer = await create_recognizer(source_language)
+            stream = await create_stream(recognizer, source_language, target_languages, room_id, request.sid) # Pass sid
+
+            # Store recognizer and stream in the room's session
+            room_sessions[room_id]['recognizer'] = recognizer
+            room_sessions[room_id]['stream'] = stream
+            # --- Critical Section End ---
+            logging.info(f"Successfully created and stored Recognizer and Stream for room {room_id}")
+
+            # Start the background task for processing stream results
+            socketio.start_background_task(process_stream_results, stream, room_id, target_languages, request.sid) # Pass sid
+            logging.info(f"Started background task for processing stream results for room {room_id}")
+
+        except Exception as e:
+            logging.error(f"Failed to create recognizer or stream for room {room_id}: {e}", exc_info=True)
+            # Clean up partial state: remove the room entry if we created it and failed
+            if room_id in room_sessions and not room_sessions[room_id].get('recognizer'): # Check if we failed before setting recognizer
+                 logging.warning(f"Cleaning up potentially incomplete room session entry for {room_id} due to creation failure.")
+                 # Remove SID first
+                 if request.sid in room_sessions[room_id]['sids']:
+                     room_sessions[room_id]['sids'].remove(request.sid)
+                 # If now empty, remove room and lock
+                 if not room_sessions[room_id]['sids']:
+                     del room_sessions[room_id]
+                     if room_id in room_locks:
+                         del room_locks[room_id]
+                         logging.info(f"Removed lock for room {room_id} during cleanup.")
+
+            await socketio.emit('error', {'message': f'Failed to start recognition: {e}'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after creation failure.")
+            return # Lock released automatically
+
+    # Lock is released here automatically after 'async with' block completes
+
+    # Confirm recognition started to the client (outside the lock is fine)
+    await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Recognition started successfully.'}, room=request.sid)
+    logging.info(f"Sent 'recognition_started' confirmation to SID: {request.sid} for room {room_id}")
+    logging.info(f"Completed start_recognition setup for room {room_id} by SID {request.sid}.")
+
+@socketio.on('disconnect')
+async def handle_disconnect():
+    """Handles client disconnection."""
+    logging.info(f"--- Disconnect Event Start --- Client disconnecting: {request.sid}")
+    session_state = session_manager.get_session_state(request.sid)
+    room_id_to_check = None
+    if session_state:
+        room_id_to_check = session_state.get('room_id')
+        if room_id_to_check:
+            logging.info(f"Client {request.sid} was associated with room {room_id_to_check}. Checking room state.")
+        else:
+            logging.info(f"Client {request.sid} disconnecting was not associated with any room in session state.")
+    else:
+        logging.warning(f"Session state not found for disconnecting SID: {request.sid}. Cannot determine room association.")
+        # Attempt to find the SID in any room session as a fallback (might be slow if many rooms)
+        # for r_id, session_data in room_sessions.items():
+        #     if request.sid in session_data.get('sids', set()):
+        #         room_id_to_check = r_id
+        #         logging.warning(f"Found disconnected SID {request.sid} in room {r_id} via direct check.")
+        #         break
+
+    if room_id_to_check:
+        room_lock = await get_room_lock(room_id_to_check) # Get lock for the room
+        async with room_lock: # Acquire lock for safe modification
+            logging.info(f"Acquired lock for room {room_id_to_check} by SID {request.sid} for disconnect")
+            if room_id_to_check in room_sessions:
+                session = room_sessions[room_id_to_check]
+                if request.sid in session['sids']:
+                    session['sids'].remove(request.sid)
+                    logging.info(f"Removed SID {request.sid} from room {room_id_to_check} session due to disconnect.")
+
+                    # If the room becomes empty, clean up recognition resources and the room entry/lock
+                    if not session['sids']:
+                        logging.info(f"Room {room_id_to_check} is now empty after disconnect of {request.sid}. Cleaning up.")
+                        recognizer = session.get('recognizer')
+                        stream = session.get('stream')
+                        if stream:
+                            try:
+                                stream.input_finished() # Signal end if stream exists
+                                logging.info(f"Signaled input_finished to stream for room {room_id_to_check} during cleanup.")
+                            except Exception as e:
+                                logging.error(f"Error calling input_finished during disconnect cleanup for room {room_id_to_check}: {e}", exc_info=True)
+                        # Clear refs
+                        session['recognizer'] = None
+                        session['stream'] = None
+                        del room_sessions[room_id_to_check]
+                        if room_id_to_check in room_locks:
+                            del room_locks[room_id_to_check] # Clean up lock
+                            logging.info(f"Removed lock for room {room_id_to_check}.")
+                    else:
+                        logging.info(f"Room {room_id_to_check} still has active SIDs after disconnect of {request.sid}: {session['sids']}")
+                else:
+                    logging.warning(f"SID {request.sid} disconnected but was not found in the sids set for room {room_id_to_check} (inside lock).")
+            else:
+                logging.warning(f"Room {room_id_to_check} associated with disconnecting SID {request.sid} not found in active room_sessions (inside lock).")
+            logging.info(f"Releasing lock for room {room_id_to_check} by SID {request.sid} after disconnect processing")
+            # Lock released automatically
+    else:
+         logging.info(f"No room ID found for SID {request.sid}, skipping room cleanup.")
+
+    # Clean up session state managed by SessionManager regardless of room association
+    deleted = session_manager.delete_session_state(request.sid)
+    if deleted:
+        logging.info(f"Deleted session state for SID: {request.sid}")
+    else:
+        logging.info(f"No session state found to delete for SID: {request.sid} (already cleaned up or never existed).")
+
+    logging.info(f"--- Disconnect Event End --- Client disconnected: {request.sid}")
+
+@socketio.on('join_room')
+def on_join(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    target_languages = data.get('target_languages', []) # e.g., ['es', 'fr']
+    source_language = data.get('source_language', 'en-US') # e.g., 'en-US'
+
+    if not room_id:
+        logging.error(f"Join attempt failed for {sid}: No room_id provided.")
+        emit('error', {'message': 'room_id is required'}, room=sid)
+        return
+
+    join_room(room_id)
+    logging.info(f"Client {sid} joined room {room_id}. Source: {source_language}, Targets: {target_languages}")
+    emit('room_joined', {'room_id': room_id, 'message': f'Successfully joined room {room_id}'}, room=sid)
+
+    # --- Initialize Recognizer for the Room (if not already) ---
+    with recognizer_lock:
+        if room_id not in active_recognizers:
+            logging.info(f"Initializing recognizer for room {room_id}")
+            translation_service, speech_service = get_services() # Use helper
+
+            if not speech_service or not speech_service.speech_config:
+                logging.error(f"Cannot initialize recognizer for room {room_id}: SpeechService not configured.")
+                emit('error', {'message': 'Backend speech service not ready'}, room=room_id)
+                # Maybe leave room?
+                return
+
+            try:
+                # Create a push stream for audio data
+                stream = speechsdk.audio.PushAudioInputStream()
+                audio_config = speechsdk.audio.AudioConfig(stream=stream)
+
+                # Configure for continuous translation recognition
+                # Use the speech_config from the initialized service
+                # Ensure subscription and region are accessed correctly from the service's config
+                azure_key = speech_service.speech_config.subscription
+                azure_region = speech_service.speech_config.region
+
+                translation_config = speechsdk.translation.SpeechTranslationConfig(
+                    subscription=azure_key,
+                    region=azure_region
+                )
+                translation_config.speech_recognition_language = source_language
+                for lang in target_languages:
+                    # Map to Azure's expected format if needed (e.g., 'es' from 'es-ES')
+                    azure_target_lang = lang.split('-')[0] if '-' in lang else lang # Handle cases like 'es' vs 'es-ES'
+                    translation_config.add_target_language(azure_target_lang)
+
+                recognizer = speechsdk.translation.TranslationRecognizer(
+                    translation_config=translation_config,
+                    audio_config=audio_config
+                )
+
+                # --- Define Callbacks ---
+                def recognizing_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    # Handle intermediate results if needed
+                    if evt.result.reason == speechsdk.ResultReason.TranslatingSpeech:
+                         translations = evt.result.translations
+                         logging.debug(f"TRANSLATING in room {room_id}: {translations}")
+                         # Emit intermediate results if desired
+                         # socketio.emit('recognizing', {'translations': translations}, room=room_id)
+
+                def recognized_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    if evt.result.reason == speechsdk.ResultReason.TranslatedSpeech:
+                        recognition = evt.result.text # Original recognized text
+                        translations = evt.result.translations # Dictionary: {'de': 'text', 'fr': 'text'}
+                        logging.info(f"RECOGNIZED in room {room_id}: '{recognition}' -> {translations}")
+                        # Emit final recognized segment and its translations
+                        socketio.emit('recognized_speech', {
+                            'recognition': recognition,
+                            'translations': translations,
+                            'source_language': source_language # Include source lang context
+                        }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                         # This happens if only recognition occurs (no translation targets?)
+                         logging.info(f"RECOGNIZED (no translation) in room {room_id}: {evt.result.text}")
+                         socketio.emit('recognized_speech', {
+                             'recognition': evt.result.text,
+                             'translations': {},
+                             'source_language': source_language
+                         }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.NoMatch:
+                        logging.warning(f"NOMATCH in room {room_id}: Speech could not be recognized.")
+                        # Optionally emit a no-match event
+                        # socketio.emit('no_match', {'message': 'No speech recognized'}, room=room_id)
+
+                def canceled_cb(evt: speechsdk.translation.TranslationRecognitionCanceledEventArgs):
+                     logging.error(f"RECOGNITION CANCELED in room {room_id}: Reason={evt.reason}")
+                     if evt.reason == speechsdk.CancellationReason.Error:
+                         logging.error(f"CANCELED ErrorDetails={evt.error_details}")
+                     # Stop recognition and clean up for this room
+                     stop_recognition(room_id) # Call cleanup helper
+                     socketio.emit('recognition_error', {'error': f'Recognition canceled: {evt.reason}'}, room=room_id)
+
+                def session_started_cb(evt):
+                    logging.info(f'Recognition SESSION STARTED in room {room_id}: {evt}')
+
+                def session_stopped_cb(evt):
+                    logging.info(f'Recognition SESSION STOPPED in room {room_id}: {evt}')
+                    # Clean up when session stops naturally or due to error
+                    stop_recognition(room_id) # Call cleanup helper
+
+
+                # --- Connect Callbacks ---
+                recognizer.recognizing.connect(recognizing_cb)
+                recognizer.recognized.connect(recognized_cb)
+                recognizer.canceled.connect(canceled_cb)
+                recognizer.session_started.connect(session_started_cb)
+                recognizer.session_stopped.connect(session_stopped_cb)
+
+                # --- Start Continuous Recognition ---
+                recognizer.start_continuous_recognition_async()
+                logging.info(f"Started continuous recognition for room {room_id}")
+
+                # Store recognizer and stream
+                active_recognizers[room_id] = {
+                    'recognizer': recognizer,
+                    'stream': stream,
+                    'target_languages': target_languages,
+                    'source_language': source_language
+                }
+
+            except Exception as e:
+                logging.error(f"Failed to initialize recognizer for room {room_id}: {e}", exc_info=True)
+                emit('error', {'message': f'Failed to start recognition: {e}'}, room=room_id)
+
+
+@socketio.on('leave_room')
+def on_leave(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    if not room_id:
+        logging.warning(f"Leave attempt failed for {sid}: No room_id provided.")
+        return
+
+    leave_room(room_id)
+    logging.info(f"Client {sid} left room {room_id}")
+    emit('room_left', {'room_id': room_id, 'message': f'Successfully left room {room_id}'}, room=sid)
+
+    # Check if room is now empty and stop recognizer if so
+    # This requires tracking users per room, which SocketIO does internally
+    # Need to access the server's room data correctly
+    room_users = socketio.server.manager.rooms.get('/', {}).get(room_id)
+    if not room_users or len(room_users) == 0:
+         logging.info(f"Room {room_id} is empty. Stopping recognition.")
+         stop_recognition(room_id) # Call cleanup helper
+
+
+@socketio.on('audio_chunk')
+async def handle_audio_chunk(data):
+    """Handles incoming audio chunks for transcription and translation."""
+    # ... validation ...
+    room_id = data.get('room')
+    audio_chunk = data.get('audio_chunk')
+    # ... more validation ...
+
+    # Get the lock for the specific room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock: # Acquire lock before accessing/modifying room state
+        # logger.debug(f"Acquired lock for room {room_id} by SID {request.sid} for on_audio_chunk") # Optional: Verbose logging
+
+        if room_id in room_sessions:
+            session = room_sessions[room_id]
+            recognizer = session.get('recognizer')
+            stream = session.get('stream')
+
+            if recognizer and stream: # Check if recognition is fully set up
+                try:
+                    # Ensure audio_chunk is bytes
+                    if isinstance(audio_chunk, str):
+                        # Assuming base64 encoding if it's a string
+                        logging.debug(f"Decoding base64 audio chunk for room {room_id}")
+                        audio_chunk = base64.b64decode(audio_chunk)
+                    elif not isinstance(audio_chunk, bytes):
+                        logging.error(f"Invalid audio chunk type received: {type(audio_chunk)} for room {room_id}")
+                        await socketio.emit('error', {'message': 'Invalid audio chunk format.'}, room=request.sid)
+                        return # Exit if format is invalid
+
+                    if audio_chunk:
+                        # logger.debug(f"Adding audio chunk to stream for room {room_id}. Size: {len(audio_chunk)}")
+                        stream.add_audio_chunk(audio_chunk)
+                    else:
+                        logging.warning(f"Received empty audio chunk for room {room_id} from {request.sid}")
+
+                except Exception as e:
+                    logging.error(f"Error processing audio chunk for room {room_id}: {e}", exc_info=True)
+                    await socketio.emit('error', {'message': f'Error processing audio chunk: {e}'}, room=request.sid)
+            else:
+                # This path should be less likely now, but handle defensively
+                logging.warning(f"No active recognizer or stream found for room {room_id} (inside lock) for audio chunk from {request.sid}")
+                await socketio.emit('error', {'message': 'Recognition setup not complete or failed for this room'}, room=request.sid)
+        else:
+            logging.warning(f"Room {room_id} not found in sessions (inside lock) for audio chunk from {request.sid}")
+            await socketio.emit('error', {'message': f'Room {room_id} not found or recognition not started.'}, room=request.sid)
+
+    # logger.debug(f"Releasing lock for room {room_id} by SID {request.sid} after on_audio_chunk") # Lock released automatically
+
+@socketio.on('stop_recognition')
+def handle_stop_recognition(data):
+    """Client explicitly requests to stop."""
+    sid = request.sid
+    room_id = data.get('room_id')
+    logging.info(f"Received stop request from {sid} for room {room_id}")
+    if room_id:
+        stop_recognition(room_id) # Call cleanup helper
+
+@socketio.on('start_recognition')
+async def handle_start_recognition(data):
+    """Starts the speech recognition and translation stream for a room."""
+    # ... validation ...
+    room_id = data.get('room_id')
+    source_language = data.get('source_language')
+    target_languages = data.get('target_languages', [])
+    # ... more validation ...
+
+    logging.info(f"--- RAW START RECOGNITION RECEIVED --- SID: {request.sid}, Raw Data: {data}")
+
+    session_state = session_manager.get_session_state(request.sid)
+    if not session_state:
+        # ... error handling ...
+        return
+
+    # Update session state early
+    session_state['room_id'] = room_id
+    session_state['source_language'] = source_language
+    session_state['target_languages'] = target_languages
+    session_manager.update_session_state(request.sid, session_state)
+    logging.info(f"Updated session state for SID {request.sid} with room {room_id} and languages.")
+
+    # Get and acquire the lock for the room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock:
+        logging.info(f"Acquired lock for room {room_id} by SID {request.sid} for start_recognition")
+
+        # Check if recognition is already active for this room INSIDE the lock
+        if room_id in room_sessions and room_sessions[room_id].get('recognizer'):
+            logging.warning(f"Recognition already active for room {room_id}. Associating SID {request.sid}.")
+            # Add user to the existing room session if they aren't already there
+            if request.sid not in room_sessions[room_id]['sids']:
+                 room_sessions[room_id]['sids'].add(request.sid)
+                 logging.info(f"User {request.sid} added to existing room {room_id} session.")
+            # Confirm to the client they joined an active session
+            await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Joined active recognition session.'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after joining existing session.")
+            return # Lock is released automatically
+
+        # Initialize session for the room if it doesn't exist (safe within lock)
+        if room_id not in room_sessions:
+            room_sessions[room_id] = {
+                'sids': set(),
+                'recognizer': None,
+                'stream': None,
+                'source_language': source_language,
+                'target_languages': target_languages,
+                'translations': {lang: "" for lang in target_languages}
+            }
+            logging.info(f"Initialized new session structure for room {room_id}")
+
+        # Add user to the room session's SID set
+        room_sessions[room_id]['sids'].add(request.sid)
+        logging.info(f"User {request.sid} added to room {room_id} session SIDs.")
+
+        # Create recognizer and stream (we know they don't exist here due to the check above)
+        try:
+            logging.info(f"Attempting to create Recognizer and Stream for room {room_id}")
+            # --- Critical Section Start ---
+            recognizer = await create_recognizer(source_language)
+            stream = await create_stream(recognizer, source_language, target_languages, room_id, request.sid) # Pass sid
+
+            # Store recognizer and stream in the room's session
+            room_sessions[room_id]['recognizer'] = recognizer
+            room_sessions[room_id]['stream'] = stream
+            # --- Critical Section End ---
+            logging.info(f"Successfully created and stored Recognizer and Stream for room {room_id}")
+
+            # Start the background task for processing stream results
+            socketio.start_background_task(process_stream_results, stream, room_id, target_languages, request.sid) # Pass sid
+            logging.info(f"Started background task for processing stream results for room {room_id}")
+
+        except Exception as e:
+            logging.error(f"Failed to create recognizer or stream for room {room_id}: {e}", exc_info=True)
+            # Clean up partial state: remove the room entry if we created it and failed
+            if room_id in room_sessions and not room_sessions[room_id].get('recognizer'): # Check if we failed before setting recognizer
+                 logging.warning(f"Cleaning up potentially incomplete room session entry for {room_id} due to creation failure.")
+                 # Remove SID first
+                 if request.sid in room_sessions[room_id]['sids']:
+                     room_sessions[room_id]['sids'].remove(request.sid)
+                 # If now empty, remove room and lock
+                 if not room_sessions[room_id]['sids']:
+                     del room_sessions[room_id]
+                     if room_id in room_locks:
+                         del room_locks[room_id]
+                         logging.info(f"Removed lock for room {room_id} during cleanup.")
+
+            await socketio.emit('error', {'message': f'Failed to start recognition: {e}'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after creation failure.")
+            return # Lock released automatically
+
+    # Lock is released here automatically after 'async with' block completes
+
+    # Confirm recognition started to the client (outside the lock is fine)
+    await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Recognition started successfully.'}, room=request.sid)
+    logging.info(f"Sent 'recognition_started' confirmation to SID: {request.sid} for room {room_id}")
+    logging.info(f"Completed start_recognition setup for room {room_id} by SID {request.sid}.")
+
+@socketio.on('disconnect')
+async def handle_disconnect():
+    """Handles client disconnection."""
+    logging.info(f"--- Disconnect Event Start --- Client disconnecting: {request.sid}")
+    session_state = session_manager.get_session_state(request.sid)
+    room_id_to_check = None
+    if session_state:
+        room_id_to_check = session_state.get('room_id')
+        if room_id_to_check:
+            logging.info(f"Client {request.sid} was associated with room {room_id_to_check}. Checking room state.")
+        else:
+            logging.info(f"Client {request.sid} disconnecting was not associated with any room in session state.")
+    else:
+        logging.warning(f"Session state not found for disconnecting SID: {request.sid}. Cannot determine room association.")
+        # Attempt to find the SID in any room session as a fallback (might be slow if many rooms)
+        # for r_id, session_data in room_sessions.items():
+        #     if request.sid in session_data.get('sids', set()):
+        #         room_id_to_check = r_id
+        #         logging.warning(f"Found disconnected SID {request.sid} in room {r_id} via direct check.")
+        #         break
+
+    if room_id_to_check:
+        room_lock = await get_room_lock(room_id_to_check) # Get lock for the room
+        async with room_lock: # Acquire lock for safe modification
+            logging.info(f"Acquired lock for room {room_id_to_check} by SID {request.sid} for disconnect")
+            if room_id_to_check in room_sessions:
+                session = room_sessions[room_id_to_check]
+                if request.sid in session['sids']:
+                    session['sids'].remove(request.sid)
+                    logging.info(f"Removed SID {request.sid} from room {room_id_to_check} session due to disconnect.")
+
+                    # If the room becomes empty, clean up recognition resources and the room entry/lock
+                    if not session['sids']:
+                        logging.info(f"Room {room_id_to_check} is now empty after disconnect of {request.sid}. Cleaning up.")
+                        recognizer = session.get('recognizer')
+                        stream = session.get('stream')
+                        if stream:
+                            try:
+                                stream.input_finished() # Signal end if stream exists
+                                logging.info(f"Signaled input_finished to stream for room {room_id_to_check} during cleanup.")
+                            except Exception as e:
+                                logging.error(f"Error calling input_finished during disconnect cleanup for room {room_id_to_check}: {e}", exc_info=True)
+                        # Clear refs
+                        session['recognizer'] = None
+                        session['stream'] = None
+                        del room_sessions[room_id_to_check]
+                        if room_id_to_check in room_locks:
+                            del room_locks[room_id_to_check] # Clean up lock
+                            logging.info(f"Removed lock for room {room_id_to_check}.")
+                    else:
+                        logging.info(f"Room {room_id_to_check} still has active SIDs after disconnect of {request.sid}: {session['sids']}")
+                else:
+                    logging.warning(f"SID {request.sid} disconnected but was not found in the sids set for room {room_id_to_check} (inside lock).")
+            else:
+                logging.warning(f"Room {room_id_to_check} associated with disconnecting SID {request.sid} not found in active room_sessions (inside lock).")
+            logging.info(f"Releasing lock for room {room_id_to_check} by SID {request.sid} after disconnect processing")
+            # Lock released automatically
+    else:
+         logging.info(f"No room ID found for SID {request.sid}, skipping room cleanup.")
+
+    # Clean up session state managed by SessionManager regardless of room association
+    deleted = session_manager.delete_session_state(request.sid)
+    if deleted:
+        logging.info(f"Deleted session state for SID: {request.sid}")
+    else:
+        logging.info(f"No session state found to delete for SID: {request.sid} (already cleaned up or never existed).")
+
+    logging.info(f"--- Disconnect Event End --- Client disconnected: {request.sid}")
+
+@socketio.on('join_room')
+def on_join(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    target_languages = data.get('target_languages', []) # e.g., ['es', 'fr']
+    source_language = data.get('source_language', 'en-US') # e.g., 'en-US'
+
+    if not room_id:
+        logging.error(f"Join attempt failed for {sid}: No room_id provided.")
+        emit('error', {'message': 'room_id is required'}, room=sid)
+        return
+
+    join_room(room_id)
+    logging.info(f"Client {sid} joined room {room_id}. Source: {source_language}, Targets: {target_languages}")
+    emit('room_joined', {'room_id': room_id, 'message': f'Successfully joined room {room_id}'}, room=sid)
+
+    # --- Initialize Recognizer for the Room (if not already) ---
+    with recognizer_lock:
+        if room_id not in active_recognizers:
+            logging.info(f"Initializing recognizer for room {room_id}")
+            translation_service, speech_service = get_services() # Use helper
+
+            if not speech_service or not speech_service.speech_config:
+                logging.error(f"Cannot initialize recognizer for room {room_id}: SpeechService not configured.")
+                emit('error', {'message': 'Backend speech service not ready'}, room=room_id)
+                # Maybe leave room?
+                return
+
+            try:
+                # Create a push stream for audio data
+                stream = speechsdk.audio.PushAudioInputStream()
+                audio_config = speechsdk.audio.AudioConfig(stream=stream)
+
+                # Configure for continuous translation recognition
+                # Use the speech_config from the initialized service
+                # Ensure subscription and region are accessed correctly from the service's config
+                azure_key = speech_service.speech_config.subscription
+                azure_region = speech_service.speech_config.region
+
+                translation_config = speechsdk.translation.SpeechTranslationConfig(
+                    subscription=azure_key,
+                    region=azure_region
+                )
+                translation_config.speech_recognition_language = source_language
+                for lang in target_languages:
+                    # Map to Azure's expected format if needed (e.g., 'es' from 'es-ES')
+                    azure_target_lang = lang.split('-')[0] if '-' in lang else lang # Handle cases like 'es' vs 'es-ES'
+                    translation_config.add_target_language(azure_target_lang)
+
+                recognizer = speechsdk.translation.TranslationRecognizer(
+                    translation_config=translation_config,
+                    audio_config=audio_config
+                )
+
+                # --- Define Callbacks ---
+                def recognizing_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    # Handle intermediate results if needed
+                    if evt.result.reason == speechsdk.ResultReason.TranslatingSpeech:
+                         translations = evt.result.translations
+                         logging.debug(f"TRANSLATING in room {room_id}: {translations}")
+                         # Emit intermediate results if desired
+                         # socketio.emit('recognizing', {'translations': translations}, room=room_id)
+
+                def recognized_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    if evt.result.reason == speechsdk.ResultReason.TranslatedSpeech:
+                        recognition = evt.result.text # Original recognized text
+                        translations = evt.result.translations # Dictionary: {'de': 'text', 'fr': 'text'}
+                        logging.info(f"RECOGNIZED in room {room_id}: '{recognition}' -> {translations}")
+                        # Emit final recognized segment and its translations
+                        socketio.emit('recognized_speech', {
+                            'recognition': recognition,
+                            'translations': translations,
+                            'source_language': source_language # Include source lang context
+                        }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                         # This happens if only recognition occurs (no translation targets?)
+                         logging.info(f"RECOGNIZED (no translation) in room {room_id}: {evt.result.text}")
+                         socketio.emit('recognized_speech', {
+                             'recognition': evt.result.text,
+                             'translations': {},
+                             'source_language': source_language
+                         }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.NoMatch:
+                        logging.warning(f"NOMATCH in room {room_id}: Speech could not be recognized.")
+                        # Optionally emit a no-match event
+                        # socketio.emit('no_match', {'message': 'No speech recognized'}, room=room_id)
+
+                def canceled_cb(evt: speechsdk.translation.TranslationRecognitionCanceledEventArgs):
+                     logging.error(f"RECOGNITION CANCELED in room {room_id}: Reason={evt.reason}")
+                     if evt.reason == speechsdk.CancellationReason.Error:
+                         logging.error(f"CANCELED ErrorDetails={evt.error_details}")
+                     # Stop recognition and clean up for this room
+                     stop_recognition(room_id) # Call cleanup helper
+                     socketio.emit('recognition_error', {'error': f'Recognition canceled: {evt.reason}'}, room=room_id)
+
+                def session_started_cb(evt):
+                    logging.info(f'Recognition SESSION STARTED in room {room_id}: {evt}')
+
+                def session_stopped_cb(evt):
+                    logging.info(f'Recognition SESSION STOPPED in room {room_id}: {evt}')
+                    # Clean up when session stops naturally or due to error
+                    stop_recognition(room_id) # Call cleanup helper
+
+
+                # --- Connect Callbacks ---
+                recognizer.recognizing.connect(recognizing_cb)
+                recognizer.recognized.connect(recognized_cb)
+                recognizer.canceled.connect(canceled_cb)
+                recognizer.session_started.connect(session_started_cb)
+                recognizer.session_stopped.connect(session_stopped_cb)
+
+                # --- Start Continuous Recognition ---
+                recognizer.start_continuous_recognition_async()
+                logging.info(f"Started continuous recognition for room {room_id}")
+
+                # Store recognizer and stream
+                active_recognizers[room_id] = {
+                    'recognizer': recognizer,
+                    'stream': stream,
+                    'target_languages': target_languages,
+                    'source_language': source_language
+                }
+
+            except Exception as e:
+                logging.error(f"Failed to initialize recognizer for room {room_id}: {e}", exc_info=True)
+                emit('error', {'message': f'Failed to start recognition: {e}'}, room=room_id)
+
+
+@socketio.on('leave_room')
+def on_leave(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    if not room_id:
+        logging.warning(f"Leave attempt failed for {sid}: No room_id provided.")
+        return
+
+    leave_room(room_id)
+    logging.info(f"Client {sid} left room {room_id}")
+    emit('room_left', {'room_id': room_id, 'message': f'Successfully left room {room_id}'}, room=sid)
+
+    # Check if room is now empty and stop recognizer if so
+    # This requires tracking users per room, which SocketIO does internally
+    # Need to access the server's room data correctly
+    room_users = socketio.server.manager.rooms.get('/', {}).get(room_id)
+    if not room_users or len(room_users) == 0:
+         logging.info(f"Room {room_id} is empty. Stopping recognition.")
+         stop_recognition(room_id) # Call cleanup helper
+
+
+@socketio.on('audio_chunk')
+async def handle_audio_chunk(data):
+    """Handles incoming audio chunks for transcription and translation."""
+    # ... validation ...
+    room_id = data.get('room')
+    audio_chunk = data.get('audio_chunk')
+    # ... more validation ...
+
+    # Get the lock for the specific room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock: # Acquire lock before accessing/modifying room state
+        # logger.debug(f"Acquired lock for room {room_id} by SID {request.sid} for on_audio_chunk") # Optional: Verbose logging
+
+        if room_id in room_sessions:
+            session = room_sessions[room_id]
+            recognizer = session.get('recognizer')
+            stream = session.get('stream')
+
+            if recognizer and stream: # Check if recognition is fully set up
+                try:
+                    # Ensure audio_chunk is bytes
+                    if isinstance(audio_chunk, str):
+                        # Assuming base64 encoding if it's a string
+                        logging.debug(f"Decoding base64 audio chunk for room {room_id}")
+                        audio_chunk = base64.b64decode(audio_chunk)
+                    elif not isinstance(audio_chunk, bytes):
+                        logging.error(f"Invalid audio chunk type received: {type(audio_chunk)} for room {room_id}")
+                        await socketio.emit('error', {'message': 'Invalid audio chunk format.'}, room=request.sid)
+                        return # Exit if format is invalid
+
+                    if audio_chunk:
+                        # logger.debug(f"Adding audio chunk to stream for room {room_id}. Size: {len(audio_chunk)}")
+                        stream.add_audio_chunk(audio_chunk)
+                    else:
+                        logging.warning(f"Received empty audio chunk for room {room_id} from {request.sid}")
+
+                except Exception as e:
+                    logging.error(f"Error processing audio chunk for room {room_id}: {e}", exc_info=True)
+                    await socketio.emit('error', {'message': f'Error processing audio chunk: {e}'}, room=request.sid)
+            else:
+                # This path should be less likely now, but handle defensively
+                logging.warning(f"No active recognizer or stream found for room {room_id} (inside lock) for audio chunk from {request.sid}")
+                await socketio.emit('error', {'message': 'Recognition setup not complete or failed for this room'}, room=request.sid)
+        else:
+            logging.warning(f"Room {room_id} not found in sessions (inside lock) for audio chunk from {request.sid}")
+            await socketio.emit('error', {'message': f'Room {room_id} not found or recognition not started.'}, room=request.sid)
+
+    # logger.debug(f"Releasing lock for room {room_id} by SID {request.sid} after on_audio_chunk") # Lock released automatically
+
+@socketio.on('stop_recognition')
+def handle_stop_recognition(data):
+    """Client explicitly requests to stop."""
+    sid = request.sid
+    room_id = data.get('room_id')
+    logging.info(f"Received stop request from {sid} for room {room_id}")
+    if room_id:
+        stop_recognition(room_id) # Call cleanup helper
+
+@socketio.on('start_recognition')
+async def handle_start_recognition(data):
+    """Starts the speech recognition and translation stream for a room."""
+    # ... validation ...
+    room_id = data.get('room_id')
+    source_language = data.get('source_language')
+    target_languages = data.get('target_languages', [])
+    # ... more validation ...
+
+    logging.info(f"--- RAW START RECOGNITION RECEIVED --- SID: {request.sid}, Raw Data: {data}")
+
+    session_state = session_manager.get_session_state(request.sid)
+    if not session_state:
+        # ... error handling ...
+        return
+
+    # Update session state early
+    session_state['room_id'] = room_id
+    session_state['source_language'] = source_language
+    session_state['target_languages'] = target_languages
+    session_manager.update_session_state(request.sid, session_state)
+    logging.info(f"Updated session state for SID {request.sid} with room {room_id} and languages.")
+
+    # Get and acquire the lock for the room
+    room_lock = await get_room_lock(room_id)
+    async with room_lock:
+        logging.info(f"Acquired lock for room {room_id} by SID {request.sid} for start_recognition")
+
+        # Check if recognition is already active for this room INSIDE the lock
+        if room_id in room_sessions and room_sessions[room_id].get('recognizer'):
+            logging.warning(f"Recognition already active for room {room_id}. Associating SID {request.sid}.")
+            # Add user to the existing room session if they aren't already there
+            if request.sid not in room_sessions[room_id]['sids']:
+                 room_sessions[room_id]['sids'].add(request.sid)
+                 logging.info(f"User {request.sid} added to existing room {room_id} session.")
+            # Confirm to the client they joined an active session
+            await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Joined active recognition session.'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after joining existing session.")
+            return # Lock is released automatically
+
+        # Initialize session for the room if it doesn't exist (safe within lock)
+        if room_id not in room_sessions:
+            room_sessions[room_id] = {
+                'sids': set(),
+                'recognizer': None,
+                'stream': None,
+                'source_language': source_language,
+                'target_languages': target_languages,
+                'translations': {lang: "" for lang in target_languages}
+            }
+            logging.info(f"Initialized new session structure for room {room_id}")
+
+        # Add user to the room session's SID set
+        room_sessions[room_id]['sids'].add(request.sid)
+        logging.info(f"User {request.sid} added to room {room_id} session SIDs.")
+
+        # Create recognizer and stream (we know they don't exist here due to the check above)
+        try:
+            logging.info(f"Attempting to create Recognizer and Stream for room {room_id}")
+            # --- Critical Section Start ---
+            recognizer = await create_recognizer(source_language)
+            stream = await create_stream(recognizer, source_language, target_languages, room_id, request.sid) # Pass sid
+
+            # Store recognizer and stream in the room's session
+            room_sessions[room_id]['recognizer'] = recognizer
+            room_sessions[room_id]['stream'] = stream
+            # --- Critical Section End ---
+            logging.info(f"Successfully created and stored Recognizer and Stream for room {room_id}")
+
+            # Start the background task for processing stream results
+            socketio.start_background_task(process_stream_results, stream, room_id, target_languages, request.sid) # Pass sid
+            logging.info(f"Started background task for processing stream results for room {room_id}")
+
+        except Exception as e:
+            logging.error(f"Failed to create recognizer or stream for room {room_id}: {e}", exc_info=True)
+            # Clean up partial state: remove the room entry if we created it and failed
+            if room_id in room_sessions and not room_sessions[room_id].get('recognizer'): # Check if we failed before setting recognizer
+                 logging.warning(f"Cleaning up potentially incomplete room session entry for {room_id} due to creation failure.")
+                 # Remove SID first
+                 if request.sid in room_sessions[room_id]['sids']:
+                     room_sessions[room_id]['sids'].remove(request.sid)
+                 # If now empty, remove room and lock
+                 if not room_sessions[room_id]['sids']:
+                     del room_sessions[room_id]
+                     if room_id in room_locks:
+                         del room_locks[room_id]
+                         logging.info(f"Removed lock for room {room_id} during cleanup.")
+
+            await socketio.emit('error', {'message': f'Failed to start recognition: {e}'}, room=request.sid)
+            logging.info(f"Releasing lock for room {room_id} by SID {request.sid} after creation failure.")
+            return # Lock released automatically
+
+    # Lock is released here automatically after 'async with' block completes
+
+    # Confirm recognition started to the client (outside the lock is fine)
+    await socketio.emit('recognition_started', {'room_id': room_id, 'message': 'Recognition started successfully.'}, room=request.sid)
+    logging.info(f"Sent 'recognition_started' confirmation to SID: {request.sid} for room {room_id}")
+    logging.info(f"Completed start_recognition setup for room {room_id} by SID {request.sid}.")
+
+@socketio.on('disconnect')
+async def handle_disconnect():
+    """Handles client disconnection."""
+    logging.info(f"--- Disconnect Event Start --- Client disconnecting: {request.sid}")
+    session_state = session_manager.get_session_state(request.sid)
+    room_id_to_check = None
+    if session_state:
+        room_id_to_check = session_state.get('room_id')
+        if room_id_to_check:
+            logging.info(f"Client {request.sid} was associated with room {room_id_to_check}. Checking room state.")
+        else:
+            logging.info(f"Client {request.sid} disconnecting was not associated with any room in session state.")
+    else:
+        logging.warning(f"Session state not found for disconnecting SID: {request.sid}. Cannot determine room association.")
+        # Attempt to find the SID in any room session as a fallback (might be slow if many rooms)
+        # for r_id, session_data in room_sessions.items():
+        #     if request.sid in session_data.get('sids', set()):
+        #         room_id_to_check = r_id
+        #         logging.warning(f"Found disconnected SID {request.sid} in room {r_id} via direct check.")
+        #         break
+
+    if room_id_to_check:
+        room_lock = await get_room_lock(room_id_to_check) # Get lock for the room
+        async with room_lock: # Acquire lock for safe modification
+            logging.info(f"Acquired lock for room {room_id_to_check} by SID {request.sid} for disconnect")
+            if room_id_to_check in room_sessions:
+                session = room_sessions[room_id_to_check]
+                if request.sid in session['sids']:
+                    session['sids'].remove(request.sid)
+                    logging.info(f"Removed SID {request.sid} from room {room_id_to_check} session due to disconnect.")
+
+                    # If the room becomes empty, clean up recognition resources and the room entry/lock
+                    if not session['sids']:
+                        logging.info(f"Room {room_id_to_check} is now empty after disconnect of {request.sid}. Cleaning up.")
+                        recognizer = session.get('recognizer')
+                        stream = session.get('stream')
+                        if stream:
+                            try:
+                                stream.input_finished() # Signal end if stream exists
+                                logging.info(f"Signaled input_finished to stream for room {room_id_to_check} during cleanup.")
+                            except Exception as e:
+                                logging.error(f"Error calling input_finished during disconnect cleanup for room {room_id_to_check}: {e}", exc_info=True)
+                        # Clear refs
+                        session['recognizer'] = None
+                        session['stream'] = None
+                        del room_sessions[room_id_to_check]
+                        if room_id_to_check in room_locks:
+                            del room_locks[room_id_to_check] # Clean up lock
+                            logging.info(f"Removed lock for room {room_id_to_check}.")
+                    else:
+                        logging.info(f"Room {room_id_to_check} still has active SIDs after disconnect of {request.sid}: {session['sids']}")
+                else:
+                    logging.warning(f"SID {request.sid} disconnected but was not found in the sids set for room {room_id_to_check} (inside lock).")
+            else:
+                logging.warning(f"Room {room_id_to_check} associated with disconnecting SID {request.sid} not found in active room_sessions (inside lock).")
+            logging.info(f"Releasing lock for room {room_id_to_check} by SID {request.sid} after disconnect processing")
+            # Lock released automatically
+    else:
+         logging.info(f"No room ID found for SID {request.sid}, skipping room cleanup.")
+
+    # Clean up session state managed by SessionManager regardless of room association
+    deleted = session_manager.delete_session_state(request.sid)
+    if deleted:
+        logging.info(f"Deleted session state for SID: {request.sid}")
+    else:
+        logging.info(f"No session state found to delete for SID: {request.sid} (already cleaned up or never existed).")
+
+    logging.info(f"--- Disconnect Event End --- Client disconnected: {request.sid}")
+
+@socketio.on('join_room')
+def on_join(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    target_languages = data.get('target_languages', []) # e.g., ['es', 'fr']
+    source_language = data.get('source_language', 'en-US') # e.g., 'en-US'
+
+    if not room_id:
+        logging.error(f"Join attempt failed for {sid}: No room_id provided.")
+        emit('error', {'message': 'room_id is required'}, room=sid)
+        return
+
+    join_room(room_id)
+    logging.info(f"Client {sid} joined room {room_id}. Source: {source_language}, Targets: {target_languages}")
+    emit('room_joined', {'room_id': room_id, 'message': f'Successfully joined room {room_id}'}, room=sid)
+
+    # --- Initialize Recognizer for the Room (if not already) ---
+    with recognizer_lock:
+        if room_id not in active_recognizers:
+            logging.info(f"Initializing recognizer for room {room_id}")
+            translation_service, speech_service = get_services() # Use helper
+
+            if not speech_service or not speech_service.speech_config:
+                logging.error(f"Cannot initialize recognizer for room {room_id}: SpeechService not configured.")
+                emit('error', {'message': 'Backend speech service not ready'}, room=room_id)
+                # Maybe leave room?
+                return
+
+            try:
+                # Create a push stream for audio data
+                stream = speechsdk.audio.PushAudioInputStream()
+                audio_config = speechsdk.audio.AudioConfig(stream=stream)
+
+                # Configure for continuous translation recognition
+                # Use the speech_config from the initialized service
+                # Ensure subscription and region are accessed correctly from the service's config
+                azure_key = speech_service.speech_config.subscription
+                azure_region = speech_service.speech_config.region
+
+                translation_config = speechsdk.translation.SpeechTranslationConfig(
+                    subscription=azure_key,
+                    region=azure_region
+                )
+                translation_config.speech_recognition_language = source_language
+                for lang in target_languages:
+                    # Map to Azure's expected format if needed (e.g., 'es' from 'es-ES')
+                    azure_target_lang = lang.split('-')[0] if '-' in lang else lang # Handle cases like 'es' vs 'es-ES'
+                    translation_config.add_target_language(azure_target_lang)
+
+                recognizer = speechsdk.translation.TranslationRecognizer(
+                    translation_config=translation_config,
+                    audio_config=audio_config
+                )
+
+                # --- Define Callbacks ---
+                def recognizing_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    # Handle intermediate results if needed
+                    if evt.result.reason == speechsdk.ResultReason.TranslatingSpeech:
+                         translations = evt.result.translations
+                         logging.debug(f"TRANSLATING in room {room_id}: {translations}")
+                         # Emit intermediate results if desired
+                         # socketio.emit('recognizing', {'translations': translations}, room=room_id)
+
+                def recognized_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    if evt.result.reason == speechsdk.ResultReason.TranslatedSpeech:
+                        recognition = evt.result.text # Original recognized text
+                        translations = evt.result.translations # Dictionary: {'de': 'text', 'fr': 'text'}
+                        logging.info(f"RECOGNIZED in room {room_id}: '{recognition}' -> {translations}")
+                        # Emit final recognized segment and its translations
+                        socketio.emit('recognized_speech', {
+                            'recognition': recognition,
+                            'translations': translations,
+                            'source_language': source_language # Include source lang context
+                        }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                         # This happens if only recognition occurs (no translation targets?)
+                         logging.info(f"RECOGNIZED (no translation) in room {room_id}: {evt.result.text}")
+                         socketio.emit('recognized_speech', {
+                             'recognition': evt.result.text,
+                             'translations': {},
+                             'source_language': source_language
+                         }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.NoMatch:
+                        logging.warning(f"NOMATCH in room {room_id}: Speech could not be recognized.")
+                        # Optionally emit a no-match event
+                        # socketio.emit('no_match', {'message': 'No speech recognized'}, room=room_id)
+
+                def canceled_cb(evt: speechsdk.translation.TranslationRecognitionCanceledEventArgs):
+                     logging.error(f"RECOGNITION CANCELED in room {room_id}: Reason={evt.reason}")
+                     if evt.reason == speechsdk.CancellationReason.Error:
+                         logging.error(f"CANCELED ErrorDetails={evt.error_details}")
+                     # Stop recognition and clean up for this room
+                     stop_recognition(room_id) # Call cleanup helper
+                     socketio.emit('recognition_error', {'error': f'Recognition canceled: {evt.reason}'}, room=room_id)
+
+                def session_started_cb(evt):
+                    logging.info(f'Recognition SESSION STARTED in room {room_id}: {evt}')
+
+                def session_stopped_cb(evt):
+                    logging.info(f'Recognition SESSION STOPPED in room {room_id}: {evt}')
+                    # Clean up when session stops naturally or due to error
+                    stop_recognition(room_id) # Call cleanup helper
+
+
+                # --- Connect Callbacks ---
+                recognizer.recognizing.connect(recognizing_cb)
+                recognizer.recognized.connect(recognized_cb)
+                recognizer.canceled.connect(canceled_cb)
+                recognizer.session_started.connect(session_started_cb)
+                recognizer.session_stopped.connect(session_stopped_cb)
+
+                # --- Start Continuous Recognition ---
+                recognizer.start_continuous_recognition_async
