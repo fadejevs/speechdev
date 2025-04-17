@@ -191,21 +191,35 @@ def cleanup_recognizer(room_id):
 
 @socketio.on('connect')
 def handle_connect():
+    """Handles new client connections."""
     sid = request.sid
-    logging.info(f"Client connected: {sid}")
-    # Example: Check service availability on connect
-    translation_service, speech_service = get_services() # Use the helper
-    if not translation_service or not speech_service:
-         logging.error(f"Services not available for new connection {sid}")
-         # Optionally disconnect or send error message
-         # emit('service_error', {'error': 'Backend services not ready'}, room=sid)
-         # return False # Prevents connection
-    else:
-         # Access attributes safely using getattr for logging
-         t_service_type = getattr(translation_service, 'service_type', 'N/A')
-         s_service_config = getattr(speech_service, 'speech_config', None)
-         logging.info(f"Services checked for {sid}: Translation={t_service_type}, Speech Configured={bool(s_service_config)}")
-    emit('connection_success', {'message': 'Connected successfully'})
+    logging.info(f"--- Connect Event Start --- Client connected: {sid}")
+
+    try:
+        # Attempt to get services early to catch potential issues
+        translation_service, speech_service = get_services()
+        if not translation_service or not speech_service:
+            logging.error(f"Services not properly initialized for SID: {sid}. Aborting connect handler.")
+            # Optionally disconnect the client if services are essential
+            # socketio.disconnect(sid)
+            return # Exit the handler early
+
+        logging.info(f"Services retrieved successfully for SID: {sid}")
+
+        # Store initial state or language settings if needed
+        session_state[sid] = {'recognizer': None, 'push_stream': None, 'target_language': 'en', 'source_language': 'en-US'} # Default target, source TBD
+        logging.info(f"Initial session state created for SID: {sid}")
+
+        # Emit success message
+        emit('connection_success', {'message': 'Connected successfully', 'sid': sid})
+        logging.info(f"Sent 'connection_success' to SID: {sid}")
+
+    except Exception as e:
+        logging.error(f"--- ERROR in connect handler for SID {sid} ---: {e}", exc_info=True)
+        # Optionally emit an error to the client
+        emit('service_error', {'error': 'Server error during connection setup.'})
+
+    logging.info(f"--- Connect Event End --- Client: {sid}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
