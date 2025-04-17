@@ -1,5 +1,5 @@
 from flask_socketio import emit, join_room, leave_room
-from flask import request, current_app
+from flask import request, current_app, session
 from app import socketio
 import time
 import logging
@@ -21,6 +21,9 @@ logging.getLogger('azure').setLevel(logging.INFO) # Keep Azure less verbose unle
 # Structure: { room_id: {'recognizer': SpeechRecognizer, 'stream': PushAudioInputStream, 'translation_service': TranslationService, 'target_languages': [] }}
 active_recognizers = {}
 recognizer_lock = threading.Lock() # To protect access to the dictionary
+
+# Define session_state globally (if this is how you manage state)
+session_state = {}
 
 # --- Helper Function to Get Services (Corrected) ---
 # Ensures services are accessed within app context when needed
