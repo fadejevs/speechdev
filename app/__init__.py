@@ -40,7 +40,8 @@ def create_app(config_class=Config):
          logging.warning("SECRET_KEY is not set or is weak in the environment. Flask sessions and SocketIO may be insecure.")
          # Optionally raise an error: raise ValueError("Missing or weak SECRET_KEY environment variable.")
 
-    socketio.init_app(app, async_mode='gevent', cors_allowed_origins="*")
+    # Enable detailed logging for SocketIO and EngineIO
+    socketio.init_app(app, async_mode='gevent', cors_allowed_origins="*", logger=True, engineio_logger=True)
 
     # --- Initialize Services ---
     # Pass the app's config dictionary to the service constructors

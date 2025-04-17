@@ -191,15 +191,35 @@ def cleanup_recognizer(room_id):
 
 @socketio.on('connect')
 def handle_connect():
-    """Handles new client connections (Simplified for testing)."""
+    """Handles new client connections."""
     sid = request.sid
-    # Only log and emit immediately
-    logging.info(f"--- MINIMAL Connect Handler --- Client connected: {sid}")
+    logging.info(f"--- Connect Event Start --- Client connected: {sid}") # RESTORED detailed logging
+
     try:
-        emit('connection_success', {'message': 'Connected successfully (minimal handler)', 'sid': sid})
-        logging.info(f"--- MINIMAL Connect Handler --- Sent 'connection_success' to SID: {sid}")
+        # Attempt to get services early to catch potential issues
+        translation_service, speech_service = get_services()
+        if not translation_service or not speech_service:
+            logging.error(f"Services not properly initialized for SID: {sid}. Aborting connect handler.")
+            # Optionally disconnect the client if services are essential
+            # socketio.disconnect(sid)
+            return # Exit the handler early
+
+        logging.info(f"Services retrieved successfully for SID: {sid}") # RESTORED detailed logging
+
+        # Store initial state or language settings if needed
+        session_state[sid] = {'recognizer': None, 'push_stream': None, 'target_language': 'en', 'source_language': 'en-US'} # Default target, source TBD
+        logging.info(f"Initial session state created for SID: {sid}") # RESTORED detailed logging
+
+        # Emit success message
+        emit('connection_success', {'message': 'Connected successfully', 'sid': sid})
+        logging.info(f"Sent 'connection_success' to SID: {sid}") # RESTORED detailed logging
+
     except Exception as e:
-         logging.error(f"--- MINIMAL Connect Handler --- Error emitting: {e}", exc_info=True)
+        logging.error(f"--- ERROR in connect handler for SID {sid} ---: {e}", exc_info=True) # RESTORED detailed logging
+        # Optionally emit an error to the client
+        emit('service_error', {'error': 'Server error during connection setup.'})
+
+    logging.info(f"--- Connect Event End --- Client: {sid}") # RESTORED detailed logging
 
 @socketio.on('disconnect')
 def handle_disconnect():
