@@ -192,6 +192,8 @@ def cleanup_recognizer(room_id):
 @socketio.on('connect')
 def handle_connect():
     """Handles new client connections."""
+    # --- ADD PRINT STATEMENT ---
+    print("--- PRINT: Connect Event Start ---", flush=True)
     sid = request.sid
     # --- Log object ID inside handler using app logger ---
     current_app.logger.info(f"--- Connect Event Start --- Client connected: {sid}. Using SocketIO object ID: {id(socketio)}")
@@ -201,9 +203,11 @@ def handle_connect():
         translation_service, speech_service = get_services()
         if not translation_service or not speech_service:
             current_app.logger.error(f"Services not properly initialized for SID: {sid}. Aborting connect handler.") # Use app logger
+            print(f"--- PRINT: Connect Error - Services not initialized for SID: {sid} ---", flush=True) # Add print
             return # Exit the handler early
 
         current_app.logger.info(f"Services retrieved successfully for SID: {sid}") # Use app logger
+        print(f"--- PRINT: Connect - Services retrieved for SID: {sid} ---", flush=True) # Add print
 
         # Store initial state or language settings if needed
         # session_state[sid] = {'recognizer': None, 'push_stream': None, 'target_language': 'en', 'source_language': 'en-US'} # Temporarily comment out state
@@ -212,16 +216,21 @@ def handle_connect():
         # Emit success message
         emit('connection_success', {'message': 'Connected successfully', 'sid': sid})
         current_app.logger.info(f"Sent 'connection_success' to SID: {sid}") # Use app logger
+        print(f"--- PRINT: Connect - Sent 'connection_success' to SID: {sid} ---", flush=True) # Add print
 
     except Exception as e:
         current_app.logger.error(f"--- ERROR in connect handler for SID {sid} ---: {e}", exc_info=True) # Use app logger
+        print(f"--- PRINT: Connect Exception for SID {sid}: {e} ---", flush=True) # Add print
         emit('service_error', {'error': 'Server error during connection setup.'})
 
     current_app.logger.info(f"--- Connect Event End --- Client: {sid}") # Use app logger
+    print(f"--- PRINT: Connect Event End --- Client: {sid}", flush=True) # Add print
 
 @socketio.on('disconnect')
 def handle_disconnect():
     """Handles client disconnections."""
+    # --- ADD PRINT STATEMENT ---
+    print("--- PRINT: Disconnect Event Start ---", flush=True)
     sid = request.sid
     # Use app logger
     current_app.logger.info(f"--- Disconnect Event Start --- Client disconnecting: {sid}. Using SocketIO object ID: {id(socketio)}")
@@ -230,6 +239,7 @@ def handle_disconnect():
     state = session_state.pop(sid, None)
     if state:
         current_app.logger.info(f"Cleaning up resources for SID: {sid}")
+        print(f"--- PRINT: Disconnect - Cleaning up for SID: {sid} ---", flush=True) # Add print
         # Stop recognition if it's running
         recognizer = state.get('recognizer')
         push_stream = state.get('push_stream')
@@ -248,8 +258,10 @@ def handle_disconnect():
                 current_app.logger.error(f"Error closing push stream for SID {sid}: {e}", exc_info=True)
     else:
         current_app.logger.info(f"No state found to clean up for SID: {sid}")
+        print(f"--- PRINT: Disconnect - No state for SID: {sid} ---", flush=True) # Add print
 
     current_app.logger.info(f"--- Disconnect Event End --- Client: {sid}")
+    print(f"--- PRINT: Disconnect Event End --- Client: {sid}", flush=True) # Add print
 
 
 @socketio.on('join_room')
@@ -538,9 +550,12 @@ def handle_translate_text(data):
 # --- ADD A SIMPLE TEST EVENT HANDLER ---
 @socketio.on('test_event')
 def handle_test_event(data):
+    # --- ADD PRINT STATEMENT ---
+    print(f"--- PRINT: Received 'test_event' --- Data: {data}", flush=True)
     sid = request.sid
     # --- Log object ID inside handler using app logger ---
     current_app.logger.info(f"--- Received 'test_event' from SID {sid} --- Data: {data}. Using SocketIO object ID: {id(socketio)}") # Use app logger
     emit('test_response', {'message': 'Test event received!', 'your_data': data}, room=sid)
     current_app.logger.info(f"--- Sent 'test_response' to SID {sid} ---") # Use app logger
+    print(f"--- PRINT: Sent 'test_response' to SID {sid} ---", flush=True) # Add print
 # --- END TEST EVENT HANDLER --- 
