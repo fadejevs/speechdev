@@ -32,22 +32,16 @@ class TranslationService:
         # --- Initialize DeepL if key is available ---
         if deepl_key:
             try:
-                # Pass the key directly to the Translator.
-                # Check DeepL library docs if you need to specify the server_url explicitly.
-                # The free API key implies the free URL.
-                self.translator = deepl.Translator(deepl_key)
-                # Optional: Test authentication/usage (might incur cost/quota usage)
-                # usage = self.translator.get_usage()
-                # logging.info(f"DeepL Usage: {usage}")
+                # Fix the DeepL initialization
+                self.translator = deepl.Translator(auth_key=deepl_key)
+                logger.info(f"Using DeepL for translation with key: {deepl_key[:4]}...")
                 self.service_type = "deepl"
-                # Log only a few chars of the key for confirmation, not the whole key
-                logging.info(f"Using DeepL for translation with key: {deepl_key[:4]}...")
-            except deepl.exceptions.AuthorizationException:
-                logging.error("DeepL initialization failed: Invalid API Key.")
-                self.translator = None
             except Exception as e:
-                logging.error(f"DeepL initialization failed: {e}")
-                self.translator = None # Ensure translator is None if init fails
+                logger.error(f"Failed to initialize DeepL translator: {e}")
+                self.translator = None
+        else:
+            logger.warning("No DeepL API key provided, using mock translations")
+            self.translator = None
 
         # --- Initialize Azure Speech SDK if keys are set AND DeepL wasn't initialized ---
         if azure_key and azure_region and not self.service_type:
@@ -68,28 +62,36 @@ class TranslationService:
 
         logging.info(f"Finished initializing TranslationService. Service type: {self.service_type}")
 
-    def translate(self, text, source_language, target_language):
-        """Translate text from source language to target language"""
-        logging.info(f"Translating text from {source_language} to {target_language} using {self.service_type} service")
+    def translate(self, text, target_lang, source_lang=None):
+        """Translate text using DeepL API"""
+        if not text:
+            return ""
         
-        if self.service_type == "deepl" and self.translator:
-            result = self._translate_deepl(text, source_language, target_language)
-            if result:
-                return result
-            # Fall back to Azure if DeepL fails
-            logging.warning("DeepL translation failed, trying Azure")
-            if self.speech_config:
-                result = self._translate_azure(text, source_language, target_language)
-                if result:
-                    return result
-        elif self.service_type == "azure":
-            result = self._translate_azure(text, source_language, target_language)
-            if result:
-                return result
+        logging.info(f"Translating text from {source_lang} to {target_lang} using deepl service")
         
-        # Mock translation for testing or if all else fails
-        logging.warning(f"Using mock translation for {source_language} to {target_language}")
-        return f"[Translation to {target_language}] {text}"
+        # If source and target are the same, return the original text
+        if source_lang and target_lang and source_lang.lower() == target_lang.lower():
+            logging.info(f"Source and target languages are the same ({source_lang}), skipping translation")
+            return f"[Translation to {target_lang}] {text}"
+        
+        try:
+            if self.translator:
+                logging.info(f"DeepL translation from {source_lang.upper()} to {target_lang.upper()}")
+                result = self.translator.translate_text(
+                    text,
+                    target_lang=target_lang.upper(),
+                    source_lang=source_lang.upper() if source_lang else None
+                )
+                return result.text
+            else:
+                # Fall back to mock translation if DeepL isn't available
+                logging.warning(f"DeepL translator not available, using mock translation")
+                return f"[Translation to {target_lang}] {text}"
+        except Exception as e:
+            logging.error(f"DeepL translation error: {e}")
+            # Fall back to mock translation
+            logging.warning(f"DeepL translation failed, using mock translation")
+            return f"[Translation to {target_lang}] {text}"
     
     def _translate_deepl(self, text, source_language, target_language):
         """Translate using DeepL API"""

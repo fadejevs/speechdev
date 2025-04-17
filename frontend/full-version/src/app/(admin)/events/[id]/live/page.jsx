@@ -23,6 +23,7 @@ import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import io from 'socket.io-client';
+import Card from '@mui/material/Card';
 
 const languages = [
   { code: 'en', name: 'English' },
@@ -61,6 +62,7 @@ const EventLivePage = () => {
   const [socketConnected, setSocketConnected] = useState(false);
   const [processingAudio, setProcessingAudio] = useState(false);
   const [error, setError] = useState(null);
+  const [transcripts, setTranscripts] = useState([]);
 
   useEffect(() => {
     const storedEvents = localStorage.getItem('eventData');
@@ -162,12 +164,15 @@ const EventLivePage = () => {
     });
 
     socketRef.current.on('translation_result', (data) => {
-      console.log('Translation Result Received:', data);
-      setTranscripts(prev => [...prev, { 
-        original: data.original, 
+      console.log('Translation Result Received: ', data);
+      
+      // Add to transcripts
+      setTranscripts(prev => [...prev, {
+        original: data.original,
         translated: data.translated,
-        sourceLang: data.source_language,
-        targetLang: data.target_language 
+        sourceLanguage: data.source_language,
+        targetLanguage: data.target_language,
+        timestamp: new Date().toISOString()
       }]);
       setProcessingAudio(false);
     });
@@ -398,13 +403,10 @@ const EventLivePage = () => {
 
   const testAzureSpeech = () => {
     if (socketRef.current && socketRef.current.connected) {
-      // Send a test message to verify the connection
-      socketRef.current.emit('test_azure', {
-        room_id: id,
-        source_language: eventData.sourceLanguages[0],
-        target_languages: eventData.targetLanguages
+      console.log('Testing Azure Speech recognition...');
+      socketRef.current.emit('test_azure_speech', {
+        room_id: id
       });
-      console.log('Test Azure message sent');
     }
   };
 
@@ -716,6 +718,22 @@ const EventLivePage = () => {
         </Box>
       </Box>
 
+      <Box sx={{ mt: 4 }}>
+        <Typography variant="h6">Transcripts</Typography>
+        {transcripts.length === 0 ? (
+          <Typography color="text.secondary">No transcripts yet</Typography>
+        ) : (
+          transcripts.map((transcript, index) => (
+            <Card key={index} sx={{ mb: 2, p: 2 }}>
+              <Typography variant="subtitle1">Original ({transcript.sourceLanguage}):</Typography>
+              <Typography paragraph>{transcript.original}</Typography>
+              <Typography variant="subtitle1">Translated ({transcript.targetLanguage}):</Typography>
+              <Typography paragraph>{transcript.translated}</Typography>
+            </Card>
+          ))
+        )}
+      </Box>
+
       <Dialog 
         open={shareDialogOpen} 
         onClose={handleCloseShareDialog}
@@ -836,6 +854,15 @@ const EventLivePage = () => {
         sx={{ mt: 2, ml: 2 }}
       >
         Test Text Translation
+      </Button>
+
+      <Button 
+        variant="contained" 
+        color="warning" 
+        onClick={testAzureSpeech}
+        sx={{ mt: 2, ml: 2 }}
+      >
+        Test Azure Speech
       </Button>
     </Box>
   );

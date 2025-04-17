@@ -336,6 +336,53 @@ def on_manual_text(data):
         logger.error(f"[{sid}] Manual text error: {e}", exc_info=True)
         emit('error', {'message': f'Manual text error: {str(e)}'})
 
+@socketio.on('test_azure_speech')
+def on_test_azure_speech(data):
+    """Test Azure Speech recognition with a WAV file"""
+    sid = request.sid
+    room_id = data.get('room_id')
+    
+    logger.info(f"[{sid}] Testing Azure Speech recognition for room: {room_id}")
+    
+    try:
+        # Get Azure credentials
+        azure_key = current_app.config.get("AZURE_SPEECH_KEY")
+        azure_region = current_app.config.get("AZURE_REGION")
+        
+        if not azure_key or not azure_region:
+            logger.error(f"[{sid}] Azure Speech credentials not configured")
+            emit('error', {'message': 'Azure Speech service not configured'})
+            return
+            
+        # Create speech config
+        speech_config = speechsdk.SpeechConfig(subscription=azure_key, region=azure_region)
+        speech_config.speech_recognition_language = "en-US"  # Use English for testing
+        
+        # Use a simple test phrase
+        test_result = "This is a test of Azure Speech recognition"
+        
+        # Emit the test result
+        socketio.emit('recognition_result', {
+            'text': test_result,
+            'language': 'en-US',
+            'is_final': True,
+            'room_id': room_id
+        }, room=room_id)
+        
+        # Also emit to the admin
+        emit('recognition_result', {
+            'text': test_result,
+            'language': 'en-US',
+            'is_final': True,
+            'room_id': room_id
+        })
+        
+        logger.info(f"[{sid}] Azure Speech test completed with test phrase")
+        
+    except Exception as e:
+        logger.error(f"[{sid}] Azure Speech test error: {e}", exc_info=True)
+        emit('error', {'message': f'Azure Speech test error: {str(e)}'})
+
 def stop_session(sid):
     """Stop and clean up a session"""
     logger.info(f"[{sid}] Attempting to stop session.")
