@@ -193,7 +193,8 @@ def cleanup_recognizer(room_id):
 def handle_connect():
     """Handles new client connections."""
     sid = request.sid
-    logging.info(f"--- Connect Event Start --- Client connected: {sid}")
+    # --- Log object ID inside handler ---
+    logging.info(f"--- Connect Event Start --- Client connected: {sid}. Using SocketIO object ID: {id(socketio)}")
 
     try:
         # Attempt to get services early to catch potential issues
@@ -205,7 +206,7 @@ def handle_connect():
         logging.info(f"Services retrieved successfully for SID: {sid}")
 
         # Store initial state or language settings if needed
-        # session_state[sid] = {'recognizer': None, 'push_stream': None, 'target_language': 'en', 'source_language': 'en-US'} # Temporarily comment out state
+        # session_state[sid] = {'recognizer': None, 'push_stream': None, 'target_language': 'en', 'source_language': 'en-US'} # Default target, source TBD
         logging.info(f"Skipping session state creation for SID: {sid}") # Temporarily comment out state
 
         # Emit success message
@@ -221,7 +222,7 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     sid = request.sid
-    logging.info(f"Client disconnected: {sid}")
+    logging.info(f"Client disconnected: {sid}. Using SocketIO object ID: {id(socketio)}")
     # Clean up resources associated with this client/room if necessary
     # Find room associated with sid if needed
     room_to_leave = None
@@ -518,7 +519,8 @@ def handle_translate_text(data):
 @socketio.on('test_event')
 def handle_test_event(data):
     sid = request.sid
-    logging.info(f"--- Received 'test_event' from SID {sid} --- Data: {data}")
+    # --- Log object ID inside handler ---
+    logging.info(f"--- Received 'test_event' from SID {sid} --- Data: {data}. Using SocketIO object ID: {id(socketio)}")
     emit('test_response', {'message': 'Test event received!', 'your_data': data}, room=sid)
     logging.info(f"--- Sent 'test_response' to SID {sid} ---")
 # --- END TEST EVENT HANDLER --- 

@@ -42,6 +42,8 @@ def create_app(config_class=Config):
 
     # Enable detailed logging for SocketIO and EngineIO
     socketio.init_app(app, async_mode='gevent', cors_allowed_origins="*", logger=True, engineio_logger=True)
+    # --- Log object ID after init ---
+    logging.info(f"--- create_app --- Initialized SocketIO. Object ID: {id(socketio)}")
 
     # --- Initialize Services ---
     # Pass the app's config dictionary to the service constructors
@@ -63,7 +65,7 @@ def create_app(config_class=Config):
 
         # Explicitly import websocket routes AFTER socketio is initialized with the app
         from .routes import websocket # Import websocket routes here
-        logging.info("Imported websocket routes.")
+        logging.info(f"--- create_app --- Imported websocket routes AFTER SocketIO init.")
 
     logging.info("Flask app created and configured.")
     return app, socketio # Return both app and socketio
