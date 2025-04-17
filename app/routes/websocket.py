@@ -569,4 +569,14 @@ def handle_test_event(data):
     emit('test_response', {'message': 'Test event received!', 'your_data': data}, room=sid)
     current_app.logger.info(f"--- Sent 'test_response' to SID {sid} ---") # Use app logger
     print(f"--- PRINT: Sent 'test_response' to SID {sid} ---", flush=True) # Add print
-# --- END TEST EVENT HANDLER --- 
+# --- END TEST EVENT HANDLER ---
+
+@socketio.on('start_recognition')
+def handle_start_recognition(data):
+    sid = request.sid
+    room_id = data.get('room_id')
+    # Add this log line to see if the event even arrives
+    logging.info(f"--- START RECOGNITION EVENT RECEIVED --- SID: {sid}, Room ID: {room_id}, Data: {data}")
+    source_language = data.get('source_language', 'en-US') # Default to en-US
+    target_languages = data.get('target_languages', []) # Default to empty list
+    # ... rest of the function ... 
