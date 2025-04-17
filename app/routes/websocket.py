@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 active_sessions = {}
 session_lock = threading.Lock()
 
+# Dictionary to hold session state per client (SID)
+sessions = {}
+
 @socketio.on('connect')
 def on_connect():
     logger.info(f"Client connected: {request.sid}")
@@ -28,208 +31,302 @@ def on_disconnect():
 
 @socketio.on('start_recognition')
 def on_start_recognition(data):
-    """Start a simple recognition and translation session"""
+    """Start a recognition and translation session"""
     sid = request.sid
     room_id = data.get('room_id')
     source_language = data.get('source_language', 'en-US')
-    target_languages = data.get('target_languages', ['es'])
+    target_languages = data.get('target_languages', []) # Expecting a list
 
-    target_language = target_languages[0] if target_languages else 'es'
+    logger.info(f"[{sid}] Starting recognition in room '{room_id}': {source_language} -> {target_languages}")
 
-    logger.info(f"[{sid}] Starting recognition in room '{room_id}': {source_language} -> {target_language}")
-
-    stop_session(sid)
+    # --- Stop existing session for this client if any ---
+    stop_current_session(sid) # Call the cleanup function
 
     try:
-        # --- Get services initialized by the app factory ---
-        try:
-            translation_service = current_app.translation_service
-            if not translation_service or not translation_service.service_type:
-                 logger.error(f"[{sid}] Translation service not available or not configured via app factory.")
-                 emit('error', {'message': 'Translation service not configured on server.'})
-                 return
+        speech_service = current_app.speech_service
+        translation_service = current_app.translation_service
 
-            azure_key = current_app.config.get("AZURE_SPEECH_KEY")
-            azure_region = current_app.config.get("AZURE_REGION")
-            if not azure_key or not azure_region:
-                 logger.error(f"[{sid}] Azure Speech credentials not configured via app factory.")
-                 emit('error', {'message': 'Azure Speech service not configured on server.'})
-                 return
+        if not speech_service or not speech_service.azure_key:
+            logger.error(f"[{sid}] Speech service not configured.")
+            emit('error', {'message': 'Speech service not configured on server.'})
+            return
 
-        except AttributeError:
-             logger.error(f"[{sid}] Failed to access services (translation_service?) from current_app. Check app initialization.", exc_info=True)
-             emit('error', {'message': 'Server configuration error accessing services.'})
-             return
-        # --- End getting services ---
+        if not translation_service:
+            logger.error(f"[{sid}] Translation service not configured.")
+            emit('error', {'message': 'Translation service not configured on server.'})
+            # Allow recognition without translation? Or return? For now, return.
+            return
 
-        stream = speechsdk.audio.PushAudioInputStream()
-        audio_config = speechsdk.audio.AudioConfig(stream=stream)
-
-        speech_config = speechsdk.SpeechConfig(subscription=azure_key, region=azure_region)
+        # --- Create Recognizer Components ---
+        speech_config = speechsdk.SpeechConfig(subscription=speech_service.azure_key, region=speech_service.azure_region)
         speech_config.speech_recognition_language = source_language
+        # Optional: Add profanity masking if desired
+        # speech_config.set_profanity(speechsdk.ProfanityOption.Masked)
 
+        push_stream = speechsdk.audio.PushAudioInputStream()
+        audio_config = speechsdk.audio.AudioConfig(stream=push_stream)
         recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
 
+        # Store components in session state
+        sessions[sid] = {
+            'recognizer': recognizer,
+            'audio_stream': push_stream,
+            'room_id': room_id,
+            'source_language': source_language,
+            'target_languages': target_languages,
+            'translation_service': translation_service,
+            'session_active': True # Flag to track if session is running
+        }
+        logger.debug(f"[{sid}] Session created.")
+
+        # --- Define Event Handlers ---
+        def session_started_cb(evt: speechsdk.SessionEventArgs):
+            logger.info(f'[{sid}] SESSION STARTED: {evt}')
+            emit('recognition_started', {'message': 'Azure session started.'})
+
+        def session_stopped_cb(evt: speechsdk.SessionEventArgs):
+            logger.info(f'[{sid}] SESSION STOPPED: {evt}')
+            # Mark session as inactive, cleanup might happen elsewhere
+            if sid in sessions:
+                 sessions[sid]['session_active'] = False
+            emit('recognition_stopped', {'message': 'Azure session stopped.'})
+
+
+        def recognizing_cb(evt: speechsdk.SpeechRecognitionEventArgs):
+            """Intermediate results"""
+            if evt.result.reason == speechsdk.ResultReason.RecognizingSpeech:
+                logger.debug(f'[{sid}] Recognizing: {evt.result.text}')
+                emit('recognizing_result', {
+                    'text': evt.result.text,
+                    'room_id': room_id
+                }, room=sid) # Send only to admin? Or room too?
+
         def recognized_cb(evt: speechsdk.SpeechRecognitionEventArgs):
-            """Callback for when speech is recognized"""
+            """Final results for an utterance"""
             result = evt.result
-            text = result.text
-            
-            logger.info(f"[{sid}] Recognized: {text}")
-            
-            if not text or text.isspace():
-                logger.info(f"[{sid}] Empty text recognized, skipping translation.")
-                return
-            
+            logger.debug(f"[{sid}] Entering recognized_cb. Reason: {result.reason}")
+
             if result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                text = result.text
                 logger.info(f"[{sid}] Recognized: {text}")
 
-                try:
-                    # Extract base source language code (e.g., 'en' from 'en-US')
-                    base_source_lang = source_language.split('-')[0]
-                    # Ensure target language is also base code if needed by service
+                if not text or text.isspace():
+                    logger.info(f"[{sid}] Empty text recognized, skipping translation.")
+                    return
+
+                # Get services and languages from session
+                session_data = sessions.get(sid)
+                if not session_data:
+                    logger.error(f"[{sid}] Session data not found in recognized_cb.")
+                    return
+
+                current_translation_service = session_data['translation_service']
+                current_source_language = session_data['source_language']
+                current_target_languages = session_data['target_languages']
+
+                base_source_lang = current_source_language.split('-')[0]
+
+                for target_language in current_target_languages:
                     base_target_lang = target_language.split('-')[0]
 
-                    # Use base source language for translation service
-                    translated = translation_service.translate(text, base_target_lang, base_source_lang)
-
-                    if translated:
-                        logger.info(f"[{sid}] Translated ({translation_service.service_type}): {translated}")
+                    # Skip if source and target are the same base language
+                    if base_source_lang == base_target_lang:
+                        logger.info(f"[{sid}] Skipping translation from {base_source_lang} to {base_target_lang} (same base language)")
+                        # Optionally emit the original text as a "translation"
                         socketio.emit('translation_result', {
                             'original': text,
-                            'translated': translated,
-                            'source_language': source_language,
-                            'target_language': target_language
-                        }, room=sid)
-                        if room_id:
+                            'translated': text, # Send original if langs match
+                            'source_language': current_source_language,
+                            'target_language': target_language,
+                            'room_id': room_id
+                        }, room=room_id) # Emit to the main room
+                        emit('translation_result', { # Emit back to admin
+                            'original': text,
+                            'translated': text,
+                            'source_language': current_source_language,
+                            'target_language': target_language,
+                            'room_id': room_id
+                        })
+                        continue # Move to next target language
+
+                    try:
+                        logger.debug(f"[{sid}] Attempting translation: '{text}' from {base_source_lang} to {base_target_lang}")
+                        translated = current_translation_service.translate(text, base_target_lang, base_source_lang)
+
+                        if translated:
+                            logger.info(f"[{sid}] Translated ({current_translation_service.service_type}): '{text}' -> '{translated}'")
+                            # Emit to the main room
                             socketio.emit('translation_result', {
                                 'original': text,
                                 'translated': translated,
-                                'source_language': source_language,
-                                'target_language': target_language
+                                'source_language': current_source_language,
+                                'target_language': target_language,
+                                'room_id': room_id
                             }, room=room_id)
-                    else:
-                        logger.warning(f"[{sid}] Translation returned None for text: {text}")
-                        socketio.emit('translation_error', {
-                             'original': text,
-                             'message': f'Translation failed or returned empty using {translation_service.service_type}.',
-                             'source_language': source_language,
-                             'target_language': target_language
-                        }, room=sid)
-                except Exception as e:
-                    logger.error(f"[{sid}] Translation error: {e}", exc_info=True)
-                    socketio.emit('translation_error', {
-                        'original': text,
-                        'message': f'Translation processing error: {str(e)}',
-                        'source_language': source_language,
-                        'target_language': target_language
-                    }, room=sid)
+                             # Emit back to the admin who initiated
+                            emit('translation_result', {
+                                'original': text,
+                                'translated': translated,
+                                'source_language': current_source_language,
+                                'target_language': target_language,
+                                'room_id': room_id
+                            })
+                        else:
+                            logger.warning(f"[{sid}] Translation returned None or empty for '{text}' to {base_target_lang}")
+                            emit('translation_error', {
+                                'original': text,
+                                'message': f'Translation failed or returned empty using {current_translation_service.service_type}.',
+                                'source_language': current_source_language,
+                                'target_language': target_language,
+                                'room_id': room_id
+                            })
+                    except Exception as e:
+                        logger.error(f"[{sid}] Translation error for '{text}': {e}", exc_info=True)
+                        emit('translation_error', {
+                            'original': text,
+                            'message': f'Translation processing error: {str(e)}',
+                            'source_language': current_source_language,
+                            'target_language': target_language,
+                            'room_id': room_id
+                        })
 
             elif result.reason == speechsdk.ResultReason.NoMatch:
-                logger.info(f"[{sid}] No speech could be recognized: {result.no_match_details}")
+                logger.info(f"[{sid}] NOMATCH: Speech could not be recognized. Details: {result.no_match_details}")
+                emit('recognition_nomatch', {'message': f'No speech recognized: {result.no_match_details}'})
+            elif result.reason == speechsdk.ResultReason.Canceled:
+                logger.warning(f"[{sid}] CANCELED in recognized_cb: Reason={result.cancellation_details.reason}")
+                if result.cancellation_details.reason == speechsdk.CancellationReason.Error:
+                    logger.error(f"[{sid}] CANCELED ErrorDetails={result.cancellation_details.error_details}")
+                    emit('error', {'message': f'Recognition Error: {result.cancellation_details.error_details}'})
+                stop_current_session(sid) # Stop session on cancellation
 
         def canceled_cb(evt: speechsdk.SpeechRecognitionCanceledEventArgs):
-            logger.warning(f"[{sid}] Recognition Canceled: Reason={evt.reason}")
+            """Handles cancellation events."""
+            logger.warning(f'[{sid}] RECOGNITION CANCELED: Reason={evt.reason}')
             if evt.reason == speechsdk.CancellationReason.Error:
-                logger.error(f"[{sid}] Cancellation Error Details: {evt.error_details}")
-                socketio.emit('recognition_canceled', {
-                    'reason': 'Error',
-                    'details': evt.error_details
-                }, room=sid)
+                logger.error(f'[{sid}] Canceled Error Details: {evt.error_details}')
+                emit('error', {'message': f'Recognition Canceled Error: {evt.error_details}'})
             elif evt.reason == speechsdk.CancellationReason.EndOfStream:
-                 logger.info(f"[{sid}] Cancellation Reason: End of stream reached.")
+                logger.info(f'[{sid}] Canceled: End of stream reached.')
+                emit('recognition_stopped', {'message': 'End of audio stream reached.'})
             else:
-                 socketio.emit('recognition_canceled', {
-                    'reason': str(evt.reason),
-                    'details': 'Recognition session canceled.'
-                 }, room=sid)
-            stop_session(sid)
+                 logger.info(f'[{sid}] Canceled: {evt.reason}')
 
-        def session_stopped_cb(evt: speechsdk.SessionEventArgs):
-            logger.info(f'[{sid}] Recognition Session Stopped.')
+            stop_current_session(sid) # Stop session on cancellation
 
-        def recognizing_cb(evt):
-            """Callback for when speech is being recognized (interim results)"""
-            result = evt.result
-            logger.info(f"[{sid}] RECOGNIZING (interim): {result.text}")
 
-        recognizer.recognized.connect(recognized_cb)
-        recognizer.canceled.connect(canceled_cb)
-        recognizer.session_stopped.connect(session_stopped_cb)
+        # --- Connect Handlers ---
         recognizer.recognizing.connect(recognizing_cb)
+        recognizer.recognized.connect(recognized_cb)
+        recognizer.session_started.connect(session_started_cb)
+        recognizer.session_stopped.connect(session_stopped_cb)
+        recognizer.canceled.connect(canceled_cb)
+        logger.debug(f"[{sid}] Event handlers connected.")
 
+        # --- Start Recognition ---
         recognizer.start_continuous_recognition_async()
-        logger.info(f"[{sid}] Continuous recognition started.")
+        logger.info(f"[{sid}] Continuous recognition start requested.")
 
-        logger.info(f"[{sid}] Azure Speech recognizer created with language: {source_language}")
-        logger.info(f"[{sid}] Azure Speech config: {speech_config}")
-
-        with session_lock:
-            active_sessions[sid] = {
-                'recognizer': recognizer,
-                'stream': stream,
-                'translation_service': translation_service,
-                'source_language': source_language,
-                'target_language': target_language
-            }
-
-        emit('recognition_started', {'message': 'Ready to recognize and translate'}, room=sid)
+        emit('recognition_started', {'message': 'Recognition process initiated.'})
 
     except Exception as e:
-        logger.error(f"[{sid}] Error during start_recognition setup: {e}", exc_info=True)
-        emit('error', {'message': f'Server setup error: {str(e)}'}, room=sid)
-        stop_session(sid)
+        logger.error(f"[{sid}] Error in on_start_recognition: {e}", exc_info=True)
+        emit('error', {'message': f'Server error starting recognition: {str(e)}'})
+        stop_current_session(sid) # Clean up if start fails
+
 
 @socketio.on('audio_chunk')
 def on_audio_chunk(data):
-    """Process an audio chunk from the client"""
+    """Receive audio chunk from client and push to Azure stream"""
     sid = request.sid
-    
-    logger.info(f"[{sid}] Received audio chunk")
-    
-    with session_lock:
-        if sid not in active_sessions:
-            logger.warning(f"[{sid}] Received audio chunk but no active session found.")
-            return
-        
-        session = active_sessions[sid]
-        stream = session.get('stream')
-        
-        if not stream:
-            logger.warning(f"[{sid}] No stream in session.")
-            return
-    
-    try:
-        # Handle binary data directly
-        if isinstance(data, bytes):
-            audio_data = data
-            logger.info(f"[{sid}] Received binary audio chunk: {len(audio_data)} bytes")
-        # Handle Blob/Buffer sent by Socket.IO
-        elif hasattr(data, 'read'):
-            audio_data = data.read()
-            logger.info(f"[{sid}] Read audio data from buffer: {len(audio_data)} bytes")
-        # If it's a dictionary with metadata (your current approach)
-        elif isinstance(data, dict) and 'audio' in data:
-            audio_data = data['audio']
-            logger.info(f"[{sid}] Extracted audio from dict: {len(audio_data)} bytes")
+    session_data = sessions.get(sid)
+
+    if session_data and session_data.get('session_active'):
+        audio_chunk = data # Assuming data is bytes
+        audio_stream = session_data.get('audio_stream')
+        if audio_stream:
+            try:
+                if isinstance(audio_chunk, bytes) and len(audio_chunk) > 0:
+                    # logger.debug(f"[{sid}] Received audio chunk: {len(audio_chunk)} bytes")
+                    audio_stream.write(audio_chunk)
+                    # logger.debug(f"[{sid}] Audio chunk written to stream.")
+                elif len(audio_chunk) == 0:
+                     logger.warning(f"[{sid}] Received empty audio chunk.")
+                else:
+                     logger.warning(f"[{sid}] Received non-bytes audio chunk type: {type(audio_chunk)}")
+            except Exception as e:
+                logger.error(f"[{sid}] Error writing to audio stream: {e}", exc_info=True)
+                emit('error', {'message': f'Server error processing audio: {str(e)}'})
+                stop_current_session(sid)
         else:
-            logger.warning(f"[{sid}] Unrecognized audio data format: {type(data)}, data: {str(data)[:100]}")
-            return
-            
-        # Write to the stream
-        stream.write(audio_data)
-        logger.info(f"[{sid}] Audio chunk written to stream: {len(audio_data)} bytes")
-        
-    except Exception as e:
-        logger.error(f"[{sid}] Error processing audio chunk: {e}", exc_info=True)
+            logger.warning(f"[{sid}] Audio stream not found in session for received chunk.")
+    # else:
+        # logger.warning(f"[{sid}] Received audio chunk but no active session found.")
+
 
 @socketio.on('stop_recognition')
-def on_stop_recognition():
-    """Client explicitly requests to stop the recognition session."""
+def on_stop_recognition(data):
+    """Client requested to stop recognition"""
     sid = request.sid
-    logger.info(f"[{sid}] Received stop_recognition request from client.")
-    stop_session(sid)
-    emit('recognition_stopped', {'message': 'Recognition stopped by client request.'}, room=sid)
+    logger.info(f"[{sid}] Received stop_recognition request.")
+    stop_current_session(sid)
+
+
+def stop_current_session(sid):
+    """Stops the recognizer and closes the stream for a given client"""
+    logger.info(f"[{sid}] Attempting to stop session.")
+    session_data = sessions.pop(sid, None) # Remove session data atomically
+
+    if session_data:
+        logger.info(f"[{sid}] Session found, stopping components.")
+        recognizer = session_data.get('recognizer')
+        audio_stream = session_data.get('audio_stream')
+
+        # Stop the recognizer first
+        if recognizer:
+            try:
+                logger.info(f"[{sid}] Requesting stop_continuous_recognition_async.")
+                stop_future = recognizer.stop_continuous_recognition_async()
+                # Optional: Wait for stop completion if needed, but might block
+                # stop_future.get()
+                logger.info(f"[{sid}] Stop recognition requested.")
+            except Exception as e:
+                logger.error(f"[{sid}] Error stopping recognizer: {e}", exc_info=True)
+
+        # Close the audio stream *after* requesting recognizer stop
+        if audio_stream:
+            try:
+                audio_stream.close()
+                logger.info(f"[{sid}] Audio stream closed.")
+            except Exception as e:
+                logger.error(f"[{sid}] Error closing audio stream: {e}", exc_info=True)
+
+        # Disconnect callbacks (optional, good practice)
+        if recognizer:
+             try:
+                 recognizer.recognizing.disconnect_all()
+                 recognizer.recognized.disconnect_all()
+                 recognizer.session_started.disconnect_all()
+                 recognizer.session_stopped.disconnect_all()
+                 recognizer.canceled.disconnect_all()
+                 logger.info(f"[{sid}] Recognizer callbacks disconnected.")
+             except Exception as e:
+                 logger.error(f"[{sid}] Error disconnecting callbacks: {e}", exc_info=True)
+
+
+        logger.info(f"[{sid}] Session cleanup complete.")
+        emit('recognition_stopped', {'message': 'Recognition stopped by server.'}, room=sid)
+    else:
+        logger.info(f"[{sid}] No active session found to stop.")
+
+
+# --- Add cleanup on disconnect ---
+@socketio.on('disconnect')
+def on_disconnect():
+    sid = request.sid
+    logger.info(f"Client disconnected: {sid}")
+    stop_current_session(sid) # Ensure cleanup happens if client disconnects abruptly
+
 
 @socketio.on('manual_text')
 def on_manual_text(data):
@@ -297,38 +394,3 @@ def on_manual_text(data):
     except Exception as e:
         logger.error(f"[{sid}] Manual text error: {e}", exc_info=True)
         emit('error', {'message': f'Manual text error: {str(e)}'})
-
-def stop_session(sid):
-    """Stop and clean up a session"""
-    logger.info(f"[{sid}] Attempting to stop session.")
-    with session_lock:
-        if sid in active_sessions:
-            session = active_sessions.pop(sid)
-            logger.info(f"[{sid}] Session found, stopping components.")
-
-            recognizer = session.get('recognizer')
-            if recognizer:
-                try:
-                    recognizer.recognized.disconnect_all()
-                    recognizer.session_started.disconnect_all()
-                    recognizer.session_stopped.disconnect_all()
-                    recognizer.canceled.disconnect_all()
-
-                    stop_future = recognizer.stop_continuous_recognition_async()
-                    logger.info(f"[{sid}] Called stop_continuous_recognition_async.")
-                except Exception as e:
-                    logger.error(f"[{sid}] Error stopping recognizer: {e}", exc_info=True)
-
-            stream = session.get('stream')
-            if stream:
-                try:
-                    stream.close()
-                    logger.info(f"[{sid}] Audio stream closed.")
-                except Exception as e:
-                    logger.error(f"[{sid}] Error closing stream: {e}", exc_info=True)
-
-            logger.info(f"[{sid}] Session cleanup complete.")
-            return True
-        else:
-            logger.info(f"[{sid}] No active session found to stop.")
-            return False

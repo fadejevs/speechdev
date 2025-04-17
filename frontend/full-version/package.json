@@ -42,10 +42,12 @@
     "react-dom": "18.3.1",
     "react-dropzone": "14.3.5",
     "react-hook-form": "7.53.2",
+    "react-hot-toast": "^2.5.2",
     "react-intl": "6.8.9",
     "react-otp-input": "3.1.1",
     "react-simple-maps": "3.0.0",
     "simplebar-react": "3.2.6",
+    "socket.io-client": "^4.8.1",
     "stylis": "4.3.4",
     "stylis-plugin-rtl": "2.1.1",
     "swr": "2.2.5"
