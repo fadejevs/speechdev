@@ -10,7 +10,7 @@ def initialize_services(app):
     logger.info("--- Initializing services ---")
     try:
         # Initialize your services here
-        app.translation_service = TranslationService()
+        app.translation_service = TranslationService(app.config)
         app.speech_service = SpeechService() # Assuming SpeechService takes no args or gets config from env/app.config
         # Initialize other services and attach them to 'app'
         # e.g., app.firebase_service = FirebaseService()

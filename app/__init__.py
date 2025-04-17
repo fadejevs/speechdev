@@ -115,11 +115,13 @@ def create_app(config_class=Config):
     try:
         from .services import initialize_services
         initialize_services(app) # Pass app if services need it
-        logger.info(f"Translation Service initialized in create_app: Type={getattr(app, 'translation_service', 'Not Found')}")
-        logger.info(f"Speech Service initialized in create_app: Configured={hasattr(app, 'speech_service')}")
+        # Log the types to confirm they are assigned
+        logger.info(f"Translation Service attached in create_app: Type={type(getattr(app, 'translation_service', None))}")
+        logger.info(f"Speech Service attached in create_app: Type={type(getattr(app, 'speech_service', None))}")
     except Exception as e:
-        logger.error(f"--- create_app --- Failed to initialize services: {e}", exc_info=True)
-        # Decide if you want to raise the exception or continue
+        logger.error(f"--- create_app --- CRITICAL: Failed to initialize services: {e}", exc_info=True)
+        # Re-raise the exception to prevent the app from starting in a broken state
+        raise e # <-- ADD THIS LINE TO STOP THE APP ON FAILURE
 
     # Register Blueprints
     try:
