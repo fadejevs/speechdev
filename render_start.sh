@@ -10,5 +10,6 @@ set -o errexit
 # Use the SPECIFIC gevent-websocket worker for Flask-SocketIO compatibility
 # Bind to 0.0.0.0 and the PORT environment variable provided by Render
 # Point to the 'app' object inside your 'wsgi.py' file
-echo "Starting Gunicorn with gevent-websocket worker..."
-gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind 0.0.0.0:$PORT wsgi:app
+# Explicitly disable preloading
+echo "Starting Gunicorn with gevent-websocket worker, preload=False..."
+gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --preload=False -w 1 --bind 0.0.0.0:$PORT wsgi:app

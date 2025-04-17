@@ -11,19 +11,9 @@ logging.info("--- wsgi.py --- Starting script.") # Keep this log
 
 
 # Create the app and socketio instances using the factory
-# The environment (like PORT) should be available here if loaded early
-app, socketio_instance = create_app()
-# --- Log object ID after creation ---
-logging.info(f"--- wsgi.py --- App created. SocketIO object ID from create_app: {id(socketio_instance)}")
+# Gunicorn needs 'app', but we also need the 'socketio' instance from create_app
+# for potential future use or clarity, though Gunicorn won't use it directly.
+app, socketio = create_app() # Assign to socketio directly
+logging.info(f"--- wsgi.py --- App created. SocketIO object ID from create_app: {id(socketio)}")
 
-if __name__ == "__main__":
-    # This part is mainly for local development testing
-    # Gunicorn will run the 'app' object directly in production
-    # Use the PORT environment variable if available, otherwise default to 5001 or similar
-    port = int(os.environ.get('PORT', 5001))
-    # Note: For production on Render, Gunicorn command handles the port binding.
-    # Setting debug=False is generally better for anything resembling production.
-    logging.info(f"--- wsgi.py --- Running locally via socketio.run on port {port}")
-    # Use the instance returned by create_app - Correction: use the imported socketio
-    from app import socketio
-    socketio.run(app, host='0.0.0.0', port=port, debug=False)
+# Gunicorn runs 'app' directly, so the __main__ block is not needed for production.
