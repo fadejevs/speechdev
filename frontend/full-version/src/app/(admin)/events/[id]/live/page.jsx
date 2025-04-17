@@ -239,10 +239,9 @@ const EventLivePage = () => {
       });
       streamRef.current = stream;
 
-      const options = { 
+      const options = {
         mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 16000, // 16kHz sample rate
-        bitsPerSecond: 16000
+        audioBitsPerSecond: 16000 // 16kHz sample rate
       };
       const recorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = recorder;
@@ -287,8 +286,8 @@ const EventLivePage = () => {
           // Prepare the data
           const startData = {
             room_id: id, // Make sure 'id' is the correct room identifier
-            source_language: eventData.sourceLanguages[0],
-            target_languages: eventData.targetLanguages || []
+            source_language: 'en-US', // Force English for testing
+            target_languages: eventData.targetLanguages || ['es']
           };
 
           console.log('Attempting to emit start_recognition with data:', startData);
@@ -406,6 +405,32 @@ const EventLivePage = () => {
         target_languages: eventData.targetLanguages
       });
       console.log('Test Azure message sent');
+    }
+  };
+
+  const testServices = () => {
+    if (socketRef.current && socketRef.current.connected) {
+      console.log('Testing translation and speech services...');
+      socketRef.current.emit('test_services', {
+        room_id: id
+      });
+    } else {
+      console.error('WebSocket not connected');
+    }
+  };
+
+  const testTextTranslation = () => {
+    if (socketRef.current && socketRef.current.connected) {
+      console.log('Testing text translation...');
+      const testText = "Hello, this is a test message.";
+      
+      // Simulate a recognition result
+      socketRef.current.emit('manual_text', {
+        room_id: id,
+        text: testText,
+        source_language: 'en-US',
+        target_languages: eventData?.targetLanguages || ['es']
+      });
     }
   };
 
@@ -793,6 +818,24 @@ const EventLivePage = () => {
         sx={{ ml: 2 }}
       >
         Test Azure Connection
+      </Button>
+
+      <Button
+        variant="contained"
+        color="secondary"
+        onClick={testServices}
+        sx={{ mt: 2 }}
+      >
+        Test Services
+      </Button>
+
+      <Button
+        variant="contained"
+        color="info"
+        onClick={testTextTranslation}
+        sx={{ mt: 2, ml: 2 }}
+      >
+        Test Text Translation
       </Button>
     </Box>
   );

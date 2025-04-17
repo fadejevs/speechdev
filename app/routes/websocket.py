@@ -274,6 +274,68 @@ def on_test_azure(data):
         logger.error(f"[{sid}] Test Azure error: {e}", exc_info=True)
         emit('error', {'message': f'Test error: {str(e)}'})
 
+@socketio.on('manual_text')
+def on_manual_text(data):
+    """Process manually entered text for translation"""
+    sid = request.sid
+    room_id = data.get('room_id')
+    text = data.get('text')
+    source_language = data.get('source_language', 'en-US')
+    target_languages = data.get('target_languages', ['es'])
+    
+    logger.info(f"[{sid}] Manual text for room '{room_id}': '{text}'")
+    
+    if not text:
+        logger.warning(f"[{sid}] Empty text provided")
+        return
+        
+    try:
+        # Get translation service
+        translation_service = current_app.translation_service
+        if not translation_service:
+            logger.error(f"[{sid}] Translation service not available")
+            emit('error', {'message': 'Translation service not configured'})
+            return
+            
+        # Extract base language codes
+        base_source_lang = source_language.split('-')[0]
+        
+        for target_language in target_languages:
+            base_target_lang = target_language.split('-')[0]
+            
+            # Translate the text
+            translated = translation_service.translate(text, base_target_lang, base_source_lang)
+            
+            if translated:
+                logger.info(f"[{sid}] Translated: '{text}' -> '{translated}'")
+                
+                # Emit to the room
+                socketio.emit('translation_result', {
+                    'original': text,
+                    'translated': translated,
+                    'source_language': source_language,
+                    'target_language': target_language,
+                    'room_id': room_id
+                }, room=room_id)
+                
+                # Also emit to the admin
+                emit('translation_result', {
+                    'original': text,
+                    'translated': translated,
+                    'source_language': source_language,
+                    'target_language': target_language,
+                    'room_id': room_id
+                })
+            else:
+                logger.error(f"[{sid}] Translation failed")
+                emit('translation_error', {
+                    'original': text,
+                    'message': 'Translation failed'
+                })
+    except Exception as e:
+        logger.error(f"[{sid}] Manual text error: {e}", exc_info=True)
+        emit('error', {'message': f'Manual text error: {str(e)}'})
+
 def stop_session(sid):
     """Stop and clean up a session"""
     logger.info(f"[{sid}] Attempting to stop session.")
