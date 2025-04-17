@@ -2,12 +2,12 @@ from flask import Blueprint, render_template, jsonify, current_app, request
 from app.services.firebase_service import FirebaseService
 import logging
 
-# Define the blueprint object named 'bp'
-bp = Blueprint('main', __name__)
+# Define the blueprint object named 'main_bp' to match the import in __init__.py
+main_bp = Blueprint('main', __name__)
 
 firebase_service = FirebaseService()
 
-@bp.route('/')
+@main_bp.route('/')
 def index():
     """Serves the main HTML page or a welcome message."""
     # Option 1: Render an HTML template (if you have one in a 'templates' folder)
@@ -20,7 +20,7 @@ def index():
     # Option 2: Return a simple JSON message
     return jsonify({"message": "Welcome to the Real-Time Translation API"})
 
-@bp.route('/health')
+@main_bp.route('/health')
 def health_check():
     """Basic health check endpoint."""
     # You could add checks here for database connections, service availability etc.
@@ -43,7 +43,7 @@ def health_check():
 
 # Add any other general-purpose routes for your application here.
 # For example, a route to show API documentation or info.
-@bp.route('/info')
+@main_bp.route('/info')
 def info():
     """Provides basic info about the API."""
     # Access config safely if needed
@@ -54,7 +54,7 @@ def info():
         "flask_secret_key_set": secret_key_set
     })
 
-@bp.route('/translate', methods=['POST'])
+@main_bp.route('/translate', methods=['POST'])
 def translate_text():
     """Super simple translation endpoint"""
     try:
@@ -112,7 +112,7 @@ def translate_text():
             'target_language': target_language if 'target_language' in locals() else 'unknown'
         })
 
-@bp.route('/api/transcripts', methods=['GET'])
+@main_bp.route('/api/transcripts', methods=['GET'])
 def get_transcripts():
     try:
         transcripts = firebase_service.get_transcripts(limit=20)
