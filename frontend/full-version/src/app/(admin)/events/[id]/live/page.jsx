@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -25,6 +25,9 @@ import InputLabel from '@mui/material/InputLabel';
 import io from 'socket.io-client';
 import Card from '@mui/material/Card';
 import { toast } from 'react-hot-toast';
+import axios from 'axios';
+import { CardContent, List, ListItem, ListItemText, Alert } from '@mui/material';
+import SendIcon from '@mui/icons-material/Send';
 
 const languages = [
   { code: 'en', name: 'English' },
@@ -64,27 +67,48 @@ const EventLivePage = () => {
   const [processingAudio, setProcessingAudio] = useState(false);
   const [error, setError] = useState(null);
   const [transcripts, setTranscripts] = useState([]);
+  const [selectedSourceLang, setSelectedSourceLang] = useState('en-US');
+  const [selectedTargetLangs, setSelectedTargetLangs] = useState([]);
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
+
+  const languageNameMap = {
+    'en-US': 'English (US)',
+    'es-ES': 'Spanish (Spain)',
+    'lv-LV': 'Latvian',
+    'de-DE': 'German',
+    'fr-FR': 'French',
+    'ru-RU': 'Russian',
+    'zh-CN': 'Chinese (Mandarin)',
+    'ja-JP': 'Japanese',
+    'it-IT': 'Italian',
+    'pt-PT': 'Portuguese'
+  };
+  const languageCodeMap = Object.fromEntries(Object.entries(languageNameMap).map(([code, name]) => [name, code]));
 
   useEffect(() => {
-    const storedEvents = localStorage.getItem('eventData');
-    if (storedEvents) {
-      const parsedEvents = JSON.parse(storedEvents);
-      const event = parsedEvents.find(event => event.id === id);
-      if (event) {
-        setEventData(event);
-        if (event.sourceLanguages && event.sourceLanguages.length > 0) {
-          setLiveTranscriptionLang(event.sourceLanguages[0]);
-        }
-        const initialTranslations = {};
-        event.targetLanguages?.forEach(lang => {
-          initialTranslations[lang] = '';
-        });
-        setLiveTranslations(initialTranslations);
-      } else {
-        setError("Event not found.");
+    const fetchEvent = async () => {
+      try {
+        console.log(`Fetching event data for ID: ${id}`);
+        const mockData = {
+          id: id,
+          name: `Event ${id}`,
+          sourceLanguage: 'en-US',
+          targetLanguages: ['es-ES']
+        };
+        console.log("Fetched Event Data:", mockData);
+        setEventData(mockData);
+        setSelectedSourceLang(mockData.sourceLanguage || 'en-US');
+        setSelectedTargetLangs(mockData.targetLanguages || ['es-ES']);
+      } catch (err) {
+        console.error("Error fetching event data:", err);
+        setError(`Failed to load event details: ${err.message}`);
+        toast.error(`Failed to load event details: ${err.message}`);
       }
-    } else {
-      setError("Event data not available.");
+    };
+
+    if (id) {
+      fetchEvent();
     }
   }, [id]);
 
@@ -116,45 +140,38 @@ const EventLivePage = () => {
 
     const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
     console.log(`Attempting to connect WebSocket to: ${socketUrl}`);
+
+    if (socketRef.current) {
+        socketRef.current.disconnect();
+    }
+
     socketRef.current = io(socketUrl, {
-        transports: ['websocket', 'polling'],
-        reconnectionAttempts: 5,
-        timeout: 10000
+      path: '/socket.io',
+      transports: ['websocket'],
+      reconnectionAttempts: 5,
+      timeout: 10000,
     });
 
     socketRef.current.on('connect', () => {
       console.log('Admin WebSocket connected:', socketRef.current.id);
       setSocketConnected(true);
       setError(null);
-      if (eventData?.sourceLanguages?.[0]) {
-          socketRef.current.emit('join', {
-              room: id,
-              source_language: eventData.sourceLanguages[0],
-              target_languages: eventData.targetLanguages || []
-          });
-          console.log(`Admin page joining room: ${id} with Langs: ${eventData.sourceLanguages[0]} -> ${eventData.targetLanguages}`);
-      } else {
-          console.error("Cannot join room: Event data with source language not loaded yet.");
-          setError("Event data not loaded, cannot start session.");
-      }
-      
-      // Test ping-pong to verify two-way communication
-      socketRef.current.emit('ping_test', { message: 'Testing connection' });
-    });
-
-    socketRef.current.on('pong_test', (data) => {
-      console.log('Received pong from server:', data);
+      toast.success('WebSocket Connected');
+      const roomData = {
+          room_id: id,
+          source_language: selectedSourceLang,
+          target_languages: selectedTargetLangs
+      };
+      console.log(`Admin page joining room: ${id} with Langs: ${selectedSourceLang} -> ${selectedTargetLangs.join(', ')}`);
+      socketRef.current.emit('join_room', roomData);
     });
 
     socketRef.current.on('disconnect', (reason) => {
       console.log('Admin WebSocket disconnected:', reason);
       setSocketConnected(false);
-      if (reason !== 'io client disconnect' && reason !== 'io server disconnect') {
-         setError('WebSocket disconnected. Trying to reconnect...');
-      }
-      if (isRecording && reason !== 'io client disconnect') {
-          stopRecording();
-          console.warn("Stopped recording due to WebSocket disconnection.");
+      if (reason !== 'io client disconnect') {
+          setError('WebSocket disconnected. Attempting to reconnect...');
+          toast.error('WebSocket disconnected.');
       }
     });
 
@@ -162,35 +179,20 @@ const EventLivePage = () => {
       console.error('Admin WebSocket connection error:', error);
       setSocketConnected(false);
       setError(`WebSocket connection failed: ${error.message}. Please check the server.`);
+      toast.error(`WebSocket connection failed: ${error.message}`);
     });
 
     socketRef.current.on('translation_result', (data) => {
-      console.log('Translation Result Received: ', data);
-      
-      // Add to transcripts
-      setTranscripts(prev => [...prev, {
-        original: data.original,
-        translated: data.translated,
-        sourceLanguage: data.source_language,
-        targetLanguage: data.target_language,
-        timestamp: new Date().toISOString()
-      }]);
-      setProcessingAudio(false);
-    });
-
-    socketRef.current.on('recognition_result', (data) => {
-      console.log('Recognition Result Received: ', data);
-      
-      // Only add final results to transcripts
-      if (data.is_final) {
-        setTranscripts(prev => [...prev, {
-          original: data.text,
-          translated: null, // Will be filled when translation arrives
-          sourceLanguage: data.language,
-          targetLanguage: null,
-          timestamp: new Date().toISOString()
-        }]);
-      }
+        if (data.is_manual) {
+            console.log('Manual Translation Result Received: ', data);
+            setTranscripts(prev => [...prev, {
+                original: data.original,
+                translated: data.translated,
+                sourceLanguage: data.source_language,
+                targetLanguage: data.target_language,
+                timestamp: new Date().toISOString()
+            }]);
+        }
     });
 
     socketRef.current.on('error', (data) => {
@@ -198,164 +200,131 @@ const EventLivePage = () => {
       toast.error(`Error: ${data.message}`);
     });
 
-    socketRef.current.on('translation_error', (error) => {
-      console.error('Translation Error:', error.message, 'Original:', error.original);
-      setError(`Translation failed for "${error.original}": ${error.message}`);
-      setTranscripts(prev => [...prev, { 
-        original: error.original, 
-        translated: `[Translation Error: ${error.message}]`,
-        sourceLang: error.source_language,
-        targetLang: error.target_language
-      }]);
-      setProcessingAudio(false);
-    });
-
-    socketRef.current.on('recognition_canceled', (data) => {
-       console.warn('Recognition Canceled:', data.reason, data.details);
-       setError(`Recognition stopped unexpectedly: ${data.reason} - ${data.details}`);
-       setProcessingAudio(false);
-    });
-
-    socketRef.current.on('recognition_started', (data) => {
-       console.log('Server confirmed recognition started:', data.message);
-    });
-
     return () => {
       if (socketRef.current) {
-        console.log('Disconnecting admin WebSocket and cleaning up listeners...');
-        if (isRecording) {
-            stopRecording();
-        }
-        socketRef.current.off('translation_result');
-        socketRef.current.off('recognition_result');
-        socketRef.current.off('error');
-        socketRef.current.off('translation_error');
-        socketRef.current.off('recognition_canceled');
-        socketRef.current.off('recognition_started');
-        socketRef.current.emit('leave', { room: id });
+        console.log('Disconnecting Admin WebSocket');
         socketRef.current.disconnect();
-        setSocketConnected(false);
       }
     };
-  }, [id, eventData]);
+  }, [id, eventData, selectedSourceLang, selectedTargetLangs]);
 
   const startRecording = useCallback(async () => {
-    if (!selectedDevice || !socketRef.current || !socketConnected || !eventData?.sourceLanguages?.[0]) {
-      setError("Cannot start recording. Check microphone selection, WebSocket connection, and event configuration.");
-      console.error("Prerequisites not met for starting recording:", { selectedDevice, socketConnected, eventData });
-      return;
-    }
-
-    setError(null);
-    setLiveTranscription('');
-    setLiveTranslations(prev => {
-        const reset = {};
-        Object.keys(prev).forEach(lang => { reset[lang] = ''; });
-        return reset;
-    });
+    if (isRecording) return;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: { exact: selectedDevice } },
-      });
-      streamRef.current = stream;
-
-      const options = {
-        mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 16000 // 16kHz sample rate
-      };
-      const recorder = new MediaRecorder(stream, options);
-      mediaRecorderRef.current = recorder;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
 
-      recorder.ondataavailable = async (event) => {
+      mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          console.log(`Sending audio chunk: ${event.data.size} bytes`);
-          
-          if (socketRef.current && socketRef.current.connected) {
-            try {
-              // Send the binary blob directly
-              socketRef.current.emit('audio_chunk', event.data);
-              
-              // Log success but don't send this data
-              console.log(`Audio chunk sent successfully: ${event.data.size} bytes`);
-            } catch (error) {
-              console.error('Error sending audio chunk:', error);
-            }
-          } else {
-            console.warn('WebSocket not connected, cannot send audio chunk.');
-          }
+          audioChunksRef.current.push(event.data);
         }
       };
 
-      recorder.onstop = () => {
-        console.log('MediaRecorder stopped.');
-        streamRef.current?.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-        mediaRecorderRef.current = null;
-        setProcessingAudio(false);
-      };
+      mediaRecorderRef.current.onstop = async () => {
+        console.log('MediaRecorder stopped, processing audio.');
+        setProcessingAudio(true);
+        setError(null);
 
-      recorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event.error);
-        setError(`Recording error: ${event.error.name} - ${event.error.message}`);
-        stopRecording();
-      };
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        audioChunksRef.current = [];
 
-      if (socketRef.current && socketRef.current.connected && mediaRecorderRef.current) {
+        const formData = new FormData();
+        formData.append('audio', audioBlob, `recording-${Date.now()}.webm`);
+        formData.append('source_language', selectedSourceLang);
+        formData.append('target_languages', JSON.stringify(selectedTargetLangs));
+
         try {
-          // Prepare the data
-          const startData = {
-            room_id: id, // Make sure 'id' is the correct room identifier
-            source_language: 'en-US', // Force English for testing
-            target_languages: eventData.targetLanguages || ['es']
-          };
+            console.log(`Uploading audio for ${selectedSourceLang} -> ${selectedTargetLangs.join(', ')}`);
+            const endpoint = `${API_BASE_URL}/speech/transcribe-and-translate`;
+            console.log(`Sending request to: ${endpoint}`);
+            
+            const response = await axios.post(endpoint, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+                timeout: 60000
+            });
 
-          console.log('Attempting to emit start_recognition with data:', startData);
+            console.log('Transcription/Translation Response:', response.data);
 
-          // Emit START_RECOGNITION *BEFORE* starting the recorder
-          socketRef.current.emit('start_recognition', startData);
+            if (response.data && response.data.original) {
+                 setLiveTranscription(response.data.original);
+                 setLiveTranscriptionLang(selectedSourceLang);
+                 
+                 const translations = response.data.translations || {};
+                 setLiveTranslations(translations);
+                 
+                 Object.entries(translations).forEach(([targetLang, translatedText]) => {
+                     setTranscripts(prev => [...prev, {
+                         original: response.data.original,
+                         translated: translatedText,
+                         sourceLanguage: selectedSourceLang,
+                         targetLanguage: targetLang,
+                         timestamp: new Date().toISOString()
+                     }]);
+                 });
+                 
+                 if (Object.keys(translations).length === 0) {
+                     setTranscripts(prev => [...prev, {
+                         original: response.data.original,
+                         translated: response.data.original,
+                         sourceLanguage: selectedSourceLang,
+                         targetLanguage: selectedTargetLangs[0] || selectedSourceLang,
+                         timestamp: new Date().toISOString()
+                     }]);
+                 }
 
-          console.log('start_recognition emitted. Starting MediaRecorder...');
+                 toast.success('Transcription successful.');
+            } else if (response.data && response.data.error) {
+                 throw new Error(response.data.error);
+            } else if (!response.data.original && !response.data.error) {
+                console.log("Transcription returned no match.");
+                toast.info("Could not recognize speech in the audio.");
+                setLiveTranscription("[No speech recognized]");
+                setTranscripts(prev => [...prev, {
+                    original: "[No speech recognized]",
+                    translated: null,
+                    sourceLanguage: selectedSourceLang,
+                    targetLanguage: null,
+                    timestamp: new Date().toISOString()
+                }]);
+            }
+            else {
+                 throw new Error('Invalid response from server.');
+            }
 
-          // Start the recorder AFTER emitting the event
-          mediaRecorderRef.current.start(500); // Send chunks every 500ms
-
-          setIsRecording(true);
-          setProcessingAudio(false); // Reset processing state
-
-          console.log('MediaRecorder started.');
-
-        } catch (error) {
-          console.error('Error during startRecording:', error);
-          setError(`Error starting recording: ${error.message}`);
-          stopRecording(); // Clean up if start failed
+        } catch (uploadError) {
+            console.error('Error uploading/processing audio:', uploadError);
+            const errorMsg = uploadError.response?.data?.error || uploadError.message || 'Failed to process audio.';
+            setError(`Processing failed: ${errorMsg}`);
+            toast.error(`Processing failed: ${errorMsg}`);
+        } finally {
+            setProcessingAudio(false);
         }
-      } else {
-         console.warn('Cannot start recording: Socket not connected or MediaRecorder not ready.', {
-           socketConnected: socketRef.current?.connected,
-           mediaRecorderReady: !!mediaRecorderRef.current
-         });
-        setError('Cannot start recording. Socket not connected or microphone not ready.');
-      }
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      console.log('MediaRecorder started.');
+
     } catch (err) {
       console.error('Error starting recording:', err);
-      setError(`Failed to start recording: ${err.message}. Check microphone permissions and selection.`);
+      setError(`Could not start recording: ${err.message}. Check microphone permissions.`);
+      toast.error(`Could not start recording: ${err.message}`);
       setIsRecording(false);
     }
-  }, [selectedDevice, socketConnected, id, eventData]);
+  }, [isRecording, selectedSourceLang, selectedTargetLangs, id]);
 
   const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+    if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      console.log('Recording stopped, waiting for processing.');
     }
-    streamRef.current?.getTracks().forEach(track => track.stop());
-    streamRef.current = null;
-    mediaRecorderRef.current = null;
-    setIsRecording(false);
-    setProcessingAudio(false);
-    console.log('Recording stopped.');
-  }, []);
+  }, [isRecording]);
 
   const handleBackToEvents = () => {
     router.push('/dashboard/analytics');
@@ -408,7 +377,6 @@ const EventLivePage = () => {
       source_language: eventData?.sourceLanguages?.[0] || 'lv-LV'
     });
     
-    // Set a timeout to check if we get a response
     setTimeout(() => {
       if (!liveTranscription) {
         console.warn("No response received from test transcription after 3 seconds");
@@ -442,12 +410,11 @@ const EventLivePage = () => {
       console.log('Testing text translation (English to Spanish)...');
       const testText = "Hello, this is a test message.";
       
-      // Simulate a recognition result with English to Spanish
       socketRef.current.emit('manual_text', {
         room_id: id,
         text: testText,
         source_language: 'en-US',
-        target_languages: ['es-ES'] // Spanish
+        target_languages: ['es-ES']
       });
     }
   };
@@ -458,6 +425,41 @@ const EventLivePage = () => {
       socketRef.current.emit('simple_test', {
         room_id: id
       });
+    }
+  };
+
+  const testEndpoints = async () => {
+    const endpoints = [
+      '/speech-to-text',
+      '/translate',
+      '/text-to-speech',
+      '/speech/transcribe-and-translate',
+      '/api/speech/recognize',
+      '/api/speech/transcribe-and-translate'
+    ];
+    
+    console.log("Testing endpoints on base URL:", API_BASE_URL);
+    
+    for (const endpoint of endpoints) {
+      try {
+        // Try a GET request first to see if the endpoint exists
+        const response = await axios.get(`${API_BASE_URL}${endpoint}`);
+        console.log(`✅ Endpoint ${endpoint} exists (GET):`, response.status);
+      } catch (error) {
+        if (error.response) {
+          // The request was made and the server responded with a status code
+          // that falls out of the range of 2xx
+          if (error.response.status === 404) {
+            console.log(`❌ Endpoint ${endpoint} not found (GET)`);
+          } else if (error.response.status === 405) {
+            console.log(`⚠️ Endpoint ${endpoint} exists but doesn't accept GET`);
+          } else {
+            console.log(`⚠️ Endpoint ${endpoint} error:`, error.response.status);
+          }
+        } else {
+          console.log(`❌ Network error testing ${endpoint}:`, error.message);
+        }
+      }
     }
   };
 
@@ -621,7 +623,7 @@ const EventLivePage = () => {
           color={isRecording ? "error" : "primary"}
           startIcon={isRecording ? <StopIcon /> : <MicIcon />}
           onClick={isRecording ? stopRecording : startRecording}
-          disabled={!selectedDevice || !socketConnected || !eventData?.sourceLanguages?.length}
+          disabled={!selectedDevice}
           sx={{
              px: 3, py: 1, borderRadius: '8px', height: '40px',
              bgcolor: isRecording ? '#F04438' : '#6366F1',
@@ -845,33 +847,14 @@ const EventLivePage = () => {
         </Box>
       </Dialog>
 
-      <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-        <Button 
-          variant="contained" 
-          color="primary" 
-          onClick={startRecording}
-          disabled={isRecording}
-        >
-          Start Recording
-        </Button>
-        
-        <Button 
-          variant="contained" 
-          color="secondary" 
-          onClick={stopRecording}
-          disabled={!isRecording}
-        >
-          Stop Recording
-        </Button>
-        
-        <Button 
-          variant="contained" 
-          color="info" 
-          onClick={testTextTranslation}
-        >
-          Test Translation
-        </Button>
-      </Box>
+      <Button 
+        variant="contained" 
+        color="info" 
+        onClick={testEndpoints}
+        sx={{ mt: 2 }}
+      >
+        Test API Endpoints
+      </Button>
     </Box>
   );
 };
