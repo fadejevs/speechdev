@@ -3,7 +3,6 @@ from flask import request, current_app
 from app import socketio
 import time
 import logging
-from app.services.translation_service import TranslationService  # Import your existing service
 # TODO: Import or integrate with a streaming-capable SpeechService
 # from app.services.speech_service import SpeechService # Assuming you add streaming methods here
 import os

@@ -1,13 +1,13 @@
 from flask import Blueprint, request, jsonify, current_app
 import logging
-import azure.cognitiveservices.speech as speechsdk
+# import azure.cognitiveservices.speech as speechsdk # Not needed if using SpeechService
 from pydub import AudioSegment
 from werkzeug.utils import secure_filename
 import os
-import requests
+# import requests # Not needed if using TranslationService
 
-# Import from the translation module in the same directory
-from app.routes.translation import simple_translation
+# Remove the direct import of translation module if not used elsewhere
+# from app.routes.translation import simple_translation
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -15,20 +15,25 @@ logging.basicConfig(level=logging.DEBUG)
 # Rename bp to speech_bp to match the import in __init__.py
 speech_bp = Blueprint('speech', __name__)
 
-# Define temporary file paths
-UPLOAD_TEMP_FILENAME = "temp_upload_audio"
-CONVERTED_WAV_FILENAME = "temp_converted.wav"
+# Define temporary file paths (Consider making these configurable)
+UPLOAD_TEMP_DIR = "temp_audio" # Use a directory
+if not os.path.exists(UPLOAD_TEMP_DIR):
+    os.makedirs(UPLOAD_TEMP_DIR)
+# UPLOAD_TEMP_FILENAME = "temp_upload_audio" # Filenames will be dynamic
+# CONVERTED_WAV_FILENAME = "temp_converted.wav" # Filenames will be dynamic
 
-# Get DeepL API key from environment variable
-DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
-DEEPL_API_URL = "https://api-free.deepl.com/v2/translate"  # Use the appropriate URL based on your subscription
+# Remove direct key access - use services initialized with app.config
+# DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
+# DEEPL_API_URL = "https://api-free.deepl.com/v2/translate"
 
 @speech_bp.route('/speech-to-text', methods=['POST'])
 def speech_to_text():
-    # --- Get keys from Flask app config ---
-    speech_key = current_app.config.get('AZURE_SPEECH_KEY')
-    speech_region = current_app.config.get('AZURE_REGION')
-    
+    # Access the initialized SpeechService
+    speech_service = current_app.speech_service
+    if not speech_service or not speech_service.speech_config:
+         logging.error("Speech service not available or not configured.")
+         return jsonify({"error": "Speech service not configured"}), 503 # Service Unavailable
+
     logging.info("--- Starting speech-to-text processing ---")
     logging.debug("--- Request Headers ---:\n%s", request.headers)
     logging.debug("--- Request Form Data ---: %s", request.form)
@@ -63,188 +68,122 @@ def speech_to_text():
     
     logging.info(f"Using language code for Azure: '{language_code}'")
 
-    if 'file' not in request.files:
-        logging.warning("No file part in the request")
-        return jsonify({"error": "No file part"}), 400
+    if 'audio' not in request.files:
+        logging.error("No audio file part in the request")
+        return jsonify({"error": "No audio file part"}), 400
 
-    file = request.files['file']
+    file = request.files['audio']
 
     if file.filename == '':
-        logging.warning("No selected file")
+        logging.error("No selected file")
         return jsonify({"error": "No selected file"}), 400
 
-    upload_path = None
-    converted_path = CONVERTED_WAV_FILENAME
-    try:
-        # Save the uploaded file temporarily
-        original_filename = secure_filename(file.filename or 'audio')
-        mimetype = file.mimetype or ''
-        if 'webm' in mimetype: upload_ext = '.webm'
-        elif 'wav' in mimetype: upload_ext = '.wav'
-        elif 'ogg' in mimetype: upload_ext = '.ogg'
-        elif 'mpeg' in mimetype: upload_ext = '.mp3'
-        else:
-            upload_ext = '.audio'
-            logging.warning(f"Unknown mimetype: {mimetype}, using generic extension")
+    if file:
+        original_filename = secure_filename(file.filename)
+        # Create unique temp filenames
+        base_name = os.path.splitext(original_filename)[0] + "_" + str(os.urandom(4).hex())
+        upload_path = os.path.join(UPLOAD_TEMP_DIR, base_name + "_upload")
+        wav_path = os.path.join(UPLOAD_TEMP_DIR, base_name + "_converted.wav")
 
-        upload_path = f"{UPLOAD_TEMP_FILENAME}{upload_ext}"
-        file.save(upload_path)
-        logging.info(f"Saved uploaded file to {upload_path}")
-
-        # Convert to WAV if needed
-        if upload_ext != '.wav':
-            logging.info(f"Converting {upload_ext} to WAV format")
-            audio = AudioSegment.from_file(upload_path)
-            audio.export(converted_path, format="wav")
-            logging.info(f"Converted to WAV: {converted_path}")
-        else:
-            # If already WAV, just copy the file
-            converted_path = upload_path
-
-        # Configure speech recognition with Azure
-        if not speech_key or not speech_region:
-            logging.error("Azure Speech credentials not configured")
-            return jsonify({"error": "Speech service not configured"}), 500
-
-        # Configure speech recognition with the mapped language code
-        speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=speech_region)
-        speech_config.speech_recognition_language = language_code
-        logging.info(f"Configured Azure Speech with language: '{language_code}'")
-
-        audio_config = speechsdk.audio.AudioConfig(filename=converted_path)
-        logging.info(f"Created audio config with file: {converted_path}")
-        
-        speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
-        logging.info("Created speech recognizer")
-        
-        # Log before starting recognition
-        logging.info("Starting speech recognition...")
-
-        result = speech_recognizer.recognize_once()
-        logging.debug(f"Recognition result: {result}")
-
-        # --- Process Result ---
-        if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-            logging.info(f"Recognized: {result.text}")
-            return jsonify({"transcription": result.text})
-        elif result.reason == speechsdk.ResultReason.NoMatch:
-            logging.warning("No speech could be recognized")
-            return jsonify({"error": "No speech could be recognized"}), 400
-        elif result.reason == speechsdk.ResultReason.Canceled:
-            cancellation_details = result.cancellation_details
-            logging.error(f"Speech Recognition canceled: {cancellation_details.reason}")
-            error_message = f"Speech Recognition canceled: {cancellation_details.reason}" # Default message
-
-            if cancellation_details.reason == speechsdk.CancellationReason.Error:
-                logging.error(f"Error details: {cancellation_details.error_details}")
-                # --- Return the actual Azure error detail ---
-                error_message = f"Azure Error: {cancellation_details.error_details}"
-                # --- Check specifically if it looks like an auth error based on text ---
-                if "authentication" in cancellation_details.error_details.lower():
-                     logging.error("Authentication failure suspected. Check Azure Speech Key and Region in config.py.")
-                     error_message = "Azure authentication failed. Check server configuration."
-
-            return jsonify({"error": error_message}), 500 # Return the detailed error message
-        else:
-             logging.error(f"Unexpected recognition result reason: {result.reason}")
-             return jsonify({"error": "Speech recognition failed for an unknown reason"}), 500
-
-    except Exception as e:
-        logging.error(f"Error configuring Azure Speech: {str(e)}")
-        return jsonify({"error": f"Azure configuration error: {str(e)}"}), 500
-
-    finally:
-        # --- Cleanup Temporary Files ---
-        if upload_path and os.path.exists(upload_path):
-            try:
-                os.remove(upload_path)
-                logging.debug(f"Temporary upload file removed: {upload_path}")
-            except OSError as e:
-                logging.error(f"Error removing temporary upload file {upload_path}: {e}")
-        if converted_path and os.path.exists(converted_path):
-            try:
-                os.remove(converted_path)
-                logging.debug(f"Temporary converted file removed: {converted_path}")
-            except OSError as e:
-                logging.error(f"Error removing temporary converted file {converted_path}: {e}")
-# --- End of speech_to_text function --- 
-
-@speech_bp.route('/translate', methods=['POST'])
-def translate_text():
-    """Translation endpoint that tries DeepL first, then falls back to simple translation"""
-    try:
-        data = request.get_json()
-        
-        if not data:
-            logging.error("No data provided in translation request")
-            return jsonify({'error': 'No data provided'}), 400
-            
-        text = data.get('text')
-        source_language = data.get('source_language', 'auto')
-        target_language = data.get('target_language')
-        
-        # Log the request details for debugging
-        logging.info(f"Translation request received: text='{text}', source={source_language}, target={target_language}")
-        
-        if not text:
-            logging.error("No text provided in translation request")
-            return jsonify({'error': 'No text provided'}), 400
-            
-        if not target_language:
-            logging.error("No target language provided in translation request")
-            return jsonify({'error': 'No target language provided'}), 400
-        
-        # Try to use DeepL if available
         try:
-            # Check if DeepL API key is available
-            if DEEPL_API_KEY:
-                logging.info("Attempting to use DeepL API for translation")
-                response = requests.post(
-                    DEEPL_API_URL,
-                    headers={"Authorization": f"DeepL-Auth-Key {DEEPL_API_KEY}"},
-                    json={
-                        "text": [text],
-                        "source_lang": source_language if source_language != 'auto' else None,
-                        "target_lang": target_language.split('-')[0].upper()
-                    }
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    translated_text = result['translations'][0]['text']
-                    detected_source = result['translations'][0].get('detected_source_language', source_language)
-                    
-                    logging.info(f"DeepL translation successful: '{translated_text}'")
-                    
-                    return jsonify({
-                        'translated_text': translated_text,
-                        'source_language': detected_source,
-                        'target_language': target_language
-                    })
-                else:
-                    logging.warning(f"DeepL API returned status code {response.status_code}: {response.text}")
+            file.save(upload_path)
+            logging.info(f"Audio file saved temporarily to: {upload_path}")
+
+            # --- Audio Conversion (using Pydub) ---
+            logging.info("Attempting to convert audio to WAV format...")
+            try:
+                audio = AudioSegment.from_file(upload_path)
+                # Ensure mono, 16kHz, 16-bit PCM WAV for Azure SDK
+                audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
+                audio.export(wav_path, format="wav")
+                logging.info(f"Audio successfully converted to WAV: {wav_path}")
+            except Exception as e:
+                logging.error(f"Error converting audio file: {e}", exc_info=True)
+                return jsonify({"error": f"Audio conversion failed: {e}"}), 500
+
+            # --- Speech Recognition using SpeechService ---
+            logging.info("Starting speech recognition using SpeechService...")
+            # TODO: Update recognize_speech in SpeechService if it needs the language code
+            recognized_text = speech_service.recognize_speech(wav_path)
+
+            if recognized_text:
+                logging.info(f"Recognition successful: '{recognized_text}'")
+                return jsonify({"transcription": recognized_text})
             else:
-                logging.info("DeepL API key not available, using fallback translation")
+                # Error/NoMatch logging is handled within recognize_speech
+                logging.warning("Speech recognition did not return text.")
+                # Return specific error based on logs if needed, otherwise generic
+                return jsonify({"error": "Speech could not be recognized"}), 400 # Or 500 if service failed
+
         except Exception as e:
-            logging.error(f"Error using DeepL API: {str(e)}")
-        
-        # Fallback to simple translation
-        logging.info("Using fallback translation method")
-        translated_text = simple_translation(text, target_language)
-        
-        # Log the translation result
-        logging.info(f"Fallback translation result: '{translated_text}'")
-        
-        return jsonify({
-            'translated_text': translated_text,
-            'source_language': source_language,
-            'target_language': target_language
-        })
-        
+             # Catch any unexpected errors during file handling or service call
+             logging.error(f"Unexpected error during speech-to-text processing: {e}", exc_info=True)
+             return jsonify({"error": "An unexpected error occurred"}), 500
+        finally:
+            # --- Cleanup Temporary Files ---
+            try:
+                if os.path.exists(upload_path):
+                    os.remove(upload_path)
+                    logging.debug(f"Cleaned up temporary file: {upload_path}")
+                if os.path.exists(wav_path):
+                    os.remove(wav_path)
+                    logging.debug(f"Cleaned up temporary file: {wav_path}")
+            except Exception as e:
+                logging.error(f"Error cleaning up temporary files: {e}")
+    else:
+         # This case should be caught by 'if file:' check, but as a safeguard
+         logging.error("File object was unexpectedly empty.")
+         return jsonify({"error": "File processing error"}), 500
+
+
+# Refactored /translate route using TranslationService
+@speech_bp.route('/translate', methods=['POST'])
+def translate_text_route():
+    """Translation endpoint using the TranslationService."""
+    translation_service = current_app.translation_service
+    if not translation_service or not translation_service.service_type:
+        logging.error("Translation service not available or not configured.")
+        return jsonify({"error": "Translation service not configured"}), 503
+
+    data = request.get_json()
+    if not data or 'text' not in data or 'target_language' not in data:
+        logging.error("Missing 'text' or 'target_language' in translation request.")
+        return jsonify({"error": "Missing 'text' or 'target_language'"}), 400
+
+    text = data['text']
+    target_language = data['target_language']
+    # Source language is often optional, let the service handle 'auto' or default
+    source_language = data.get('source_language', 'auto') # Default to auto-detect
+
+    logging.info(f"Received translation request: '{text[:50]}...' from '{source_language}' to '{target_language}'")
+
+    try:
+        # Use the translate method from the service
+        # Note: The existing TranslationService.translate method needs review/update
+        # based on the code provided earlier, it calls internal _translate_deepl/_translate_azure
+        # Ensure that method handles source/target languages correctly.
+        # Assuming translate_text exists and works as intended:
+        translated_text = translation_service.translate_text(text, target_language) # Assuming translate_text takes text and target_lang
+
+        # Check if the result indicates an error (service methods should return None or raise exceptions on failure)
+        if translated_text and not translated_text.startswith("Error:"):
+             logging.info(f"Translation successful via {translation_service.service_type}: '{translated_text[:50]}...'")
+             # The service might not easily return detected source lang, depends on implementation
+             return jsonify({
+                 'translated_text': translated_text,
+                 'source_language': source_language, # Or detected lang if service returns it
+                 'target_language': target_language
+             })
+        else:
+             logging.error(f"Translation failed using {translation_service.service_type}. Result: {translated_text}")
+             # Provide a generic error or the specific one from the service if available
+             error_message = translated_text if translated_text else "Translation failed"
+             return jsonify({"error": error_message}), 500 # Or 503 if service unavailable
+
     except Exception as e:
-        logging.error(f"Error in translation: {str(e)}")
-        return jsonify({
-            'error': f"Translation error: {str(e)}",
-            'source_language': source_language if 'source_language' in locals() else 'unknown',
-            'target_language': target_language if 'target_language' in locals() else 'unknown'
-        }), 500 
+        logging.error(f"Error during translation request: {e}", exc_info=True)
+        return jsonify({"error": "An unexpected error occurred during translation"}), 500
+
+# Remove the old simple_translation function if it's no longer needed
+# def simple_translation(text, target_language):
+#     ... 

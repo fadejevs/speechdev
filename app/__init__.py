@@ -8,6 +8,7 @@ from flask_socketio import SocketIO
 
 from .config import Config
 from app.services.translation_service import TranslationService
+from app.services.speech_service import SpeechService # Import SpeechService
 
 # Load environment variables
 load_dotenv()
@@ -28,40 +29,37 @@ cors = CORS()
 translation_service = None # Initialize as None
 
 def create_app(config_class=Config):
-    """Creates and configures the Flask application."""
-    global translation_service # Allow modification of the global instance
-
+    """Construct the core application."""
     app = Flask(__name__)
-    app.config.from_object(config_class)
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_default_secret_key') # Ensure secret key
+    app.config.from_object(config_class) # Config loaded here
+
+    # Initialize extensions
+    CORS(app, resources={r"/*": {"origins": "*"}}) # Allow all origins for simplicity
+    # Ensure SECRET_KEY is loaded before initializing SocketIO if it depends on it implicitly
+    if not app.config.get('SECRET_KEY') or app.config['SECRET_KEY'] == 'a-very-weak-default-secret-key-CHANGE-ME':
+         logging.warning("SECRET_KEY is not set or is weak in the environment. Flask sessions and SocketIO may be insecure.")
+         # Optionally raise an error: raise ValueError("Missing or weak SECRET_KEY environment variable.")
+
+    socketio.init_app(app, async_mode='gevent', cors_allowed_origins="*")
 
     # --- Initialize Services ---
-    try:
-        translation_service = TranslationService(
-            azure_speech_key=app.config.get('AZURE_SPEECH_KEY'),
-            azure_region=app.config.get('AZURE_REGION'),
-            deepl_api_key=app.config.get('DEEPL_API_KEY'),
-            deepl_api_url=app.config.get('DEEPL_API_URL')
-        )
-        app.config['TRANSLATION_SERVICE'] = translation_service # Store in app config
-        logging.info("TranslationService initialized and added to app config.")
-    except Exception as e:
-        logging.error(f"Failed to initialize TranslationService: {e}", exc_info=True)
-        # Decide if the app should fail to start or continue without translation
-        # raise e # Option: re-raise the exception to stop startup
+    # Pass the app's config dictionary to the service constructors
+    translation_service = TranslationService(app.config)
+    speech_service = SpeechService(app.config) # Initialize SpeechService
 
-    # --- Initialize Flask Extensions with App ---
-    # Now attach SocketIO and CORS to the created app instance
-    socketio.init_app(app, async_mode='gevent', cors_allowed_origins="*") # Use gevent, allow all origins for now
-    cors.init_app(app) # Initialize CORS
+    # Attach services to the app context for easier access in routes
+    app.translation_service = translation_service
+    app.speech_service = speech_service # Attach SpeechService
+    logging.info(f"Translation Service initialized in create_app: Type={getattr(translation_service, 'service_type', 'N/A')}")
+    logging.info(f"Speech Service initialized in create_app: Configured={bool(speech_service.speech_config)}")
 
     # --- Import Blueprints/Routes AFTER app and extensions are initialized ---
-    # This breaks the circular import
     with app.app_context():
-        from .routes import main, speech, websocket # Import routes here
+        from .routes import main, speech, websocket, translation # Import translation blueprint too
         app.register_blueprint(main.bp)
-        app.register_blueprint(speech.bp)
-        # WebSocket routes are typically handled by SocketIO directly, not registered as blueprints
+        app.register_blueprint(speech.speech_bp) # Use speech_bp name
+        app.register_blueprint(translation.translation_bp) # Register translation blueprint
+        # WebSocket routes are handled by SocketIO directly
 
     logging.info("Flask app created and configured.")
     return app, socketio # Return both app and socketio

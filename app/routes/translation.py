@@ -1,7 +1,7 @@
-import deepl
+# import deepl # Not needed if using TranslationService exclusively
 from flask import Blueprint, request, jsonify, current_app
 from app.services.firebase_service import FirebaseService
-from app.services.translation_service import TranslationService
+# from app.services.translation_service import TranslationService # Not needed if using current_app
 import logging
 import os
 
@@ -9,117 +9,126 @@ import os
 translation_bp = Blueprint('translation', __name__)
 
 # --- Configuration and Service Instantiation ---
-# Consider loading the key from config for better practice:
-# auth_key = current_app.config.get('DEEPL_AUTH_KEY')
-# if not auth_key:
-#     current_app.logger.error("DEEPL_AUTH_KEY not found in configuration!")
-# For now, keeping the hardcoded key:
-auth_key = "e7552ee8-ca29-4b47-8e86-72c21678cb0c:fx"
+# Remove direct key access and translator instantiation
+# auth_key = "e7552ee8-ca29-4b47-8e86-72c21678cb0c:fx"
+# translator = deepl.Translator(auth_key) # Remove this
 
-# Handle potential errors during translator instantiation
-try:
-    translator = deepl.Translator(auth_key)
-except Exception as e:
-    # Log the error during app startup if possible, or handle it differently
-    # This might be tricky outside a request context.
-    # For now, we'll let it potentially raise an error if the key is invalid at startup.
-    print(f"Error initializing DeepL Translator: {e}") # Basic print for startup issues
-    translator = None # Set to None if initialization fails
-
+# Firebase service might still be needed if used independently
 firebase_service = FirebaseService()
 
-# --- Route Definition using the Blueprint ---
-@translation_bp.route('/translate', methods=['POST'])
-def translate_text():
+# --- Helper Function to Get Translation Service ---
+def get_translation_service():
     try:
-        data = request.get_json()
-        
-        if not data:
-            logging.error("No JSON data received in translation request")
-            return jsonify({"error": "No data provided"}), 400
-            
-        text = data.get('text')
-        source_language = data.get('source_language', 'auto')
-        target_language = data.get('target_language')
-        
-        logging.info(f"Translation request received - Text: '{text[:30]}...' Source: '{source_language}' Target: '{target_language}'")
-        
-        if not text:
-            logging.error("No text provided for translation")
-            return jsonify({"error": "No text provided"}), 400
-            
-        if not target_language:
-            logging.error("No target language provided for translation")
-            return jsonify({"error": "No target language provided"}), 400
-        
-        # Get translation service
-        translation_service = current_app.config.get('TRANSLATION_SERVICE')
-        if not translation_service:
-            translation_service = TranslationService()
-            current_app.config['TRANSLATION_SERVICE'] = translation_service
-            logging.info(f"Created new TranslationService with service type: {translation_service.service}")
-        
-        # Perform translation
-        translated_text = translation_service.translate(text, source_language, target_language)
-        
-        if translated_text:
+        service = current_app.translation_service
+        if not service or not service.service_type:
+             logging.error("Translation service not available or not configured.")
+             return None
+        return service
+    except RuntimeError:
+        logging.error("Attempted to access translation service outside Flask app context!")
+        return None
+    except AttributeError:
+        logging.error("Translation service not found on current_app. Check app initialization.")
+        return None
+
+# --- Routes ---
+
+@translation_bp.route('/translate-text', methods=['POST'])
+def translate_text_route():
+    """Translate text using the configured TranslationService."""
+    translation_service = get_translation_service()
+    if not translation_service:
+        return jsonify({"error": "Translation service not configured or unavailable"}), 503
+
+    data = request.get_json()
+    if not data or 'text' not in data or 'target_language' not in data:
+        logging.error("Missing 'text' or 'target_language' in translation request.")
+        return jsonify({"error": "Missing 'text' or 'target_language'"}), 400
+
+    text = data['text']
+    target_language = data['target_language']
+    source_language = data.get('source_language', 'auto') # Default to auto-detect
+
+    logging.info(f"Received translation request via blueprint: '{text[:50]}...' from '{source_language}' to '{target_language}'")
+
+    try:
+        # Use the translate_text method from the service
+        # Ensure this method exists and handles errors appropriately in TranslationService
+        translated_text = translation_service.translate_text(text, target_language)
+
+        if translated_text and not translated_text.startswith("Error:"):
+            logging.info(f"Translation successful via {translation_service.service_type}: '{translated_text[:50]}...'")
             return jsonify({
-                "original_text": text,
-                "translated_text": translated_text,
-                "source_language": source_language,
-                "target_language": target_language
+                'translated_text': translated_text,
+                'source_language': source_language, # Or detected lang if service returns it
+                'target_language': target_language
             })
         else:
-            logging.error(f"Translation failed for text: '{text[:30]}...' to {target_language}")
-            return jsonify({"error": "Translation failed"}), 500
-        
+            logging.error(f"Translation failed using {translation_service.service_type}. Result: {translated_text}")
+            error_message = translated_text if translated_text else "Translation failed"
+            return jsonify({"error": error_message}), 500
+
     except Exception as e:
-        logging.error(f"Translation error: {str(e)}")
-        return jsonify({"error": f"Translation error: {str(e)}"}), 500
+        logging.error(f"Error during translation request: {e}", exc_info=True)
+        return jsonify({"error": "An unexpected error occurred during translation"}), 500
+
+
+@translation_bp.route('/save-translation', methods=['POST'])
+def save_translation():
+    """Save translation pair to Firebase"""
+    data = request.get_json()
+    if not data or 'original' not in data or 'translated' not in data or 'language_pair' not in data:
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        firebase_service.save_translation(
+            data['original'],
+            data['translated'],
+            data['language_pair'] # e.g., "en-es"
+        )
+        return jsonify({"message": "Translation saved successfully"}), 201
+    except Exception as e:
+        logging.error(f"Error saving translation to Firebase: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to save translation: {e}"}), 500
+
+
+@translation_bp.route('/translation-history', methods=['GET'])
+def get_translation_history():
+    """Get translation history from Firebase"""
+    try:
+        history = firebase_service.get_translation_history()
+        return jsonify(history)
+    except Exception as e:
+        logging.error(f"Error fetching translation history from Firebase: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to fetch history: {e}"}), 500
+
 
 @translation_bp.route('/translation-status', methods=['GET'])
 def translation_status():
     """Check the status of the translation service"""
-    try:
-        # Get or create translation service
-        translation_service = current_app.config.get('TRANSLATION_SERVICE')
-        if not translation_service:
-            translation_service = TranslationService()
-            current_app.config['TRANSLATION_SERVICE'] = translation_service
-        
-        # Return service info
-        return jsonify({
-            "service": translation_service.service,
-            "is_configured": translation_service.service != "mock",
-            "available_services": {
-                "azure": bool(os.environ.get('AZURE_SPEECH_KEY') and os.environ.get('AZURE_REGION')),
-                "deepl": bool(os.environ.get('DEEPL_API_KEY') and os.environ.get('DEEPL_API_URL'))
-            }
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    translation_service = get_translation_service()
 
-def simple_translation(text, target_lang):
-    """
-    A very simple fallback translation function that returns a message
-    when DeepL API is not available
-    """
-    # Simple mock translations for Latvian
-    if target_lang.startswith('lv'):
-        translations = {
-            'test': 'tests',
-            'testing': 'testēšana',
-            'hello': 'sveiki',
-            'world': 'pasaule',
-            'thank you': 'paldies',
-            'goodbye': 'uz redzēšanos'
+    if not translation_service:
+         # If service couldn't be retrieved, report basic status
+         return jsonify({
+             "service": "unavailable",
+             "is_configured": False,
+             "available_services": { # Check env vars directly as fallback info
+                 "azure": bool(os.environ.get('AZURE_SPEECH_KEY') and os.environ.get('AZURE_REGION')),
+                 "deepl": bool(os.environ.get('DEEPL_API_KEY')) # DEEPL_API_URL has default
+             }
+         }), 503
+
+    # Return service info from the actual service instance
+    return jsonify({
+        "service": translation_service.service_type or "none", # Use service_type
+        "is_configured": translation_service.service_type is not None,
+        "available_services": { # Can still check env vars for potential availability
+            "azure": bool(current_app.config.get('AZURE_SPEECH_KEY') and current_app.config.get('AZURE_REGION')),
+            "deepl": bool(current_app.config.get('DEEPL_API_KEY'))
         }
-        
-        lower_text = text.lower()
-        for eng, trans in translations.items():
-            if eng in lower_text:
-                return trans
-                
-        return f"Tulkojums latviešu valodā: {text}"
-    
-    return f"[Translation to {target_lang}] {text}"
+    })
+
+# Remove the old simple_translation function if it exists
+# def simple_translation(text, target_language):
+#     ...
