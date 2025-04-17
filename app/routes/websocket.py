@@ -21,11 +21,11 @@ logging.getLogger('azure').setLevel(logging.INFO) # Keep Azure less verbose unle
 try:
     translation_service = current_app.config.get('TRANSLATION_SERVICE')
     if not translation_service:
-        translation_service = TranslationService()
+        # translation_service = TranslationService()
         logging.warning("Created new TranslationService instance in websocket.py")
 except RuntimeError:
     # Handle cases where this runs outside app context during import
-    translation_service = TranslationService()
+    # translation_service = TranslationService()
     logging.warning("Created TranslationService instance outside app context in websocket.py")
 
 
