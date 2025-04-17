@@ -93,21 +93,30 @@ def on_start_recognition(data):
                             'source_language': source_language,
                             'target_language': target_language
                         }, room=sid)
+                        if room_id:
+                            socketio.emit('translation_result', {
+                                'original': text,
+                                'translated': translated,
+                                'source_language': source_language,
+                                'target_language': target_language
+                            }, room=room_id)
                     else:
                         logger.warning(f"[{sid}] Translation returned None for text: {text}")
                         socketio.emit('translation_error', {
                              'original': text,
-                             'message': f'Translation failed or returned empty using {translation_service.service_type}.'
+                             'message': f'Translation failed or returned empty using {translation_service.service_type}.',
+                             'source_language': source_language,
+                             'target_language': target_language
                         }, room=sid)
-        translation_config.add_target_language(azure_target_lang)
                 except Exception as e:
                     logger.error(f"[{sid}] Translation error: {e}", exc_info=True)
                     socketio.emit('translation_error', {
                         'original': text,
-                        'message': f'Translation processing error: {str(e)}'
+                        'message': f'Translation processing error: {str(e)}',
+                        'source_language': source_language,
+                        'target_language': target_language
                     }, room=sid)
 
-                    
             elif result.reason == speechsdk.ResultReason.NoMatch:
                 logger.info(f"[{sid}] No speech could be recognized: {result.no_match_details}")
 
