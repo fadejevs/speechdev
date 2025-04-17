@@ -231,49 +231,6 @@ def on_stop_recognition():
     stop_session(sid)
     emit('recognition_stopped', {'message': 'Recognition stopped by client request.'}, room=sid)
 
-@socketio.on('test_azure')
-def on_test_azure(data):
-    """Test the Azure Speech service with a simple text"""
-    sid = request.sid
-    source_language = data.get('source_language', 'en-US')
-    target_languages = data.get('target_languages', ['es'])
-    target_language = target_languages[0] if target_languages else 'es'
-    
-    logger.info(f"[{sid}] Testing Azure Speech with {source_language} -> {target_language}")
-    
-    try:
-        # Get the translation service
-        translation_service = current_app.translation_service
-        if not translation_service:
-            logger.error(f"[{sid}] Translation service not available")
-            emit('error', {'message': 'Translation service not configured'})
-            return
-            
-        # Test translation with a simple text
-        test_text = "This is a test message."
-        base_source_lang = 'en'  # Hardcoded for test
-        base_target_lang = target_language.split('-')[0]
-        
-        translated = translation_service.translate(test_text, base_target_lang, base_source_lang)
-        
-        if translated:
-            logger.info(f"[{sid}] Test translation successful: {test_text} -> {translated}")
-            emit('translation_result', {
-                'original': test_text,
-                'translated': translated,
-                'source_language': 'en-US',
-                'target_language': target_language
-            })
-        else:
-            logger.error(f"[{sid}] Test translation failed")
-            emit('translation_error', {
-                'original': test_text,
-                'message': 'Test translation failed'
-            })
-    except Exception as e:
-        logger.error(f"[{sid}] Test Azure error: {e}", exc_info=True)
-        emit('error', {'message': f'Test error: {str(e)}'})
-
 @socketio.on('manual_text')
 def on_manual_text(data):
     """Process manually entered text for translation"""
@@ -281,7 +238,7 @@ def on_manual_text(data):
     room_id = data.get('room_id')
     text = data.get('text')
     source_language = data.get('source_language', 'en-US')
-    target_languages = data.get('target_languages', ['es'])
+    target_languages = data.get('target_languages', ['es-ES'])  # Default to Spanish
     
     logger.info(f"[{sid}] Manual text for room '{room_id}': '{text}'")
     
@@ -303,6 +260,11 @@ def on_manual_text(data):
         for target_language in target_languages:
             base_target_lang = target_language.split('-')[0]
             
+            # Skip if source and target are the same
+            if base_source_lang == base_target_lang:
+                logger.warning(f"[{sid}] Skipping translation from {base_source_lang} to {base_target_lang} (same language)")
+                continue
+                
             # Translate the text
             translated = translation_service.translate(text, base_target_lang, base_source_lang)
             
@@ -335,53 +297,6 @@ def on_manual_text(data):
     except Exception as e:
         logger.error(f"[{sid}] Manual text error: {e}", exc_info=True)
         emit('error', {'message': f'Manual text error: {str(e)}'})
-
-@socketio.on('test_azure_speech')
-def on_test_azure_speech(data):
-    """Test Azure Speech recognition with a WAV file"""
-    sid = request.sid
-    room_id = data.get('room_id')
-    
-    logger.info(f"[{sid}] Testing Azure Speech recognition for room: {room_id}")
-    
-    try:
-        # Get Azure credentials
-        azure_key = current_app.config.get("AZURE_SPEECH_KEY")
-        azure_region = current_app.config.get("AZURE_REGION")
-        
-        if not azure_key or not azure_region:
-            logger.error(f"[{sid}] Azure Speech credentials not configured")
-            emit('error', {'message': 'Azure Speech service not configured'})
-            return
-            
-        # Create speech config
-        speech_config = speechsdk.SpeechConfig(subscription=azure_key, region=azure_region)
-        speech_config.speech_recognition_language = "en-US"  # Use English for testing
-        
-        # Use a simple test phrase
-        test_result = "This is a test of Azure Speech recognition"
-        
-        # Emit the test result
-        socketio.emit('recognition_result', {
-            'text': test_result,
-            'language': 'en-US',
-            'is_final': True,
-            'room_id': room_id
-        }, room=room_id)
-        
-        # Also emit to the admin
-        emit('recognition_result', {
-            'text': test_result,
-            'language': 'en-US',
-            'is_final': True,
-            'room_id': room_id
-        })
-        
-        logger.info(f"[{sid}] Azure Speech test completed with test phrase")
-        
-    except Exception as e:
-        logger.error(f"[{sid}] Azure Speech test error: {e}", exc_info=True)
-        emit('error', {'message': f'Azure Speech test error: {str(e)}'})
 
 def stop_session(sid):
     """Stop and clean up a session"""

@@ -4,6 +4,10 @@ import logging
 import json
 import deepl
 import azure.cognitiveservices.speech as speechsdk
+from azure.cognitiveservices.speech import SpeechConfig, SpeechTranslationConfig
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 class TranslationService:
     def __init__(self, config):

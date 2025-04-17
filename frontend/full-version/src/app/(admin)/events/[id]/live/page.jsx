@@ -24,6 +24,7 @@ import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import io from 'socket.io-client';
 import Card from '@mui/material/Card';
+import { toast } from 'react-hot-toast';
 
 const languages = [
   { code: 'en', name: 'English' },
@@ -177,10 +178,24 @@ const EventLivePage = () => {
       setProcessingAudio(false);
     });
 
-    socketRef.current.on('error', (error) => {
-      console.error('WebSocket Server Error:', error.message);
-      setError(`Server error: ${error.message}`);
-      setProcessingAudio(false);
+    socketRef.current.on('recognition_result', (data) => {
+      console.log('Recognition Result Received: ', data);
+      
+      // Only add final results to transcripts
+      if (data.is_final) {
+        setTranscripts(prev => [...prev, {
+          original: data.text,
+          translated: null, // Will be filled when translation arrives
+          sourceLanguage: data.language,
+          targetLanguage: null,
+          timestamp: new Date().toISOString()
+        }]);
+      }
+    });
+
+    socketRef.current.on('error', (data) => {
+      console.error('Socket Error:', data.message);
+      toast.error(`Error: ${data.message}`);
     });
 
     socketRef.current.on('translation_error', (error) => {
@@ -212,6 +227,7 @@ const EventLivePage = () => {
             stopRecording();
         }
         socketRef.current.off('translation_result');
+        socketRef.current.off('recognition_result');
         socketRef.current.off('error');
         socketRef.current.off('translation_error');
         socketRef.current.off('recognition_canceled');
@@ -423,15 +439,24 @@ const EventLivePage = () => {
 
   const testTextTranslation = () => {
     if (socketRef.current && socketRef.current.connected) {
-      console.log('Testing text translation...');
+      console.log('Testing text translation (English to Spanish)...');
       const testText = "Hello, this is a test message.";
       
-      // Simulate a recognition result
+      // Simulate a recognition result with English to Spanish
       socketRef.current.emit('manual_text', {
         room_id: id,
         text: testText,
         source_language: 'en-US',
-        target_languages: eventData?.targetLanguages || ['es']
+        target_languages: ['es-ES'] // Spanish
+      });
+    }
+  };
+
+  const simpleTest = () => {
+    if (socketRef.current && socketRef.current.connected) {
+      console.log('Running simple test...');
+      socketRef.current.emit('simple_test', {
+        room_id: id
       });
     }
   };
@@ -820,50 +845,33 @@ const EventLivePage = () => {
         </Box>
       </Dialog>
 
-      <Button
-        variant="outlined"
-        onClick={testBackendConnection}
-        disabled={!socketConnected}
-        sx={{ ml: 2 }}
-      >
-        Test Backend
-      </Button>
-
-      <Button
-        variant="outlined"
-        onClick={testAzureSpeech}
-        disabled={!socketConnected}
-        sx={{ ml: 2 }}
-      >
-        Test Azure Connection
-      </Button>
-
-      <Button
-        variant="contained"
-        color="secondary"
-        onClick={testServices}
-        sx={{ mt: 2 }}
-      >
-        Test Services
-      </Button>
-
-      <Button
-        variant="contained"
-        color="info"
-        onClick={testTextTranslation}
-        sx={{ mt: 2, ml: 2 }}
-      >
-        Test Text Translation
-      </Button>
-
-      <Button 
-        variant="contained" 
-        color="warning" 
-        onClick={testAzureSpeech}
-        sx={{ mt: 2, ml: 2 }}
-      >
-        Test Azure Speech
-      </Button>
+      <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+        <Button 
+          variant="contained" 
+          color="primary" 
+          onClick={startRecording}
+          disabled={isRecording}
+        >
+          Start Recording
+        </Button>
+        
+        <Button 
+          variant="contained" 
+          color="secondary" 
+          onClick={stopRecording}
+          disabled={!isRecording}
+        >
+          Stop Recording
+        </Button>
+        
+        <Button 
+          variant="contained" 
+          color="info" 
+          onClick={testTextTranslation}
+        >
+          Test Translation
+        </Button>
+      </Box>
     </Box>
   );
 };
