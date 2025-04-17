@@ -2,16 +2,59 @@ from flask import Blueprint, render_template, jsonify, current_app, request
 from app.services.firebase_service import FirebaseService
 import logging
 
-# Create a Blueprint
-main_bp = Blueprint('main', __name__)
+# Define the blueprint object named 'bp'
+bp = Blueprint('main', __name__)
 
 firebase_service = FirebaseService()
 
-@main_bp.route('/')
+@bp.route('/')
 def index():
-    return jsonify({'message': 'Speech API is running'})
+    """Serves the main HTML page or a welcome message."""
+    # Option 1: Render an HTML template (if you have one in a 'templates' folder)
+    # try:
+    #     return render_template('index.html')
+    # except Exception as e:
+    #     logging.error(f"Could not render index.html: {e}")
+    #     return jsonify({"error": "Could not load frontend page"}), 500
 
-@main_bp.route('/translate', methods=['POST'])
+    # Option 2: Return a simple JSON message
+    return jsonify({"message": "Welcome to the Real-Time Translation API"})
+
+@bp.route('/health')
+def health_check():
+    """Basic health check endpoint."""
+    # You could add checks here for database connections, service availability etc.
+    # Example check for services initialized in __init__
+    try:
+        t_service = current_app.translation_service
+        s_service = current_app.speech_service
+        t_status = getattr(t_service, 'service_type', 'uninitialized')
+        s_status = bool(getattr(s_service, 'speech_config', None))
+        return jsonify({
+            "status": "ok",
+            "services": {
+                "translation": t_status,
+                "speech": "configured" if s_status else "unconfigured"
+            }
+        })
+    except Exception as e:
+        logging.error(f"Health check failed: {e}")
+        return jsonify({"status": "error", "details": str(e)}), 500
+
+# Add any other general-purpose routes for your application here.
+# For example, a route to show API documentation or info.
+@bp.route('/info')
+def info():
+    """Provides basic info about the API."""
+    # Access config safely if needed
+    secret_key_set = bool(current_app.config.get('SECRET_KEY') and current_app.config['SECRET_KEY'] != 'a-very-weak-default-secret-key-CHANGE-ME')
+    return jsonify({
+        "api_name": "Real-Time Translation API",
+        "version": "1.0.0",
+        "flask_secret_key_set": secret_key_set
+    })
+
+@bp.route('/translate', methods=['POST'])
 def translate_text():
     """Super simple translation endpoint"""
     try:
@@ -69,7 +112,7 @@ def translate_text():
             'target_language': target_language if 'target_language' in locals() else 'unknown'
         })
 
-@main_bp.route('/api/transcripts', methods=['GET'])
+@bp.route('/api/transcripts', methods=['GET'])
 def get_transcripts():
     try:
         transcripts = firebase_service.get_transcripts(limit=20)

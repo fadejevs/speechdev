@@ -16,40 +16,33 @@ import azure.cognitiveservices.speech as speechsdk
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger('azure').setLevel(logging.INFO) # Keep Azure less verbose unless needed
 
-# Create an instance of your translation service
-# Consider getting this from the app context if initialized there
-try:
-    translation_service = current_app.config.get('TRANSLATION_SERVICE')
-    if not translation_service:
-        # translation_service = TranslationService()
-        logging.warning("Created new TranslationService instance in websocket.py")
-except RuntimeError:
-    # Handle cases where this runs outside app context during import
-    # translation_service = TranslationService()
-    logging.warning("Created TranslationService instance outside app context in websocket.py")
-
-
 # --- Global State Management ---
 # Dictionary to hold active recognizers and streams per room
 # Structure: { room_id: {'recognizer': SpeechRecognizer, 'stream': PushAudioInputStream, 'translation_service': TranslationService, 'target_languages': [] }}
 active_recognizers = {}
 recognizer_lock = threading.Lock() # To protect access to the dictionary
 
-# --- Helper Function to Get Translation Service ---
-def get_translation_service():
-    """Safely gets the TranslationService instance."""
+# --- Helper Function to Get Services (Corrected) ---
+# Ensures services are accessed within app context when needed
+def get_services():
     try:
-        service = current_app.config.get('TRANSLATION_SERVICE')
-        if not service:
-            logging.warning("TRANSLATION_SERVICE not found in app config, creating new instance.")
-            service = TranslationService()
-        return service
+        # Access services attached directly to the app instance
+        translation_service = current_app.translation_service
+        speech_service = current_app.speech_service
+        # Basic check if services were initialized
+        if not translation_service or not speech_service:
+             logging.error("One or more services were not initialized correctly on the app.")
+             return None, None
+        return translation_service, speech_service
     except RuntimeError:
-        logging.warning("Running outside Flask app context, creating new TranslationService instance.")
-        return TranslationService()
-    except Exception as e:
-        logging.error(f"Error getting TranslationService: {e}", exc_info=True)
-        return TranslationService() # Fallback
+        # This happens if code tries to access current_app outside a request/app context
+        # This function should ideally only be called within context (e.g., inside socket handlers)
+        logging.error("Attempted to access services outside of Flask app context!")
+        return None, None
+    except AttributeError:
+        # This happens if services weren't attached correctly in __init__
+        logging.error("Services not found on current_app. Check app initialization.")
+        return None, None
 
 # --- Azure Speech Event Handlers ---
 # These functions will be called by the Azure SDK in separate threads.
@@ -198,155 +191,261 @@ def cleanup_recognizer(room_id):
 
 @socketio.on('connect')
 def handle_connect():
-    logging.info(f"Client connected: {request.sid}")
-    emit('connection_response', {'data': 'Connected!'})
+    sid = request.sid
+    logging.info(f"Client connected: {sid}")
+    # Example: Check service availability on connect
+    translation_service, speech_service = get_services() # Use the helper
+    if not translation_service or not speech_service:
+         logging.error(f"Services not available for new connection {sid}")
+         # Optionally disconnect or send error message
+         # emit('service_error', {'error': 'Backend services not ready'}, room=sid)
+         # return False # Prevents connection
+    else:
+         # Access attributes safely using getattr for logging
+         t_service_type = getattr(translation_service, 'service_type', 'N/A')
+         s_service_config = getattr(speech_service, 'speech_config', None)
+         logging.info(f"Services checked for {sid}: Translation={t_service_type}, Speech Configured={bool(s_service_config)}")
+    emit('connection_success', {'message': 'Connected successfully'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    logging.info(f"Client disconnected: {request.sid}")
-    # Find which room(s) the client was in and potentially clean up
-    # This simple approach cleans up if the disconnected client was the 'admin'
-    room_to_cleanup = None
-    with recognizer_lock:
-        for room_id, info in active_recognizers.items():
-            if info.get('admin_sid') == request.sid:
-                room_to_cleanup = room_id
-                break
-    if room_to_cleanup:
-        logging.info(f"Admin client {request.sid} disconnected. Cleaning up room {room_to_cleanup}.")
-        cleanup_recognizer(room_to_cleanup)
+    sid = request.sid
+    logging.info(f"Client disconnected: {sid}")
+    # Clean up resources associated with this client/room if necessary
+    # Find room associated with sid if needed
+    room_to_leave = None
+    # Simple cleanup: Stop recognition for any room this SID might be the last user in
+    # A more robust solution would track users per room explicitly
+    # For now, we rely on the 'leave_room' logic to handle cleanup when rooms become empty
+    pass # Add specific disconnect cleanup if needed beyond room leaving
 
 
-@socketio.on('join')
+@socketio.on('join_room')
 def on_join(data):
-    """Handles client joining a room and initializes recognition if first user."""
-    room = data.get('room')
-    source_language = data.get('source_language') # e.g., 'lv-LV'
-    target_languages = data.get('target_languages', []) # e.g., ['en-US']
+    sid = request.sid
+    room_id = data.get('room_id')
+    target_languages = data.get('target_languages', []) # e.g., ['es', 'fr']
+    source_language = data.get('source_language', 'en-US') # e.g., 'en-US'
 
-    if not room or not source_language:
-        logging.error(f"Join request from {request.sid} missing room or source_language")
-        emit('join_error', {'error': 'Missing room or source_language'})
+    if not room_id:
+        logging.error(f"Join attempt failed for {sid}: No room_id provided.")
+        emit('error', {'message': 'room_id is required'}, room=sid)
         return
 
-    join_room(room)
-    logging.info(f"Client {request.sid} joined room {room} (Source: {source_language}, Targets: {target_languages})")
+    join_room(room_id)
+    logging.info(f"Client {sid} joined room {room_id}. Source: {source_language}, Targets: {target_languages}")
+    emit('room_joined', {'room_id': room_id, 'message': f'Successfully joined room {room_id}'}, room=sid)
 
+    # --- Initialize Recognizer for the Room (if not already) ---
     with recognizer_lock:
-        if room not in active_recognizers:
-            logging.info(f"First user ({request.sid}) in room {room}. Initializing Azure Speech Recognizer...")
+        if room_id not in active_recognizers:
+            logging.info(f"Initializing recognizer for room {room_id}")
+            translation_service, speech_service = get_services() # Use helper
+
+            if not speech_service or not speech_service.speech_config:
+                logging.error(f"Cannot initialize recognizer for room {room_id}: SpeechService not configured.")
+                emit('error', {'message': 'Backend speech service not ready'}, room=room_id)
+                # Maybe leave room?
+                return
+
             try:
-                # --- Azure Speech Configuration ---
-                speech_key = current_app.config.get('AZURE_SPEECH_KEY')
-                service_region = current_app.config.get('AZURE_REGION')
-                if not speech_key or not service_region:
-                     logging.error("Azure Speech Key or Region not configured!")
-                     emit('join_error', {'error': 'Azure Speech not configured on server'}, room=room)
-                     leave_room(room) # Leave room if config fails
-                     return
+                # Create a push stream for audio data
+                stream = speechsdk.audio.PushAudioInputStream()
+                audio_config = speechsdk.audio.AudioConfig(stream=stream)
 
-                speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=service_region)
-                speech_config.speech_recognition_language = source_language
-                # Optional: Add profanity masking if needed
-                # speech_config.set_profanity(speechsdk.ProfanityOption.Masked)
-                logging.debug(f"SpeechConfig created for language: {source_language}")
+                # Configure for continuous translation recognition
+                # Use the speech_config from the initialized service
+                # Ensure subscription and region are accessed correctly from the service's config
+                azure_key = speech_service.speech_config.subscription
+                azure_region = speech_service.speech_config.region
 
-                # --- Audio Stream Setup ---
-                # Use PushAudioInputStream for streaming data chunks
-                audio_stream = speechsdk.audio.PushAudioInputStream()
-                audio_config = speechsdk.audio.AudioConfig(stream=audio_stream)
-                logging.debug("PushAudioInputStream and AudioConfig created")
+                translation_config = speechsdk.translation.SpeechTranslationConfig(
+                    subscription=azure_key,
+                    region=azure_region
+                )
+                translation_config.speech_recognition_language = source_language
+                for lang in target_languages:
+                    # Map to Azure's expected format if needed (e.g., 'es' from 'es-ES')
+                    azure_target_lang = lang.split('-')[0] if '-' in lang else lang # Handle cases like 'es' vs 'es-ES'
+                    translation_config.add_target_language(azure_target_lang)
 
-                # --- Create Recognizer ---
-                recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
-                logging.debug("SpeechRecognizer created")
+                recognizer = speechsdk.translation.TranslationRecognizer(
+                    translation_config=translation_config,
+                    audio_config=audio_config
+                )
+
+                # --- Define Callbacks ---
+                def recognizing_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    # Handle intermediate results if needed
+                    if evt.result.reason == speechsdk.ResultReason.TranslatingSpeech:
+                         translations = evt.result.translations
+                         logging.debug(f"TRANSLATING in room {room_id}: {translations}")
+                         # Emit intermediate results if desired
+                         # socketio.emit('recognizing', {'translations': translations}, room=room_id)
+
+                def recognized_cb(evt: speechsdk.translation.TranslationRecognitionEventArgs):
+                    if evt.result.reason == speechsdk.ResultReason.TranslatedSpeech:
+                        recognition = evt.result.text # Original recognized text
+                        translations = evt.result.translations # Dictionary: {'de': 'text', 'fr': 'text'}
+                        logging.info(f"RECOGNIZED in room {room_id}: '{recognition}' -> {translations}")
+                        # Emit final recognized segment and its translations
+                        socketio.emit('recognized_speech', {
+                            'recognition': recognition,
+                            'translations': translations,
+                            'source_language': source_language # Include source lang context
+                        }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                         # This happens if only recognition occurs (no translation targets?)
+                         logging.info(f"RECOGNIZED (no translation) in room {room_id}: {evt.result.text}")
+                         socketio.emit('recognized_speech', {
+                             'recognition': evt.result.text,
+                             'translations': {},
+                             'source_language': source_language
+                         }, room=room_id)
+                    elif evt.result.reason == speechsdk.ResultReason.NoMatch:
+                        logging.warning(f"NOMATCH in room {room_id}: Speech could not be recognized.")
+                        # Optionally emit a no-match event
+                        # socketio.emit('no_match', {'message': 'No speech recognized'}, room=room_id)
+
+                def canceled_cb(evt: speechsdk.translation.TranslationRecognitionCanceledEventArgs):
+                     logging.error(f"RECOGNITION CANCELED in room {room_id}: Reason={evt.reason}")
+                     if evt.reason == speechsdk.CancellationReason.Error:
+                         logging.error(f"CANCELED ErrorDetails={evt.error_details}")
+                     # Stop recognition and clean up for this room
+                     stop_recognition(room_id) # Call cleanup helper
+                     socketio.emit('recognition_error', {'error': f'Recognition canceled: {evt.reason}'}, room=room_id)
+
+                def session_started_cb(evt):
+                    logging.info(f'Recognition SESSION STARTED in room {room_id}: {evt}')
+
+                def session_stopped_cb(evt):
+                    logging.info(f'Recognition SESSION STOPPED in room {room_id}: {evt}')
+                    # Clean up when session stops naturally or due to error
+                    stop_recognition(room_id) # Call cleanup helper
+
 
                 # --- Connect Callbacks ---
-                # Use lambda to pass room_id to handlers
-                recognizer.recognizing.connect(lambda evt: handle_intermediate_result(evt, room))
-                recognizer.recognized.connect(lambda evt: handle_final_result(evt, room))
-                recognizer.session_started.connect(lambda evt: handle_session_started(evt, room))
-                recognizer.session_stopped.connect(lambda evt: handle_session_stopped(evt, room))
-                recognizer.canceled.connect(lambda evt: handle_canceled(evt, room))
-                logging.debug("Connected Azure SDK event handlers")
+                recognizer.recognizing.connect(recognizing_cb)
+                recognizer.recognized.connect(recognized_cb)
+                recognizer.canceled.connect(canceled_cb)
+                recognizer.session_started.connect(session_started_cb)
+                recognizer.session_stopped.connect(session_stopped_cb)
 
-                # --- Store Recognizer Info ---
-                translation_service = get_translation_service()
-                active_recognizers[room] = {
-                    'recognizer': recognizer,
-                    'stream': audio_stream,
-                    'translation_service': translation_service,
-                    'target_languages': target_languages,
-                    'admin_sid': request.sid # Store the SID of the user who initiated
-                }
-                logging.info(f"Stored recognizer info for room {room}")
-
-                # --- Start Recognition ---
+                # --- Start Continuous Recognition ---
                 recognizer.start_continuous_recognition_async()
-                logging.info(f"Started continuous recognition for room {room}")
+                logging.info(f"Started continuous recognition for room {room_id}")
+
+                # Store recognizer and stream
+                active_recognizers[room_id] = {
+                    'recognizer': recognizer,
+                    'stream': stream,
+                    'target_languages': target_languages,
+                    'source_language': source_language
+                }
 
             except Exception as e:
-                logging.error(f"Failed to initialize Azure Speech for room {room}: {e}", exc_info=True)
-                emit('join_error', {'error': f'Failed to initialize speech recognition: {e}'}, room=room)
-                if room in active_recognizers: # Clean up partial setup if error occurred
-                    cleanup_recognizer(room)
-                leave_room(room) # Leave room on error
-        else:
-            logging.info(f"Client {request.sid} joined existing room {room}. Recognizer already active.")
+                logging.error(f"Failed to initialize recognizer for room {room_id}: {e}", exc_info=True)
+                emit('error', {'message': f'Failed to start recognition: {e}'}, room=room_id)
 
 
-@socketio.on('leave')
+@socketio.on('leave_room')
 def on_leave(data):
-    """Handles client leaving a room."""
-    room = data.get('room')
-    if not room:
-        logging.error(f"Leave request from {request.sid} missing room ID")
+    sid = request.sid
+    room_id = data.get('room_id')
+    if not room_id:
+        logging.warning(f"Leave attempt failed for {sid}: No room_id provided.")
         return
 
-    leave_room(room)
-    logging.info(f"Client {request.sid} left room {room}")
+    leave_room(room_id)
+    logging.info(f"Client {sid} left room {room_id}")
+    emit('room_left', {'room_id': room_id, 'message': f'Successfully left room {room_id}'}, room=sid)
 
-    # --- Decide on cleanup logic ---
-    # Simple approach: If the SID leaving matches the stored admin SID, clean up.
-    with recognizer_lock:
-        recognizer_info = active_recognizers.get(room)
-        if recognizer_info and recognizer_info.get('admin_sid') == request.sid:
-            logging.info(f"Admin {request.sid} left room {room}. Cleaning up recognizer.")
-            cleanup_recognizer(room)
-        elif not recognizer_info:
-             logging.warning(f"Leave event for room {room}, but no active recognizer found.")
-        else:
-             logging.info(f"Non-admin client {request.sid} left room {room}. Recognizer continues.")
+    # Check if room is now empty and stop recognizer if so
+    # This requires tracking users per room, which SocketIO does internally
+    # Need to access the server's room data correctly
+    room_users = socketio.server.manager.rooms.get('/', {}).get(room_id)
+    if not room_users or len(room_users) == 0:
+         logging.info(f"Room {room_id} is empty. Stopping recognition.")
+         stop_recognition(room_id) # Call cleanup helper
 
 
 @socketio.on('audio_chunk')
 def handle_audio_chunk(data):
-    """Receives audio chunk and pushes it to the Azure stream."""
-    room = data.get('room')
-    chunk = data.get('audio_chunk') # Key matches frontend
+    sid = request.sid
+    room_id = data.get('room_id')
+    audio_chunk = data.get('audio') # Expecting raw bytes
 
-    if not room or not chunk:
-        logging.error(f"Received invalid audio_chunk data from {request.sid} (Room: {room}, Chunk type: {type(chunk)})")
+    if not room_id or not audio_chunk:
+        logging.warning(f"Received invalid audio chunk data from {sid}. Room: {room_id}, Chunk size: {len(audio_chunk) if audio_chunk else 0}")
         return
 
-    #logging.debug(f"Received audio chunk for room {room} from {request.sid}, size: {len(chunk)}")
-
     with recognizer_lock:
-        recognizer_info = active_recognizers.get(room)
+        recognizer_data = active_recognizers.get(room_id)
 
-    if recognizer_info and recognizer_info.get('stream'):
-        stream = recognizer_info['stream']
+    if recognizer_data and recognizer_data['stream']:
         try:
-            stream.write(chunk)
-            #logging.debug(f"Wrote {len(chunk)} bytes to stream for room {room}")
+            # logging.debug(f"Pushing {len(audio_chunk)} bytes to stream for room {room_id}")
+            recognizer_data['stream'].write(audio_chunk)
         except Exception as e:
-            logging.error(f"Error writing to audio stream for room {room}: {e}", exc_info=True)
-            # Consider cleaning up if stream is broken
-            # cleanup_recognizer(room)
-    elif not recognizer_info:
-        logging.warning(f"Received audio chunk for room {room}, but no active recognizer found. Ignoring.")
-    elif not recognizer_info.get('stream'):
-         logging.error(f"Received audio chunk for room {room}, but stream object is missing!")
+            logging.error(f"Error writing to audio stream for room {room_id}: {e}")
+            stop_recognition(room_id) # Stop on stream error
+            emit('recognition_error', {'error': 'Audio stream error'}, room=room_id)
+    else:
+        logging.warning(f"No active recognizer or stream found for room {room_id} to handle audio chunk from {sid}")
+        # Optionally send an error back to the client
+        # emit('error', {'message': 'Recognition not active for this room'}, room=sid)
+
+
+@socketio.on('stop_recognition')
+def handle_stop_recognition(data):
+    """Client explicitly requests to stop."""
+    sid = request.sid
+    room_id = data.get('room_id')
+    logging.info(f"Received stop request from {sid} for room {room_id}")
+    if room_id:
+        stop_recognition(room_id) # Call cleanup helper
+
+
+# --- Helper to Stop and Clean Up Recognition ---
+def stop_recognition(room_id):
+    with recognizer_lock:
+        if room_id in active_recognizers:
+            recognizer_data = active_recognizers.pop(room_id) # Remove from active list
+            recognizer = recognizer_data.get('recognizer')
+            stream = recognizer_data.get('stream')
+            logging.info(f"Stopping recognition and cleaning up for room {room_id}...")
+
+            if recognizer:
+                try:
+                    # Stop recognition
+                    # Use get() to avoid waiting indefinitely if already stopped/cancelled
+                    recognizer.stop_continuous_recognition_async().get()
+                    logging.info(f"Stopped continuous recognition async for room {room_id}")
+
+                    # Disconnect callbacks to prevent potential issues during cleanup
+                    recognizer.recognizing.disconnect_all()
+                    recognizer.recognized.disconnect_all()
+                    recognizer.canceled.disconnect_all()
+                    recognizer.session_started.disconnect_all()
+                    recognizer.session_stopped.disconnect_all()
+                    logging.debug(f"Disconnected all callbacks for room {room_id}")
+
+                except Exception as e:
+                    logging.error(f"Error during recognizer stop/cleanup for room {room_id}: {e}")
+
+            if stream:
+                try:
+                    # Close the audio stream
+                    stream.close()
+                    logging.info(f"Closed audio stream for room {room_id}")
+                except Exception as e:
+                    logging.error(f"Error closing stream for room {room_id}: {e}")
+
+            logging.info(f"Cleanup complete for room {room_id}")
+            # Notify clients in the room that recognition has stopped
+            socketio.emit('recognition_stopped', {'room_id': room_id}, room=room_id)
+        else:
+             logging.warning(f"Stop request for room {room_id}, but no active recognizer found.")
 
 
 # --- Optional: Add back the test handlers if needed ---
@@ -368,7 +467,7 @@ def handle_translate_text(data):
         return
 
     logging.info(f"Received translate_text request for '{text}' from {source_language} to {target_languages}")
-    translation_service = get_translation_service()
+    translation_service = get_services()[0]
 
     if not translation_service:
          emit('translation_error', {'error': 'Translation service unavailable'})
