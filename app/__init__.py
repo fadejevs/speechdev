@@ -33,6 +33,20 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class) # Config loaded here
 
+    # --- Configure Logging to use Gunicorn's logger ---
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    if gunicorn_logger.handlers:
+        app.logger.handlers = gunicorn_logger.handlers
+        app.logger.setLevel(gunicorn_logger.level)
+        logging.getLogger().handlers = gunicorn_logger.handlers # Also configure root logger
+        logging.getLogger().setLevel(gunicorn_logger.level)
+        logging.info("--- create_app --- Configured Flask logger to use Gunicorn handlers.")
+    else:
+        # Fallback if not run under Gunicorn or Gunicorn logger not found
+        logging.basicConfig(level=logging.INFO) # Or use Flask's default
+        logging.info("--- create_app --- Gunicorn logger not found, using basicConfig fallback.")
+    # --- End Logging Configuration ---
+
     # Initialize extensions
     CORS(app, resources={r"/*": {"origins": "*"}}) # Allow all origins for simplicity
     # Ensure SECRET_KEY is loaded before initializing SocketIO if it depends on it implicitly

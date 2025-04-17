@@ -2,13 +2,12 @@ from gevent import monkey
 monkey.patch_all() # Important for gevent! Place this at the very top.
 
 import os
-import logging # Add logging import
+import logging # Keep logging import
 from app import create_app
 
-# --- Add top-level logging ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logging.info("--- wsgi.py --- Starting script.")
-# --- End top-level logging ---
+# --- Remove basicConfig ---
+# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.info("--- wsgi.py --- Starting script.") # Keep this log
 
 
 # Create the app and socketio instances using the factory
@@ -25,4 +24,6 @@ if __name__ == "__main__":
     # Note: For production on Render, Gunicorn command handles the port binding.
     # Setting debug=False is generally better for anything resembling production.
     logging.info(f"--- wsgi.py --- Running locally via socketio.run on port {port}")
-    socketio.run(app, host='0.0.0.0', port=port, debug=False) # Use the instance returned by create_app
+    # Use the instance returned by create_app - Correction: use the imported socketio
+    from app import socketio
+    socketio.run(app, host='0.0.0.0', port=port, debug=False)
