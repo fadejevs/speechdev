@@ -114,7 +114,7 @@ const EventLivePage = () => {
     const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
     console.log(`Attempting to connect WebSocket to: ${socketUrl}`);
     socketRef.current = io(socketUrl, {
-        transports: ['polling'],
+        transports: ['websocket', 'polling'],
         reconnectionAttempts: 5,
         timeout: 10000
     });
@@ -247,34 +247,23 @@ const EventLivePage = () => {
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && socketRef.current && socketConnected) {
-          audioChunksRef.current.push(event.data);
+      recorder.ondataavailable = async (event) => {
+        if (event.data.size > 0) {
           console.log(`Sending audio chunk: ${event.data.size} bytes`);
           
-          const payload = {
-            room: id,
-            audio_chunk: event.data,
-            source_language: eventData.sourceLanguages[0].includes('-') 
-              ? eventData.sourceLanguages[0] 
-              : eventData.sourceLanguages[0] === 'lv' ? 'lv-LV' : eventData.sourceLanguages[0],
-            target_languages: eventData.targetLanguages || []
-          };
-          console.log('Sending payload:', {
-            room: payload.room,
-            source_language: payload.source_language,
-            target_languages: payload.target_languages,
-            audio_chunk_size: event.data.size
-          });
-          
-          socketRef.current.emit('audio_chunk', payload);
-          setProcessingAudio(true);
-        } else {
-          console.warn('Cannot send audio chunk:', {
-            dataSize: event.data.size,
-            socketExists: !!socketRef.current,
-            socketConnected
-          });
+          if (socketRef.current && socketRef.current.connected) {
+            try {
+              // Send the binary blob directly
+              socketRef.current.emit('audio_chunk', event.data);
+              
+              // Log success but don't send this data
+              console.log(`Audio chunk sent successfully: ${event.data.size} bytes`);
+            } catch (error) {
+              console.error('Error sending audio chunk:', error);
+            }
+          } else {
+            console.warn('WebSocket not connected, cannot send audio chunk.');
+          }
         }
       };
 

@@ -71,9 +71,17 @@ def on_start_recognition(data):
         recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
 
         def recognized_cb(evt: speechsdk.SpeechRecognitionEventArgs):
+            """Callback for when speech is recognized"""
             result = evt.result
+            text = result.text
+            
+            logger.info(f"[{sid}] Recognized: {text}")
+            
+            if not text or text.isspace():
+                logger.info(f"[{sid}] Empty text recognized, skipping translation.")
+                return
+            
             if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-                text = result.text
                 logger.info(f"[{sid}] Recognized: {text}")
 
                 try:
@@ -165,42 +173,46 @@ def on_start_recognition(data):
 
 @socketio.on('audio_chunk')
 def on_audio_chunk(data):
-    """Process incoming audio chunk"""
+    """Process an audio chunk from the client"""
     sid = request.sid
-
+    
+    logger.info(f"[{sid}] Received audio chunk")
+    
     with session_lock:
-        session = active_sessions.get(sid)
-
-    if not session or 'stream' not in session:
-        logger.warning(f"[{sid}] Received audio chunk but no active stream found. Ignoring.")
-        return
-
-    try:
-        audio_bytes = None
-        if isinstance(data, bytes):
-             audio_bytes = data
-        elif isinstance(data, dict) and 'audio_chunk' in data and isinstance(data['audio_chunk'], bytes):
-             audio_bytes = data['audio_chunk']
-        elif isinstance(data, dict) and isinstance(data.get('args'), list) and len(data['args']) > 0 and isinstance(data['args'][0], bytes):
-             audio_bytes = data['args'][0]
-        elif isinstance(data, str):
-             try:
-                 audio_bytes = base64.b64decode(data)
-                 logger.debug(f"[{sid}] Audio data decoded from base64 string ({len(audio_bytes)} bytes)")
-             except base64.binascii.Error:
-                 logger.warning(f"[{sid}] Received string data that is not valid base64. Ignoring.")
-                 return
-        else:
-            logger.warning(f"[{sid}] Unrecognized audio data format received. Type: {type(data)}. Data: {str(data)[:100]}...")
+        if sid not in active_sessions:
+            logger.warning(f"[{sid}] Received audio chunk but no active session found.")
             return
-
-        if audio_bytes:
-            session['stream'].write(audio_bytes)
+        
+        session = active_sessions[sid]
+        stream = session.get('stream')
+        
+        if not stream:
+            logger.warning(f"[{sid}] No stream in session.")
+            return
+    
+    try:
+        # Handle binary data directly
+        if isinstance(data, bytes):
+            audio_data = data
+            logger.debug(f"[{sid}] Received binary audio chunk: {len(audio_data)} bytes")
+        # Handle Blob/Buffer sent by Socket.IO
+        elif hasattr(data, 'read'):
+            audio_data = data.read()
+            logger.debug(f"[{sid}] Read audio data from buffer: {len(audio_data)} bytes")
+        # If it's a dictionary with metadata (your current approach)
+        elif isinstance(data, dict) and 'audio' in data:
+            audio_data = data['audio']
+            logger.debug(f"[{sid}] Extracted audio from dict: {len(audio_data)} bytes")
         else:
-            logger.warning(f"[{sid}] Could not extract audio bytes from received data. Ignoring.")
-
+            logger.warning(f"[{sid}] Unrecognized audio data format: {type(data)}")
+            return
+            
+        # Write to the stream
+        stream.write(audio_data)
+        logger.debug(f"[{sid}] Audio chunk written to stream: {len(audio_data)} bytes")
+        
     except Exception as e:
-        logger.error(f"[{sid}] Audio processing error: {e}", exc_info=True)
+        logger.error(f"[{sid}] Error processing audio chunk: {e}", exc_info=True)
 
 @socketio.on('stop_recognition')
 def on_stop_recognition():
