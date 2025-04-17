@@ -573,10 +573,86 @@ def handle_test_event(data):
 
 @socketio.on('start_recognition')
 def handle_start_recognition(data):
+    # --- TEMPORARY DEBUGGING ---
+    # Just log that the event was received and grab the SID
+    sid = request.sid
+    logging.info(f"--- RAW START RECOGNITION RECEIVED --- SID: {sid}, Raw Data: {data}")
+    # --- END TEMPORARY DEBUGGING ---
+
+    # Comment out the rest of the original function for now
+    """
     sid = request.sid
     room_id = data.get('room_id')
-    # Add this log line to see if the event even arrives
     logging.info(f"--- START RECOGNITION EVENT RECEIVED --- SID: {sid}, Room ID: {room_id}, Data: {data}")
     source_language = data.get('source_language', 'en-US') # Default to en-US
     target_languages = data.get('target_languages', []) # Default to empty list
-    # ... rest of the function ... 
+
+    if not room_id:
+        logging.error(f"Missing 'room_id' in start_recognition data from {sid}. Data: {data}")
+        emit('error', {'message': "Missing 'room_id' in request"}, room=sid)
+        return
+
+    if not source_language:
+        logging.error(f"Missing 'source_language' in start_recognition data from {sid}. Data: {data}")
+        emit('error', {'message': "Missing 'source_language' in request"}, room=sid)
+        return
+
+    logging.info(f"Attempting to start recognition for room {room_id} from {sid}. Source: {source_language}, Targets: {target_languages}")
+
+    try:
+        # Ensure services are available
+        services = get_services_for_sid(sid)
+        if not services:
+            logging.error(f"No services found for SID {sid} during start_recognition.")
+            emit('error', {'message': 'Backend services not available for your session.'}, room=sid)
+            return
+
+        speech_service = services['speech']
+        translation_service = services['translation']
+
+        # Check if recognizer already exists for this room
+        with recognizer_lock:
+            if room_id in active_recognizers and active_recognizers[room_id].get('stream'):
+                 logging.warning(f"Recognizer already active for room {room_id}. Ignoring start request from {sid}.")
+                 # Optionally, send a specific message back or just ignore
+                 # emit('info', {'message': 'Recognition already active for this room'}, room=sid)
+                 return # Or potentially stop the old one and start anew?
+
+
+        # Create and start the recognition stream
+        stream, recognizer_future = speech_service.start_stream(
+            source_language=source_language,
+            target_languages=target_languages,
+            room_id=room_id,
+            sid=sid,
+            translation_service=translation_service,
+            socketio_instance=socketio # Pass the socketio instance
+        )
+
+        # Store the stream and future under the room_id
+        with recognizer_lock:
+            active_recognizers[room_id] = {
+                'stream': stream,
+                'future': recognizer_future,
+                'sid': sid, # Store the SID that started this stream
+                'source_language': source_language,
+                'target_languages': target_languages
+            }
+            logging.info(f"Successfully started and stored recognizer stream for room {room_id} initiated by {sid}")
+
+        # Optionally confirm success to the client
+        emit('recognition_started', {'message': 'Speech recognition stream started successfully.'}, room=sid)
+
+    except Exception as e:
+        logging.exception(f"Error starting recognition stream for room {room_id} from {sid}: {e}")
+        emit('error', {'message': f'Failed to start recognition: {str(e)}'}, room=sid)
+        # Clean up if partial setup occurred
+        with recognizer_lock:
+            if room_id in active_recognizers:
+                recognizer_data = active_recognizers.pop(room_id, None)
+                if recognizer_data and recognizer_data.get('stream'):
+                    try:
+                        recognizer_data['stream'].close()
+                    except Exception as close_err:
+                        logging.error(f"Error closing stream during cleanup for room {room_id}: {close_err}")
+    """ 

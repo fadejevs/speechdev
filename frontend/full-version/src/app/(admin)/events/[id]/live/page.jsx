@@ -282,9 +282,42 @@ const EventLivePage = () => {
         stopRecording();
       };
 
-      recorder.start(1000);
-      setIsRecording(true);
-      console.log('Recording started with device:', selectedDevice);
+      if (socketRef.current && socketRef.current.connected && mediaRecorderRef.current) {
+        try {
+          // Prepare the data
+          const startData = {
+            room_id: id, // Make sure 'id' is the correct room identifier
+            source_language: eventData.sourceLanguages[0],
+            target_languages: eventData.targetLanguages || []
+          };
+
+          console.log('Attempting to emit start_recognition with data:', startData);
+
+          // Emit START_RECOGNITION *BEFORE* starting the recorder
+          socketRef.current.emit('start_recognition', startData);
+
+          console.log('start_recognition emitted. Starting MediaRecorder...');
+
+          // Start the recorder AFTER emitting the event
+          mediaRecorderRef.current.start(500); // Send chunks every 500ms
+
+          setIsRecording(true);
+          setProcessingAudio(false); // Reset processing state
+
+          console.log('MediaRecorder started.');
+
+        } catch (error) {
+          console.error('Error during startRecording:', error);
+          setError(`Error starting recording: ${error.message}`);
+          stopRecording(); // Clean up if start failed
+        }
+      } else {
+         console.warn('Cannot start recording: Socket not connected or MediaRecorder not ready.', {
+           socketConnected: socketRef.current?.connected,
+           mediaRecorderReady: !!mediaRecorderRef.current
+         });
+        setError('Cannot start recording. Socket not connected or microphone not ready.');
+      }
     } catch (err) {
       console.error('Error starting recording:', err);
       setError(`Failed to start recording: ${err.message}. Check microphone permissions and selection.`);
