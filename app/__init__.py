@@ -1,5 +1,6 @@
 import logging
 import os
+from logging.config import dictConfig
 
 from dotenv import load_dotenv
 from flask import Flask
@@ -13,82 +14,75 @@ from app.services.speech_service import SpeechService # Import SpeechService
 # Load environment variables
 load_dotenv()
 
-# --- Logging Configuration ---
-# (Keep your existing logging setup)
-log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
-logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logging.getLogger('engineio').setLevel(logging.WARNING)
-logging.getLogger('socketio').setLevel(logging.WARNING)
-logging.getLogger('azure').setLevel(logging.WARNING)
-
-
-# --- Initialize Extensions (without app) ---
-# Create the SocketIO instance here, but don't attach it to 'app' yet
+# Define socketio globally but without initializing it here
 socketio = SocketIO()
-cors = CORS()
-translation_service = None # Initialize as None
+
+# --- Logging Configuration ---
+# (Keep your existing logging config)
+LOGGING_CONFIG = {
+    # ... your dictConfig ...
+}
+dictConfig(LOGGING_CONFIG)
 
 def create_app(config_class=Config):
-    """Construct the core application."""
+    """
+    Application Factory Pattern
+    """
     app = Flask(__name__)
-    app.config.from_object(config_class) # Config loaded here
+    app.config.from_object(config_class)
 
-    # --- Configure Logging to use Gunicorn's logger ---
+    # Configure logging using Gunicorn's logger if available
     gunicorn_logger = logging.getLogger('gunicorn.error')
     if gunicorn_logger.handlers:
         app.logger.handlers = gunicorn_logger.handlers
-        # --- Explicitly set level to INFO ---
-        app.logger.setLevel(logging.INFO)
-        logging.getLogger().handlers = gunicorn_logger.handlers # Also configure root logger
-        logging.getLogger().setLevel(logging.INFO) # Also set root logger level
-        app.logger.info("--- create_app --- Configured Flask logger to use Gunicorn handlers and set level to INFO.")
+        app.logger.setLevel(gunicorn_logger.level)
+        app.logger.info("--- create_app --- Configured Flask logger to use Gunicorn handlers and set level to %s.", logging.getLevelName(app.logger.level))
     else:
-        # Fallback if not run under Gunicorn or Gunicorn logger not found
-        logging.basicConfig(level=logging.INFO) # Or use Flask's default
-        app.logger.info("--- create_app --- Gunicorn logger not found, using basicConfig fallback.")
-        app.logger.setLevel(logging.INFO) # Ensure level is INFO in fallback too
-    # --- End Logging Configuration ---
+        # Fallback basic config if not run with Gunicorn or Gunicorn logger not found
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        app.logger.info("--- create_app --- Gunicorn logger not found, using basicConfig.")
 
     # Initialize extensions
-    CORS(app, resources={r"/*": {"origins": "*"}}) # Allow all origins for simplicity
-    # Ensure SECRET_KEY is loaded before initializing SocketIO if it depends on it implicitly
-    if not app.config.get('SECRET_KEY') or app.config['SECRET_KEY'] == 'a-very-weak-default-secret-key-CHANGE-ME':
-         app.logger.warning("SECRET_KEY is not set or is weak in the environment. Flask sessions and SocketIO may be insecure.") # Use app.logger
-         # Optionally raise an error: raise ValueError("Missing or weak SECRET_KEY environment variable.")
+    CORS(app, resources={r"/*": {"origins": "*"}}) # Allow all origins for now
 
-    # Enable detailed logging for SocketIO and EngineIO
-    socketio.init_app(app, async_mode='gevent', cors_allowed_origins="*", logger=True, engineio_logger=True)
-    # --- Log object ID after init ---
-    app.logger.info(f"--- create_app --- Initialized SocketIO. Object ID: {id(socketio)}") # Use app.logger
+    # Initialize SocketIO with the app instance *before* importing routes that use it
+    # Pass logger=True and engineio_logger=True for more verbose SocketIO logs
+    socketio.init_app(
+        app,
+        async_mode='gevent',
+        cors_allowed_origins="*", # Be specific in production
+        logger=True,              # Enable Flask-SocketIO logger
+        engineio_logger=True      # Enable Engine.IO logger
+    )
+    app.logger.info(f"--- create_app --- Initialized SocketIO. Object ID: {id(socketio)}")
 
-    # --- Initialize Services ---
-    # Pass the app's config dictionary to the service constructors
-    translation_service = TranslationService(app.config)
-    speech_service = SpeechService(app.config) # Initialize SpeechService
+    # Initialize Services
+    # (Keep your service initializations)
+    # ... service init ...
+    app.logger.info(f"Translation Service initialized in create_app: Type={getattr(app, 'translation_service', None)}")
+    app.logger.info(f"Speech Service initialized in create_app: Configured={hasattr(app, 'speech_service')}")
 
-    # Attach services to the app context for easier access in routes
-    app.translation_service = translation_service
-    app.speech_service = speech_service # Attach SpeechService
-    app.logger.info(f"Translation Service initialized in create_app: Type={getattr(translation_service, 'service_type', 'N/A')}") # Use app.logger
-    app.logger.info(f"Speech Service initialized in create_app: Configured={bool(speech_service.speech_config)}") # Use app.logger
+    # Register Blueprints
+    from .routes.main import main_bp
+    from .routes.speech import speech_bp
+    # from .routes.firebase import firebase_bp # If you have it
 
-    # --- Import Blueprints/Routes AFTER app and extensions are initialized ---
-    with app.app_context():
-        from .routes import main, speech, translation # Keep these here
-        app.register_blueprint(main.bp)
-        app.register_blueprint(speech.speech_bp) # Use speech_bp name
-        app.register_blueprint(translation.translation_bp) # Register translation blueprint
+    app.register_blueprint(main_bp)
+    app.register_blueprint(speech_bp, url_prefix='/speech')
+    # app.register_blueprint(firebase_bp, url_prefix='/firebase')
 
-        # Explicitly import websocket routes AFTER socketio is initialized with the app
-        from .routes import websocket # Import websocket routes here
-        app.logger.info(f"--- create_app --- Imported websocket routes AFTER SocketIO init.") # Use app.logger
+    # --- MOVE WEBSOCKET IMPORT HERE ---
+    # Import websocket routes *after* everything else, especially SocketIO init
+    with app.app_context(): # Ensure context for logger inside websocket.py if needed
+        from .routes import websocket # This executes the decorators
+        app.logger.info(f"--- create_app --- Imported websocket routes LAST. SocketIO object ID used by websocket.py: {id(websocket.socketio)}")
 
-    app.logger.info("Flask app created and configured.") # Use app.logger
-    return app, socketio # Return both app and socketio
+    app.logger.info("Flask app created and configured.")
+    return app
 
 # --- Create App Instance ---
 # Call create_app() at the module level so wsgi.py can import app and socketio
-app, socketio = create_app()
+app = create_app()
 
 # --- Remove the duplicate create_app definition and the __main__ block ---
 # (Ensure these are removed if they still exist) 
