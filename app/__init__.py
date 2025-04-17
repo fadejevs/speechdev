@@ -37,27 +37,29 @@ def create_app(config_class=Config):
     gunicorn_logger = logging.getLogger('gunicorn.error')
     if gunicorn_logger.handlers:
         app.logger.handlers = gunicorn_logger.handlers
-        app.logger.setLevel(gunicorn_logger.level)
+        # --- Explicitly set level to INFO ---
+        app.logger.setLevel(logging.INFO)
         logging.getLogger().handlers = gunicorn_logger.handlers # Also configure root logger
-        logging.getLogger().setLevel(gunicorn_logger.level)
-        logging.info("--- create_app --- Configured Flask logger to use Gunicorn handlers.")
+        logging.getLogger().setLevel(logging.INFO) # Also set root logger level
+        app.logger.info("--- create_app --- Configured Flask logger to use Gunicorn handlers and set level to INFO.")
     else:
         # Fallback if not run under Gunicorn or Gunicorn logger not found
         logging.basicConfig(level=logging.INFO) # Or use Flask's default
-        logging.info("--- create_app --- Gunicorn logger not found, using basicConfig fallback.")
+        app.logger.info("--- create_app --- Gunicorn logger not found, using basicConfig fallback.")
+        app.logger.setLevel(logging.INFO) # Ensure level is INFO in fallback too
     # --- End Logging Configuration ---
 
     # Initialize extensions
     CORS(app, resources={r"/*": {"origins": "*"}}) # Allow all origins for simplicity
     # Ensure SECRET_KEY is loaded before initializing SocketIO if it depends on it implicitly
     if not app.config.get('SECRET_KEY') or app.config['SECRET_KEY'] == 'a-very-weak-default-secret-key-CHANGE-ME':
-         logging.warning("SECRET_KEY is not set or is weak in the environment. Flask sessions and SocketIO may be insecure.")
+         app.logger.warning("SECRET_KEY is not set or is weak in the environment. Flask sessions and SocketIO may be insecure.") # Use app.logger
          # Optionally raise an error: raise ValueError("Missing or weak SECRET_KEY environment variable.")
 
     # Enable detailed logging for SocketIO and EngineIO
     socketio.init_app(app, async_mode='gevent', cors_allowed_origins="*", logger=True, engineio_logger=True)
     # --- Log object ID after init ---
-    logging.info(f"--- create_app --- Initialized SocketIO. Object ID: {id(socketio)}")
+    app.logger.info(f"--- create_app --- Initialized SocketIO. Object ID: {id(socketio)}") # Use app.logger
 
     # --- Initialize Services ---
     # Pass the app's config dictionary to the service constructors
@@ -67,8 +69,8 @@ def create_app(config_class=Config):
     # Attach services to the app context for easier access in routes
     app.translation_service = translation_service
     app.speech_service = speech_service # Attach SpeechService
-    logging.info(f"Translation Service initialized in create_app: Type={getattr(translation_service, 'service_type', 'N/A')}")
-    logging.info(f"Speech Service initialized in create_app: Configured={bool(speech_service.speech_config)}")
+    app.logger.info(f"Translation Service initialized in create_app: Type={getattr(translation_service, 'service_type', 'N/A')}") # Use app.logger
+    app.logger.info(f"Speech Service initialized in create_app: Configured={bool(speech_service.speech_config)}") # Use app.logger
 
     # --- Import Blueprints/Routes AFTER app and extensions are initialized ---
     with app.app_context():
@@ -79,9 +81,9 @@ def create_app(config_class=Config):
 
         # Explicitly import websocket routes AFTER socketio is initialized with the app
         from .routes import websocket # Import websocket routes here
-        logging.info(f"--- create_app --- Imported websocket routes AFTER SocketIO init.")
+        app.logger.info(f"--- create_app --- Imported websocket routes AFTER SocketIO init.") # Use app.logger
 
-    logging.info("Flask app created and configured.")
+    app.logger.info("Flask app created and configured.") # Use app.logger
     return app, socketio # Return both app and socketio
 
 # --- Create App Instance ---

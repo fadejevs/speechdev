@@ -193,43 +193,63 @@ def cleanup_recognizer(room_id):
 def handle_connect():
     """Handles new client connections."""
     sid = request.sid
-    # --- Log object ID inside handler ---
-    logging.info(f"--- Connect Event Start --- Client connected: {sid}. Using SocketIO object ID: {id(socketio)}")
+    # --- Log object ID inside handler using app logger ---
+    current_app.logger.info(f"--- Connect Event Start --- Client connected: {sid}. Using SocketIO object ID: {id(socketio)}")
 
     try:
         # Attempt to get services early to catch potential issues
         translation_service, speech_service = get_services()
         if not translation_service or not speech_service:
-            logging.error(f"Services not properly initialized for SID: {sid}. Aborting connect handler.")
+            current_app.logger.error(f"Services not properly initialized for SID: {sid}. Aborting connect handler.") # Use app logger
             return # Exit the handler early
 
-        logging.info(f"Services retrieved successfully for SID: {sid}")
+        current_app.logger.info(f"Services retrieved successfully for SID: {sid}") # Use app logger
 
         # Store initial state or language settings if needed
-        # session_state[sid] = {'recognizer': None, 'push_stream': None, 'target_language': 'en', 'source_language': 'en-US'} # Default target, source TBD
-        logging.info(f"Skipping session state creation for SID: {sid}") # Temporarily comment out state
+        # session_state[sid] = {'recognizer': None, 'push_stream': None, 'target_language': 'en', 'source_language': 'en-US'} # Temporarily comment out state
+        current_app.logger.info(f"Skipping session state creation for SID: {sid}") # Use app logger
 
         # Emit success message
         emit('connection_success', {'message': 'Connected successfully', 'sid': sid})
-        logging.info(f"Sent 'connection_success' to SID: {sid}")
+        current_app.logger.info(f"Sent 'connection_success' to SID: {sid}") # Use app logger
 
     except Exception as e:
-        logging.error(f"--- ERROR in connect handler for SID {sid} ---: {e}", exc_info=True)
+        current_app.logger.error(f"--- ERROR in connect handler for SID {sid} ---: {e}", exc_info=True) # Use app logger
         emit('service_error', {'error': 'Server error during connection setup.'})
 
-    logging.info(f"--- Connect Event End --- Client: {sid}")
+    current_app.logger.info(f"--- Connect Event End --- Client: {sid}") # Use app logger
 
 @socketio.on('disconnect')
 def handle_disconnect():
+    """Handles client disconnections."""
     sid = request.sid
-    logging.info(f"Client disconnected: {sid}. Using SocketIO object ID: {id(socketio)}")
-    # Clean up resources associated with this client/room if necessary
-    # Find room associated with sid if needed
-    room_to_leave = None
-    # Simple cleanup: Stop recognition for any room this SID might be the last user in
-    # A more robust solution would track users per room explicitly
-    # For now, we rely on the 'leave_room' logic to handle cleanup when rooms become empty
-    pass # Add specific disconnect cleanup if needed beyond room leaving
+    # Use app logger
+    current_app.logger.info(f"--- Disconnect Event Start --- Client disconnecting: {sid}. Using SocketIO object ID: {id(socketio)}")
+
+    # Clean up resources associated with the session
+    state = session_state.pop(sid, None)
+    if state:
+        current_app.logger.info(f"Cleaning up resources for SID: {sid}")
+        # Stop recognition if it's running
+        recognizer = state.get('recognizer')
+        push_stream = state.get('push_stream')
+        if recognizer:
+            try:
+                recognizer.stop_continuous_recognition_async()
+                current_app.logger.info(f"Stopped recognizer for SID: {sid}")
+            except Exception as e:
+                current_app.logger.error(f"Error stopping recognizer for SID {sid}: {e}", exc_info=True)
+        # Close the push stream
+        if push_stream:
+            try:
+                push_stream.close()
+                current_app.logger.info(f"Closed push stream for SID: {sid}")
+            except Exception as e:
+                current_app.logger.error(f"Error closing push stream for SID {sid}: {e}", exc_info=True)
+    else:
+        current_app.logger.info(f"No state found to clean up for SID: {sid}")
+
+    current_app.logger.info(f"--- Disconnect Event End --- Client: {sid}")
 
 
 @socketio.on('join_room')
@@ -519,8 +539,8 @@ def handle_translate_text(data):
 @socketio.on('test_event')
 def handle_test_event(data):
     sid = request.sid
-    # --- Log object ID inside handler ---
-    logging.info(f"--- Received 'test_event' from SID {sid} --- Data: {data}. Using SocketIO object ID: {id(socketio)}")
+    # --- Log object ID inside handler using app logger ---
+    current_app.logger.info(f"--- Received 'test_event' from SID {sid} --- Data: {data}. Using SocketIO object ID: {id(socketio)}") # Use app logger
     emit('test_response', {'message': 'Test event received!', 'your_data': data}, room=sid)
-    logging.info(f"--- Sent 'test_response' to SID {sid} ---")
+    current_app.logger.info(f"--- Sent 'test_response' to SID {sid} ---") # Use app logger
 # --- END TEST EVENT HANDLER --- 
