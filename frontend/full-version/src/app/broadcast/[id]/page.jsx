@@ -146,35 +146,33 @@ const BroadcastPage = () => {
       setSocketConnected(false);
     });
 
-    // Listener for Live Transcription
-    socketRef.current.on('live_transcription', (data) => {
-      console.log('Received live transcription:', data);
-      if (data.text !== undefined) { // Check if text property exists
-        setLiveTranscription(prev => prev ? `${prev} ${data.text}` : data.text); // Append new text
+    // Add the correct listener
+    socketRef.current.on('translation_result', (data) => {
+      console.log('Broadcast received translation result:', data);
+      
+      // Update Live Transcription display
+      if (data.original !== undefined) { 
+        setLiveTranscription(prev => prev ? `${prev} ${data.original}` : data.original); 
       }
-      if (data.language) {
-        setLiveTranscriptionLang(data.language); // Update language if provided
+      if (data.source_language) {
+        setLiveTranscriptionLang(data.source_language); 
       }
-    });
 
-    // Listener for Live Translation
-    socketRef.current.on('live_translation', (data) => {
-      console.log('Received live translation:', data);
-      if (data.target_language && data.translated_text !== undefined) {
+      // Update Live Translation display
+      if (data.target_language && data.translated !== undefined) {
         setLiveTranslations(prev => ({
           ...prev,
-          // Append new translated text for the specific language
           [data.target_language]: prev[data.target_language] 
-            ? `${prev[data.target_language]} ${data.translated_text}` 
-            : data.translated_text
+            ? `${prev[data.target_language]} ${data.translated}` 
+            : data.translated
         }));
       }
     });
-    
-    // Listener for potential errors from backend
-    socketRef.current.on('translation_error', (data) => {
-       console.error('Translation error received from backend:', data);
-       // Optionally display error to user
+
+    // Add error listeners too for robustness
+    socketRef.current.on('translation_error', (error) => {
+        console.error('Broadcast received translation error:', error);
+        // Optionally display an error indicator on the broadcast page
     });
 
     // Cleanup on component unmount

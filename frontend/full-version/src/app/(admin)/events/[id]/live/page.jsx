@@ -161,46 +161,56 @@ const EventLivePage = () => {
       setError(`WebSocket connection failed: ${error.message}. Please check the server.`);
     });
 
-    socketRef.current.on('live_transcription', (data) => {
-      console.log('Admin received live transcription:', data);
-      if (data.text !== undefined) {
-        setLiveTranscription(prev => prev ? `${prev} ${data.text}` : data.text);
-      }
-      if (data.language) {
-        setLiveTranscriptionLang(data.language);
-      }
+    socketRef.current.on('translation_result', (data) => {
+      console.log('Translation Result Received:', data);
+      setTranscripts(prev => [...prev, { 
+        original: data.original, 
+        translated: data.translated,
+        sourceLang: data.source_language,
+        targetLang: data.target_language 
+      }]);
       setProcessingAudio(false);
     });
 
-    socketRef.current.on('live_translation', (data) => {
-      console.log('Admin received live translation:', data);
-      if (data.target_language && data.translated_text !== undefined) {
-        setLiveTranslations(prev => ({
-          ...prev,
-          [data.target_language]: prev[data.target_language]
-            ? `${prev[data.target_language]} ${data.translated_text}`
-            : data.translated_text
-        }));
-      }
+    socketRef.current.on('error', (error) => {
+      console.error('WebSocket Server Error:', error.message);
+      setError(`Server error: ${error.message}`);
+      setProcessingAudio(false);
+    });
+
+    socketRef.current.on('translation_error', (error) => {
+      console.error('Translation Error:', error.message, 'Original:', error.original);
+      setError(`Translation failed for "${error.original}": ${error.message}`);
+      setTranscripts(prev => [...prev, { 
+        original: error.original, 
+        translated: `[Translation Error: ${error.message}]`,
+        sourceLang: error.source_language,
+        targetLang: error.target_language
+      }]);
+      setProcessingAudio(false);
+    });
+
+    socketRef.current.on('recognition_canceled', (data) => {
+       console.warn('Recognition Canceled:', data.reason, data.details);
+       setError(`Recognition stopped unexpectedly: ${data.reason} - ${data.details}`);
        setProcessingAudio(false);
     });
 
-    socketRef.current.on('transcription_error', (data) => {
-      console.error('Transcription error from backend:', data);
-      setError(`Transcription Error: ${data.error || 'Unknown error'}`);
-      setProcessingAudio(false);
-    });
-    socketRef.current.on('translation_error', (data) => {
-      console.error('Translation error from backend:', data);
-      setProcessingAudio(false);
+    socketRef.current.on('recognition_started', (data) => {
+       console.log('Server confirmed recognition started:', data.message);
     });
 
     return () => {
       if (socketRef.current) {
-        console.log('Disconnecting admin WebSocket...');
+        console.log('Disconnecting admin WebSocket and cleaning up listeners...');
         if (isRecording) {
             stopRecording();
         }
+        socketRef.current.off('translation_result');
+        socketRef.current.off('error');
+        socketRef.current.off('translation_error');
+        socketRef.current.off('recognition_canceled');
+        socketRef.current.off('recognition_started');
         socketRef.current.emit('leave', { room: id });
         socketRef.current.disconnect();
         setSocketConnected(false);

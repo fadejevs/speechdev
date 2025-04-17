@@ -10,6 +10,7 @@ from flask_socketio import SocketIO
 from .config import Config
 from app.services.translation_service import TranslationService
 from app.services.speech_service import SpeechService # Import SpeechService
+from .services import initialize_services # Make sure this import exists
 
 # Load environment variables
 load_dotenv()
@@ -101,30 +102,23 @@ def create_app(config_class=Config):
     # Initialize extensions
     CORS(app, resources={r"/*": {"origins": "*"}}) # Allow all origins for now
 
-    # Initialize SocketIO with the app instance *before* importing routes that use it
-    socketio.init_app(
-        app,
-        async_mode='gevent',
-        cors_allowed_origins="*", # Be specific in production
-        logger=True,              # Enable Flask-SocketIO logger (uses logging module)
-        engineio_logger=True,      # Enable Engine.IO logger (uses logging module)
-        engineio_options={
-            'max_decode_packets': 500 # Or another higher value
-        }
-    )
-    logger.info(f"--- create_app --- Initialized SocketIO. Object ID: {id(socketio)}")
-
-    # Initialize Services
+    # Initialize services BEFORE registering blueprints/routes that use them
     try:
-        from .services import initialize_services
-        initialize_services(app) # Pass app if services need it
-        # Log the types to confirm they are assigned
-        logger.info(f"Translation Service attached in create_app: Type={type(getattr(app, 'translation_service', None))}")
-        logger.info(f"Speech Service attached in create_app: Type={type(getattr(app, 'speech_service', None))}")
+        initialize_services(app) # Ensure this is called
+        logger.info("Services initialized successfully via initialize_services.")
+        # Log details about the initialized services if helpful
+        logger.info(f"Translation Service attached in create_app: Type={type(app.translation_service)}, Service={getattr(app.translation_service, 'service_type', 'N/A')}")
+        logger.info(f"Speech Service attached in create_app: Type={type(app.speech_service)}")
     except Exception as e:
-        logger.error(f"--- create_app --- CRITICAL: Failed to initialize services: {e}", exc_info=True)
-        # Re-raise the exception to prevent the app from starting in a broken state
-        raise e # <-- ADD THIS LINE TO STOP THE APP ON FAILURE
+        logger.error(f"CRITICAL: Failed to initialize services during app creation: {e}", exc_info=True)
+        # Depending on severity, you might want to exit or raise the exception
+        raise # Re-raise to prevent app starting in broken state
+
+    # Initialize SocketIO AFTER service initialization
+    # Crucially, import websocket routes *after* socketio is initialized
+    # and services are attached to the app object that socketio will use.
+    socketio.init_app(app, async_mode='gevent', cors_allowed_origins="*") # Or specific origins
+    logger.info(f"SocketIO initialized. Object ID: {id(socketio)}")
 
     # Register Blueprints
     try:
@@ -140,15 +134,12 @@ def create_app(config_class=Config):
         logger.error(f"--- create_app --- Failed to register blueprints: {e}", exc_info=True)
 
     # --- Import and Register WebSocket Handlers ---
-    # Import websocket routes *after* everything else, especially SocketIO init
+    # Import websocket routes LAST, so they can use the initialized socketio object
+    # and access services via current_app
     try:
-        with app.app_context(): # Ensure context for potential current_app usage inside websocket.py
-            from .routes import websocket # This executes the @socketio decorators
-            # Check the ID of the socketio object the websocket module imported
-            imported_socketio_id = id(websocket.socketio) if hasattr(websocket, 'socketio') else 'Not Found'
-            logger.info(f"--- create_app --- Imported websocket routes LAST. SocketIO object ID used by websocket.py: {imported_socketio_id}")
-            if imported_socketio_id != id(socketio) and imported_socketio_id != 'Not Found':
-                logger.warning("--- create_app --- Mismatched SocketIO object IDs! websocket.py might be using an uninitialized instance.")
+        with app.app_context(): # Ensure routes are imported within app context
+            from .routes import websocket # Import the websocket module
+            logger.info(f"Imported websocket routes LAST. SocketIO object ID used by websocket.py: {id(websocket.socketio)}") # Check IDs match
 
     except Exception as e:
         logger.error(f"--- create_app --- Failed to import websocket routes: {e}", exc_info=True)
