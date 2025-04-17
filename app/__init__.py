@@ -56,11 +56,14 @@ def create_app(config_class=Config):
 
     # --- Import Blueprints/Routes AFTER app and extensions are initialized ---
     with app.app_context():
-        from .routes import main, speech, websocket, translation # Import translation blueprint too
+        from .routes import main, speech, translation # Keep these here
         app.register_blueprint(main.bp)
         app.register_blueprint(speech.speech_bp) # Use speech_bp name
         app.register_blueprint(translation.translation_bp) # Register translation blueprint
-        # WebSocket routes are handled by SocketIO directly
+
+        # Explicitly import websocket routes AFTER socketio is initialized with the app
+        from .routes import websocket # Import websocket routes here
+        logging.info("Imported websocket routes.")
 
     logging.info("Flask app created and configured.")
     return app, socketio # Return both app and socketio
