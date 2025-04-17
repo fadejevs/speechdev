@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <!-- Include the Socket.IO client library from a CDN -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>WebSocket Test Page</h1>
+    <p>Check the browser's developer console (F12) for connection status.</p>
+
+    <script>
+        console.log("Attempting to connect WebSocket...");
+
+        // *** IMPORTANT: Replace with your actual Render app URL ***
+        const socket = io("https://speechdev.onrender.com"); // Use your live URL
+
+        socket.on("connect", () => {
+          console.log("WebSocket connected successfully! Socket ID:", socket.id);
+          // You should see the 'connection_success' message logged below if the backend sends it
+        });
+
+        socket.on("connect_error", (err) => {
+          console.error("WebSocket connection error:", err.message, err.data);
+          // Log the full error object for more details if needed
+          console.error(err);
+        });
+
+        socket.on("disconnect", (reason) => {
+          console.log("WebSocket disconnected:", reason);
+        });
+
+        // Listen for the custom success message from the backend
+        socket.on("connection_success", (data) => {
+           console.log("Received from server:", data);
+        });
+
+        // Listen for potential errors during connection/setup phase
+         socket.on("service_error", (data) => {
+           console.error("Received service error from server:", data);
+         });
+
+    </script>
+</body>
+</html>
