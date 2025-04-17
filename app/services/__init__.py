@@ -11,14 +11,14 @@ def initialize_services(app):
     try:
         # Initialize your services here
         app.translation_service = TranslationService(app.config)
-        app.speech_service = SpeechService() # Assuming SpeechService takes no args or gets config from env/app.config
+        app.speech_service = SpeechService(app.config)
         # Initialize other services and attach them to 'app'
-        # e.g., app.firebase_service = FirebaseService()
+        # e.g., app.firebase_service = FirebaseService(app.config)
 
         logger.info("Translation Service initialized.")
         logger.info("Speech Service initialized.")
         # Log other service initializations
     except Exception as e:
         logger.error(f"Failed to initialize one or more services: {e}", exc_info=True)
-        # Decide if you want to raise the error or allow the app to continue partially functional
-        raise # Or handle differently 
+        # Re-raise the exception to prevent the app from starting in a broken state
+        raise # Re-raise the exception 
