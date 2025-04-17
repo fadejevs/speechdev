@@ -419,12 +419,19 @@ def on_leave(data):
 @socketio.on('audio_chunk')
 def handle_audio_chunk(data):
     sid = request.sid
-    room_id = data.get('room_id')
-    audio_chunk = data.get('audio') # Expecting raw bytes
+    # Use the keys sent by the frontend
+    room_id = data.get('room')
+    audio_chunk = data.get('audio_chunk') # Expecting raw bytes from 'audio_chunk' key
 
-    if not room_id or not audio_chunk:
-        logging.warning(f"Received invalid audio chunk data from {sid}. Room: {room_id}, Chunk size: {len(audio_chunk) if audio_chunk else 0}")
-        return
+    # The rest of the validation logic remains similar
+    if not room_id or not isinstance(audio_chunk, bytes) or len(audio_chunk) == 0:
+        logging.warning(f"Received invalid audio chunk data from {sid}. Room: {room_id}, Chunk type: {type(audio_chunk)}, Chunk size: {len(audio_chunk) if isinstance(audio_chunk, bytes) else 'N/A'}")
+        # Decide if you want to emit an error back to the client here
+        # emit('error', {'message': 'Invalid audio chunk received'}, room=sid)
+        return # Stop processing
+
+    # Now you have the correct room_id and audio_chunk (as bytes)
+    # Proceed with pushing to the stream
 
     with recognizer_lock:
         recognizer_data = active_recognizers.get(room_id)
@@ -434,13 +441,14 @@ def handle_audio_chunk(data):
             # logging.debug(f"Pushing {len(audio_chunk)} bytes to stream for room {room_id}")
             recognizer_data['stream'].write(audio_chunk)
         except Exception as e:
-            logging.error(f"Error writing to audio stream for room {room_id}: {e}")
+            logging.error(f"Error writing to audio stream for room {room_id}: {e}", exc_info=True)
             stop_recognition(room_id) # Stop on stream error
-            emit('recognition_error', {'error': 'Audio stream error'}, room=room_id)
+            # Consider sending error to the specific room or SID
+            emit('recognition_error', {'error': 'Audio stream error processing chunk'}, room=room_id)
     else:
         logging.warning(f"No active recognizer or stream found for room {room_id} to handle audio chunk from {sid}")
         # Optionally send an error back to the client
-        # emit('error', {'message': 'Recognition not active for this room'}, room=sid)
+        emit('error', {'message': 'Recognition not active for this room'}, room=sid)
 
 
 @socketio.on('stop_recognition')
