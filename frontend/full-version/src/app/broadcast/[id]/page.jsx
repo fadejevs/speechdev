@@ -152,19 +152,34 @@ const BroadcastPage = () => {
     socketRef.current.on('translation_result', (data) => {
       console.log('Received translation result:', data);
       
+      // Update transcription if original text exists
       if (data.original) {
+        console.log(`Setting liveTranscription to: "${data.original}"`);
         setLiveTranscription(data.original);
-        setLiveTranscriptionLang(data.source_language);
-        console.log(`Updated transcription: "${data.original}" in language: ${data.source_language}`);
+        
+        if (data.source_language) {
+          console.log(`Setting liveTranscriptionLang to: "${data.source_language}"`);
+          setLiveTranscriptionLang(data.source_language);
+        }
       }
       
+      // Update translations if they exist
       if (data.translations && Object.keys(data.translations).length > 0) {
+        console.log('Setting liveTranslations to:', data.translations);
         setLiveTranslations(prev => {
           const updated = { ...prev, ...data.translations };
-          console.log('Updated translations:', updated);
           return updated;
         });
       }
+      
+      // Log the current state after updates
+      setTimeout(() => {
+        console.log('State after update:', {
+          liveTranscription,
+          liveTranscriptionLang,
+          liveTranslations
+        });
+      }, 100);
     });
 
     socketRef.current.on('translation_error', (error) => {
