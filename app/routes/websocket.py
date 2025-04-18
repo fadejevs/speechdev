@@ -6,6 +6,8 @@ import azure.cognitiveservices.speech as speechsdk # Keep if needed for manual_t
 from flask import request, current_app
 from flask_socketio import emit, join_room, leave_room # Import room functions
 import io # Needed for handling audio bytes
+import tempfile # For temporary files
+import traceback # For detailed error logging
 
 from app import socketio
 from app.services.speech_service import SpeechService # Assuming SpeechService can handle bytes
@@ -69,16 +71,17 @@ def on_join_room(data):
 def on_manual_text(data):
     """Process manually entered text for translation"""
     sid = request.sid
-    room_id = data.get('room_id')
+    room_id = data.get('room_id') # Ensure frontend sends 'room_id'
     text = data.get('text')
-    source_language = data.get('source_language', 'en-US')
-    target_languages = data.get('target_languages', ['es-ES'])  # Default to Spanish
-    is_manual = data.get('is_manual', False) # Get the flag from frontend
+    source_language = data.get('language', 'en-US') # Match key from frontend
+    target_languages = data.get('target_languages', []) # Match key from frontend
+    is_manual = data.get('is_manual', True) # Default to true for this handler
 
     logger.info(f"[{sid}] Manual text for room '{room_id}': '{text}'")
 
-    if not text:
-        logger.warning(f"[{sid}] Empty text provided")
+    if not all([room_id, text, source_language]):
+        logger.warning(f"[{sid}] Incomplete manual text data: room={room_id}, text_present={bool(text)}, lang={source_language}")
+        emit('translation_error', {'message': 'Incomplete data for manual text processing.', 'room_id': room_id})
         return
 
     try:
@@ -89,42 +92,55 @@ def on_manual_text(data):
             emit('error', {'message': 'Translation service not configured'})
             return
 
-        # Extract base language codes
-        base_source_lang = source_language.split('-')[0]
+        # Extract base language codes if needed by your service
+        # base_source_lang = source_language.split('-')[0]
 
+        if not target_languages:
+             # If no target languages, just emit the original text back to the room
+             logger.info(f"[{sid}] No target languages for manual text, emitting original to room {room_id}")
+             result_data = {
+                 'original': text,
+                 'translations': {}, # Send empty translations object
+                 'source_language': source_language,
+                 'target_language': None, # Indicate no specific target translation
+                 'room_id': room_id,
+                 'is_manual': is_manual,
+                 'is_final': True # Manual text is final
+             }
+             socketio.emit('translation_result', result_data, room=room_id)
+             # Also emit back to the sender if needed (e.g., for confirmation)
+             # emit('translation_result', result_data)
+             return
+
+
+        translations = {}
         for target_language in target_languages:
-            base_target_lang = target_language.split('-')[0]
+            # base_target_lang = target_language.split('-')[0]
+            # Skip if source and target are the same (optional, depends on service)
+            # if base_source_lang == base_target_lang: continue
 
-            # Skip if source and target are the same
-            if base_source_lang == base_target_lang:
-                logger.info(f"[{sid}] Skipping translation from {base_source_lang} to {base_target_lang} (same language)")
-                # Optionally emit original back if needed for manual text
-                # result_data = { ... original: text, translated: text ...}
-                # socketio.emit('translation_result', result_data, room=room_id)
-                # emit('translation_result', result_data) # Back to admin
-                continue
-
-            # Translate the text
-            translated = translation_service.translate(text, base_target_lang, base_source_lang)
+            # Translate the text (assuming translate method exists)
+            # Adjust method name and parameters as needed for your TranslationService
+            translated = translation_service.translate(text, target_language, source_language)
 
             if translated:
-                logger.info(f"[{sid}] Translated: '{text}' -> '{translated}'")
+                logger.info(f"[{sid}] Translated manual text: '{text}' -> '{translated}' for {target_language}")
+                translations[target_language] = translated
 
+                # Emit individual translation result
                 result_data = {
                     'original': text,
-                    'translated': translated,
+                    'translations': {target_language: translated}, # Send specific translation
                     'source_language': source_language,
-                    'target_language': target_language,
+                    'target_language': target_language, # Indicate the target for this result
                     'room_id': room_id,
-                    'is_manual': is_manual # Include flag in response
+                    'is_manual': is_manual,
+                    'is_final': True # Manual text is final
                 }
+                socketio.emit('translation_result', result_data, room=room_id)
+                # Also emit back to the admin who sent it (optional)
+                # emit('translation_result', result_data)
 
-                # Emit to the room if room_id exists
-                if room_id:
-                    socketio.emit('translation_result', result_data, room=room_id)
-
-                # Also emit back to the admin who sent it
-                emit('translation_result', result_data)
             else:
                 logger.error(f"[{sid}] Translation failed for manual text to {target_language}")
                 emit('translation_error', {
@@ -134,28 +150,31 @@ def on_manual_text(data):
                     'source_language': source_language,
                     'target_language': target_language,
                 })
+                translations[target_language] = "[Translation Error]" # Store error indicator
+
     except Exception as e:
         logger.error(f"[{sid}] Manual text error: {e}", exc_info=True)
         emit('error', {'message': f'Manual text processing error: {str(e)}'})
+
 
 # --- NEW: Audio Chunk Handler ---
 @socketio.on('audio_chunk')
 def on_audio_chunk(data):
     """Handles receiving audio chunks for transcription and translation."""
     sid = request.sid
-    room_id = data.get('room') # Frontend '/broadcasting' sends 'room'
-    audio_chunk_bytes = data.get('audio') # Expecting bytes or base64 string? Frontend sends Blob part.
+    room_id = data.get('room') # Frontend '/live' sends 'room'
+    audio_chunk_bytes = data.get('audio') # Expecting bytes
     source_language = data.get('language', 'en-US') # Default if not provided
     target_languages = data.get('target_languages', []) # Default to empty list
 
     if not room_id or not audio_chunk_bytes or not source_language:
         logger.warning(f"[{sid}] Missing data in audio_chunk event: room={room_id}, audio_present={bool(audio_chunk_bytes)}, lang={source_language}")
-        # Optionally emit an error back to the sender
-        # emit('error', {'message': 'Missing data for audio processing.'})
+        emit('translation_error', {'message': 'Missing data for audio processing.', 'room_id': room_id})
         return
 
     logger.info(f"[{sid}] Received audio chunk for room '{room_id}', lang: {source_language}, targets: {target_languages}")
 
+    temp_file_path = None # Initialize outside try block
     try:
         # --- Get Services ---
         speech_service = current_app.speech_service
@@ -167,68 +186,99 @@ def on_audio_chunk(data):
             return
 
         # --- 1. Speech Recognition ---
-        # We need a way for SpeechService to handle raw bytes.
-        # This might require modifying SpeechService or saving the chunk temporarily.
-        # For simplicity, let's assume recognize_from_bytes exists or adapt.
-        # If your service expects a file path, we need to save the chunk first.
+        # Save chunk temporarily as SpeechService expects a file path
+        temp_dir = "temp_audio_chunks" # Define a directory for chunks
+        os.makedirs(temp_dir, exist_ok=True) # Ensure directory exists
 
-        # --- Option A: Assuming recognize_from_bytes exists ---
-        # recognized_text = speech_service.recognize_from_bytes(audio_chunk_bytes, source_language)
-
-        # --- Option B: Saving chunk temporarily (Less ideal for streaming) ---
-        temp_file_path = f"temp_audio_chunk_{sid}.webm" # Or appropriate extension
-        try:
-            with open(temp_file_path, 'wb') as f:
-                f.write(audio_chunk_bytes)
+        # Use NamedTemporaryFile for safer handling
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm", dir=temp_dir) as temp_file:
+            temp_file.write(audio_chunk_bytes)
+            temp_file_path = temp_file.name
             logger.debug(f"[{sid}] Saved temporary audio chunk to {temp_file_path}")
-            # Assuming recognize_from_file takes path and language
-            recognized_text = speech_service.recognize_from_file(temp_file_path, source_language)
-        finally:
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
-                logger.debug(f"[{sid}] Removed temporary audio chunk {temp_file_path}")
-        # --- End Option B ---
 
+        # Assuming recognize_speech_from_file takes path and language
+        # *** THIS IS THE KEY CHANGE ***
+        # recognized_text = speech_service.recognize_from_file(temp_file_path, source_language) # Old incorrect name
+        recognized_text = speech_service.recognize_speech_from_file(temp_file_path, source_language) # Corrected method name
 
         if not recognized_text:
             logger.info(f"[{sid}] No speech recognized from chunk for room {room_id}.")
-            # Don't emit anything if nothing was recognized
-            return
+            # Don't emit anything if nothing was recognized, or emit empty if needed by frontend
+            # result_data = { ... 'original': '', ... }
+            # socketio.emit('translation_result', result_data, room=room_id)
+            return # Exit early if no text
 
         logger.info(f"[{sid}] Recognized for room '{room_id}': '{recognized_text}'")
 
         # --- 2. Translation ---
         translations = {}
-        if target_languages:
+        if not target_languages:
+             # If no target languages, just emit the original transcription
+             logger.info(f"[{sid}] No target languages for audio chunk, emitting original to room {room_id}")
+             result_data = {
+                 'original': recognized_text,
+                 'translations': {}, # Send empty translations object
+                 'source_language': source_language,
+                 'target_language': None, # Indicate no specific target translation
+                 'room_id': room_id,
+                 'is_manual': False,
+                 'is_final': False # Indicate chunk processing
+             }
+             socketio.emit('translation_result', result_data, room=room_id)
+
+        else:
             logger.info(f"[{sid}] Translating '{recognized_text[:30]}...' from {source_language} to {target_languages} for room {room_id}")
             for target_lang in target_languages:
                 try:
-                    # Use the same translate method as the HTTP endpoint
+                    # Use the translate method from TranslationService
+                    # Adjust method name/params if needed (e.g., translate_text)
                     translated = translation_service.translate(recognized_text, target_lang, source_language)
                     if translated:
                         translations[target_lang] = translated
                         logger.info(f"[{sid}] Translated to {target_lang} for room '{room_id}': '{translated[:30]}...'")
+
+                        # --- 3/4. Prepare & Emit Result per Language ---
+                        result_data = {
+                            'original': recognized_text,
+                            'translations': {target_lang: translated}, # Send specific translation
+                            'source_language': source_language,
+                            'target_language': target_lang, # Indicate the target for this result
+                            'room_id': room_id,
+                            'is_manual': False, # Indicate this is from live audio
+                            'is_final': False # Indicate chunk processing
+                        }
+                        logger.debug(f"[{sid}] Emitting 'translation_result' to room '{room_id}' for lang {target_lang}")
+                        socketio.emit('translation_result', result_data, room=room_id)
+
                     else:
                         translations[target_lang] = "[Translation unavailable]"
+                        logger.warning(f"[{sid}] Translation to {target_lang} returned unavailable for room {room_id}")
+                        # Optionally emit an error or specific status
+                        emit('translation_error', {
+                             'message': f'Translation unavailable for target {target_lang}',
+                             'room_id': room_id, 'original': recognized_text, 'target_language': target_lang
+                        })
+
+
                 except Exception as e:
                     logger.error(f"[{sid}] Error translating to {target_lang} for room {room_id}: {e}", exc_info=True)
                     translations[target_lang] = "[Translation Error]"
+                    emit('translation_error', {
+                        'message': f'Translation error for target {target_lang}: {str(e)}',
+                        'room_id': room_id, 'original': recognized_text, 'target_language': target_lang
+                    })
 
-        # --- 3. Prepare Result Data ---
-        result_data = {
-            'original': recognized_text,
-            'translations': translations,
-            'source_language': source_language,
-            # Include target_languages list for context?
-            'room_id': room_id,
-            'is_manual': False # Indicate this is from live audio
-        }
-
-        # --- 4. Emit to Room ---
-        logger.info(f"[{sid}] Emitting 'translation_result' to room '{room_id}'")
-        socketio.emit('translation_result', result_data, room=room_id)
 
     except Exception as e:
         logger.error(f"[{sid}] Error processing audio chunk for room {room_id}: {e}", exc_info=True)
         # Emit error only back to the sender (admin)
-        emit('error', {'message': f'Error processing audio: {str(e)}'})
+        emit('error', {'message': f'Error processing audio: {str(e)}', 'room_id': room_id}) # Add room_id for context
+
+    finally:
+        # --- Clean up temporary file ---
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+                logger.debug(f"[{sid}] Removed temporary audio chunk {temp_file_path}")
+            except OSError as e:
+                 logger.error(f"[{sid}] Error removing temporary file {temp_file_path}: {e}")

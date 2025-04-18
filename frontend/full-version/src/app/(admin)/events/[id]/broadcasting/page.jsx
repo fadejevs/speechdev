@@ -38,6 +38,7 @@ import PlantDoodle from '@/images/illustration/PlantDoodle';
 import apiService from '@/services/apiService';
 import transcriptionService from '@/services/transcriptionService';
 import io from 'socket.io-client';
+import Link from 'next/link';
 
 const languages = [
   { code: 'en', name: 'English' },
@@ -84,68 +85,71 @@ const BroadcastingPage = () => {
 
   const [eventData, setEventData] = useState(null);
   const [loading, setLoading] = useState(true);
-  // Remove menuAnchorEl, languageMenuAnchorEl, selectedLanguage if not needed
-  // Remove pauseDialogOpen, completeDialogOpen, eventStatus
   
-  // Audio recording states - KEEP THESE
+  // Audio recording states
   const [isRecording, setIsRecording] = useState(false);
-  // Remove audioBlob (we'll stream chunks)
-  const [transcription, setTranscription] = useState(''); // Keep to show source transcription
-  // Remove translations state
-  const [processingAudio, setProcessingAudio] = useState(false); // Keep
-  const mediaRecorderRef = useRef(null); // Keep
-  const audioChunksRef = useRef([]); // Keep
-  const socketRef = useRef(null); // Keep for sending audio
+  const [processingAudio, setProcessingAudio] = useState(false); 
+  const mediaRecorderRef = useRef(null); 
+  const audioChunksRef = useRef([]); 
+  const socketRef = useRef(null); 
 
-  // WebSocket connection status - KEEP
+  // WebSocket connection status
   const [socketConnected, setSocketConnected] = useState(false);
 
-  // Selected device ID - KEEP
+  // Selected device ID
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
 
-  // Remove languageOptions if not used
-
-  // Fetch event data - KEEP
+  // Fetch event data
   useEffect(() => {
-    // ... existing code ...
-    // Remove setEventStatus line
+    const fetchEvent = async () => {
+      if (!id) return;
+      setLoading(true);
+      try {
+        const data = await apiService.get(`/events/${id}`);
+        setEventData(data);
+        console.log('Event data fetched for broadcasting:', data);
+      } catch (error) {
+        console.error('Failed to fetch event data:', error);
+        // Handle error appropriately, maybe redirect or show message
+        router.push('/events'); // Example: redirect if event fetch fails
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEvent();
   }, [id, router]);
 
-  // Effect to set initial language - REMOVE (or adapt if needed for source language display)
-  // useEffect(() => { ... });
-
-  // Effect to load selected device ID - KEEP
+  // Effect to load selected device ID and start recording
   useEffect(() => {
     const deviceId = localStorage.getItem(`selectedAudioInput_${id}`);
     if (deviceId) {
       setSelectedDeviceId(deviceId);
       console.log(`Retrieved deviceId ${deviceId} for event ${id} from localStorage.`);
       // Automatically start recording once device ID is loaded
-      startRecording(deviceId);
+      // Ensure eventData is loaded before starting recording to get languages
+      if (eventData) {
+          startRecording(deviceId);
+      }
     } else {
       console.error('No selected audio input device found in localStorage.');
-      // Handle error - maybe redirect back or show an error message
       alert('Error: No audio input device selected. Please go back and start the event again.');
-      router.push(`/events/${id}`);
+      router.push(`/events/${id}/live`); // Redirect to live page to select device
     }
-    // Cleanup function to stop recording if component unmounts
+    // Cleanup function
     return () => {
       stopRecording();
-      // Remove item from localStorage? Optional.
-      // localStorage.removeItem(`selectedAudioInput_${id}`);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]); // Run only once when component mounts and id is available
+    // Add eventData as a dependency to ensure it's available when starting
+  }, [id, eventData]); // Run when id or eventData changes
 
-  // WebSocket setup - KEEP (modify later for sending audio)
+  // WebSocket setup
   useEffect(() => {
-    // Ensure we have the event ID before connecting
     if (!id) return;
 
-    const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com'; // Use your backend URL
+    const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com'; 
     console.log(`Broadcasting page connecting WebSocket to: ${socketUrl}`);
     socketRef.current = io(socketUrl, {
-        transports: ['polling'], // Match server config
+        transports: ['polling'], 
         reconnectionAttempts: 5,
         timeout: 10000
     });
@@ -153,8 +157,8 @@ const BroadcastingPage = () => {
     socketRef.current.on('connect', () => {
       console.log('Broadcasting WebSocket connected:', socketRef.current.id);
       setSocketConnected(true);
-      // Optional: Join a specific admin room if needed, or just connect
-      // socketRef.current.emit('join_admin', { room: id });
+      // Optional: Join a specific admin room if needed
+      // socketRef.current.emit('join_admin', { room: id }); 
     });
 
     socketRef.current.on('disconnect', (reason) => {
@@ -167,12 +171,8 @@ const BroadcastingPage = () => {
       setSocketConnected(false);
     });
 
-    // Optional: Listen for source transcription feedback if backend sends it
-    socketRef.current.on('source_transcription_feedback', (data) => {
-        if (data.text !== undefined) {
-            setTranscription(prev => prev ? `${prev} ${data.text}` : data.text);
-        }
-    });
+    // REMOVE: Listener for transcription feedback
+    // socketRef.current.on('source_transcription_feedback', (data) => { ... });
 
     // Cleanup on component unmount
     return () => {
@@ -182,41 +182,38 @@ const BroadcastingPage = () => {
         setSocketConnected(false);
       }
     };
-  }, [id]); // Dependency array includes id
+  }, [id]); 
 
-  // startRecording function - KEEP (modify later for streaming)
+  // startRecording function (KEEP AS IS - it sends chunks)
   const startRecording = useCallback(async (deviceId) => {
     if (!deviceId) {
       console.error("No audio device selected.");
       alert("Error: No audio input device selected.");
       return;
     }
-    if (isRecording) return;
+    if (isRecording || !eventData) return; // Also check if eventData is loaded
 
     console.log(`Attempting to start recording with deviceId: ${deviceId}`);
-    setProcessingAudio(true); // Indicate processing start
+    setProcessingAudio(true); 
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { deviceId: { exact: deviceId } }
       });
 
-      // --- Create MediaRecorder FIRST ---
-      const options = { mimeType: 'audio/webm;codecs=opus' }; // Or other supported mimeType
+      const options = { mimeType: 'audio/webm;codecs=opus', timeslice: 1000 }; // Add timeslice
       const recorder = new MediaRecorder(stream, options);
-      mediaRecorderRef.current = recorder; // Assign the instance to the ref
-      audioChunksRef.current = []; // Reset chunks
+      mediaRecorderRef.current = recorder; 
+      audioChunksRef.current = []; 
 
-      // --- THEN set event handlers ---
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          // Send chunk via WebSocket if connected
           if (socketRef.current && socketRef.current.connected) {
              console.log('Sending audio chunk via WebSocket...');
              socketRef.current.emit('audio_chunk', {
                room: id,
                audio: event.data,
-               language: eventData?.sourceLanguages?.[0] || 'en',
+               language: eventData?.sourceLanguages?.[0] || 'en', // Use actual source language
                target_languages: eventData?.targetLanguages || []
              });
           } else {
@@ -229,7 +226,6 @@ const BroadcastingPage = () => {
         console.log('MediaRecorder stopped.');
         setIsRecording(false);
         setProcessingAudio(false);
-        // Clean up the stream tracks
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -240,49 +236,30 @@ const BroadcastingPage = () => {
         stream.getTracks().forEach(track => track.stop());
       };
 
-      // --- Start recording ---
-      mediaRecorderRef.current.start(1000); // Start recording and collect data every 1000ms (1 second)
+      mediaRecorderRef.current.start(options.timeslice); // Use timeslice value
       setIsRecording(true);
       console.log('MediaRecorder started successfully.');
 
     } catch (error) {
       console.error('Error starting recording:', error);
       alert(`Error starting recording: ${error.message}. Please ensure microphone permissions are granted and the device is available.`);
-      setIsRecording(false); // Ensure state is reset on error
+      setIsRecording(false); 
     } finally {
-      setProcessingAudio(false); // Indicate processing end (even if error)
+      setProcessingAudio(false); 
     }
-  }, [id, eventData, isRecording]); // Dependencies
+  }, [id, eventData, isRecording]); 
 
-  // stopRecording function - KEEP
+  // stopRecording function (KEEP AS IS)
   const stopRecording = useCallback(() => {
-    // ... existing code ...
-    // Remove processAudio call
-  }, []);
-
-  // processAudio function - REMOVE (audio is streamed)
-  // const processAudio = useCallback(async (blob) => { ... });
-
-  // sendForTranslation function - REMOVE
-  // const sendForTranslation = useCallback(async (text, sourceLang, targetLangs) => { ... });
-
-  // handlePlayTranslation function - REMOVE
-  // const handlePlayTranslation = async (text, langCode) => { ... };
-
-  // Pause/Complete handlers - REMOVE
-  // const handleOpenPauseDialog = () => { ... };
-  // const handleClosePauseDialog = () => { ... };
-  // const handleConfirmPause = () => { ... };
-  // const handleOpenCompleteDialog = () => { ... };
-  // const handleCloseCompleteDialog = () => { ... };
-  // const handleCompleteEvent = () => { ... };
-
-  // Menu handlers - REMOVE
-  // const handleMenuOpen = (event) => { ... };
-  // const handleMenuClose = () => { ... };
-  // const handleLanguageMenuOpen = (event) => { ... };
-  // const handleLanguageMenuClose = () => { ... };
-  // const handleLanguageSelect = (langCode) => { ... };
+    if (mediaRecorderRef.current && isRecording) {
+        console.log('Stopping MediaRecorder...');
+        mediaRecorderRef.current.stop();
+        // The onstop handler will set isRecording to false and stop tracks
+    } else if (mediaRecorderRef.current && mediaRecorderRef.current.stream) {
+        // If not recording but stream exists, stop tracks
+        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+  }, [isRecording]);
 
   if (loading || !eventData) {
     return <Box sx={{ p: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}><CircularProgress /></Box>;
@@ -303,76 +280,62 @@ const BroadcastingPage = () => {
       >
         <Button 
           startIcon={<ArrowBackIcon />} 
-          onClick={() => router.push('/events')} // Or back to event edit page: `/events/${id}`
+          onClick={() => router.push(`/events/${id}/live`)} // Go back to live page
         >
-          Back to Events 
+          Back to Event Control
         </Button>
         <Typography variant="h6" sx={{ fontWeight: 600 }}>
           Broadcasting: {eventData.title}
         </Typography>
-        {/* Remove Pause/Complete buttons */}
         <Box>
-           {/* Placeholder for potential future controls if needed */}
+           {/* Placeholder */}
         </Box>
       </Box>
 
       {/* Main Content Area */}
       <Box sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden' }}>
-        {/* Left Panel - Recording Status & Transcription */}
-        <Box sx={{ width: '100%', p: 3, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+        {/* Simplified Panel */}
+        <Box sx={{ width: '100%', p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <Typography variant="h5" sx={{ fontWeight: 600, mb: 2 }}>
-            Live Transcription ({getLanguageName(eventData.sourceLanguages?.[0]) || 'Source'})
+             Broadcasting Live
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 3, color: 'text.secondary' }}>
+            Source Language: {getLanguageName(eventData.sourceLanguages?.[0]) || 'N/A'}
           </Typography>
           
           {/* Recording Controls */}
-          <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <Button
               variant="contained"
               startIcon={isRecording ? <StopIcon /> : <MicIcon />}
               onClick={isRecording ? stopRecording : () => startRecording(selectedDeviceId)}
-              disabled={processingAudio || !selectedDeviceId} // Disable if processing or no device
+              disabled={processingAudio || !selectedDeviceId || !socketConnected} // Also disable if socket not connected
               sx={{ 
-                bgcolor: isRecording ? '#f44336' : '#6366f1', // Red when recording
+                minWidth: '200px',
+                padding: '10px 20px',
+                bgcolor: isRecording ? '#f44336' : '#6366f1', 
                 '&:hover': { bgcolor: isRecording ? '#d32f2f' : '#4338ca' }
               }}
             >
-              {isRecording ? 'Stop Recording' : 'Start Recording'}
+              {isRecording ? 'Stop Broadcasting' : 'Start Broadcasting'}
             </Button>
             {processingAudio && <CircularProgress size={24} />}
-            {isRecording && <Typography variant="body2" sx={{ color: 'green' }}>● Recording...</Typography>}
-            {!isRecording && !processingAudio && <Typography variant="body2" sx={{ color: 'red' }}>● Recording Stopped</Typography>}
+            {isRecording && <Typography variant="body2" sx={{ color: 'green' }}>● Broadcasting...</Typography>}
+            {!isRecording && !processingAudio && <Typography variant="body2" sx={{ color: 'red' }}>● Broadcasting Stopped</Typography>}
+             {!socketConnected && <Typography variant="caption" color="error">Connecting to server...</Typography>}
           </Box>
 
-          {/* Transcription Display */}
-          <Paper 
-            elevation={2} 
-            sx={{ 
-              p: 3, 
-              flexGrow: 1, 
-              overflowY: 'auto', 
-              bgcolor: '#F9FAFB', 
-              borderRadius: '8px',
-              minHeight: '300px' // Ensure it takes up space
-            }}
-          >
-            <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', color: '#333' }}>
-              {transcription || 'Waiting for transcription...'}
-            </Typography>
-          </Paper>
-          
-          {/* Remove Translations Display Section */}
-          {/* <Box sx={{ mt: 4 }}> ... </Box> */}
+          {/* REMOVE: Transcription Display Paper */}
+          {/* <Paper elevation={2} sx={{ ... }}> ... </Paper> */}
+           <Typography variant="body2" sx={{ mt: 4, color: 'text.secondary' }}>
+             View the live results on the public broadcast page.
+           </Typography>
+           <Link href={`/broadcast/${id}`} target="_blank" rel="noopener noreferrer" sx={{ mt: 1 }}>
+             Open Broadcast Page
+           </Link>
+
         </Box>
-        
-        {/* Remove Right Panel - Settings */}
-        {/* <Box sx={{ width: '40%', p: 3, bgcolor: '#F9FAFB' }}> ... </Box> */}
       </Box>
-
-      {/* Remove Pause Dialog */}
-      {/* <Dialog open={pauseDialogOpen} onClose={handleClosePauseDialog}> ... </Dialog> */}
-
-      {/* Remove Complete Dialog */}
-      {/* <Dialog open={completeDialogOpen} onClose={handleCloseCompleteDialog}> ... </Dialog> */}
     </Box>
   );
 };

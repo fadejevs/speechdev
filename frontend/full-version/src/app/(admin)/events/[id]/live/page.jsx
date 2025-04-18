@@ -58,7 +58,6 @@ const EventLivePage = () => {
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
   const socketRef = useRef(null);
-  const audioChunksRef = useRef([]);
 
   const [liveTranscription, setLiveTranscription] = useState('');
   const [liveTranscriptionLang, setLiveTranscriptionLang] = useState('');
@@ -214,11 +213,15 @@ const EventLivePage = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorderRef.current = new MediaRecorder(stream);
-      audioChunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+          socketRef.current.emit('audio_chunk', {
+            room: id,
+            audio: event.data,
+            language: selectedSourceLang,
+            target_languages: selectedTargetLangs
+          });
         }
       };
 
