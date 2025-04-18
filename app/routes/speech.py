@@ -119,23 +119,23 @@ def transcribe_and_translate_audio():
         logger.info(f"Recognition successful: '{recognized_text}'")
 
         # --- Translation ---
+        logger.info(f"Translating '{recognized_text[:20]}....' from {source_language} to {target_languages}")
+        
         translations = {}
-        if recognized_text and target_languages:
-            logger.info(f"Translating '{recognized_text[:50]}...' from {source_language} to {target_languages}")
-            for target_lang in target_languages:
-                 try:
-                     translated = translation_service.translate(recognized_text, target_lang, source_language)
-                     if translated:
-                         translations[target_lang] = translated
-                         logger.info(f"Translated to {target_lang}: '{translated[:50]}...'")
-                     else:
-                         logger.warning(f"Translation to {target_lang} returned empty or None.")
-                         translations[target_lang] = "[Translation unavailable]" # Or some placeholder
-
-                 except Exception as e:
-                     logger.error(f"Error translating to {target_lang}: {e}", exc_info=True)
-                     translations[target_lang] = f"[Translation Error: {e}]"
-
+        for target_language in target_languages:
+            try:
+                # Fix: source_language should be the source, target_language should be the target
+                translated_text = translation_service.translate_text(
+                    recognized_text, 
+                    target_language=target_language,  # This is the target language
+                    source_language=source_language   # This is the source language
+                )
+                logger.info(f"Translated to {target_language}: '{translated_text[:40]}...'")
+                translations[target_language] = translated_text
+            except Exception as e:
+                logger.error(f"Error translating to {target_language}: {str(e)}")
+                translations[target_language] = f"[Translation error: {str(e)}]"
+        
         # --- Return Combined Result ---
         response_data = {
             "original": recognized_text,

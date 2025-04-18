@@ -182,35 +182,44 @@ class TranslationService:
                 pass
                 
         except Exception as e:
-            logger.error(f"DeepL API error during translation from {source_lang_code} to {target_lang_code}: {str(e)}")
+            error_msg = f"DeepL API error during translation from {source_lang_code} to {target_lang_code}: {str(e)}"
+            logger.error(error_msg)
             return f"[Translation error: {str(e)}]"
 
     def _convert_language_code(self, language_code):
         """
-        Convert language codes from format like 'en-US' to format required by DeepL ('EN')
+        Convert language code to the format expected by the translation service.
         
         Args:
-            language_code (str): Language code in format like 'en-US'
+            language_code (str): Language code (e.g., 'en-US', 'lv-LV')
             
         Returns:
-            str: Language code in format required by translation service
+            str: Converted language code
         """
         if not language_code:
             return None
         
-        # For DeepL, convert to uppercase two-letter code
+        # For DeepL, convert to the format they expect
         if self.service_type == "deepl":
-            # Map of special cases for DeepL
+            # Map of language codes for DeepL
             deepl_lang_map = {
-                'en': 'EN',
                 'en-us': 'EN-US',
                 'en-gb': 'EN-GB',
-                'pt': 'PT',
+                'en': 'EN',
+                'de': 'DE',
+                'fr': 'FR',
+                'es': 'ES',
+                'it': 'IT',
+                'nl': 'NL',
+                'pl': 'PL',
                 'pt-br': 'PT-BR',
                 'pt-pt': 'PT-PT',
+                'pt': 'PT',
+                'ru': 'RU',
+                'ja': 'JA',
                 'zh': 'ZH',
                 'lv': 'LV',
-                'lv-lv': 'LV'  # DeepL might just use 'LV' for Latvian
+                'lv-lv': 'LV'  # DeepL uses 'LV' for Latvian
             }
             
             # Normalize to lowercase for lookup
