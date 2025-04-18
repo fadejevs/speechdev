@@ -5,8 +5,11 @@ import base64
 import azure.cognitiveservices.speech as speechsdk # Keep if needed for manual_text? Maybe not.
 from flask import request, current_app
 from flask_socketio import emit, join_room, leave_room # Import room functions
+import io # Needed for handling audio bytes
 
 from app import socketio
+from app.services.speech_service import SpeechService # Assuming SpeechService can handle bytes
+from app.services.translation_service import TranslationService # Assuming TranslationService is available
 
 # Basic setup
 logging.basicConfig(level=logging.INFO)
@@ -41,6 +44,7 @@ def on_join_room(data):
         emit('room_joined', {'room_id': room_id})
     else:
         logger.warning(f"[{sid}] Client attempted to join without room_id.")
+        emit('error', {'message': 'Room ID is required to join.'})
 
 
 # --- Remove Recognition Handlers ---
@@ -133,3 +137,98 @@ def on_manual_text(data):
     except Exception as e:
         logger.error(f"[{sid}] Manual text error: {e}", exc_info=True)
         emit('error', {'message': f'Manual text processing error: {str(e)}'})
+
+# --- NEW: Audio Chunk Handler ---
+@socketio.on('audio_chunk')
+def on_audio_chunk(data):
+    """Handles receiving audio chunks for transcription and translation."""
+    sid = request.sid
+    room_id = data.get('room') # Frontend '/broadcasting' sends 'room'
+    audio_chunk_bytes = data.get('audio') # Expecting bytes or base64 string? Frontend sends Blob part.
+    source_language = data.get('language', 'en-US') # Default if not provided
+    target_languages = data.get('target_languages', []) # Default to empty list
+
+    if not room_id or not audio_chunk_bytes or not source_language:
+        logger.warning(f"[{sid}] Missing data in audio_chunk event: room={room_id}, audio_present={bool(audio_chunk_bytes)}, lang={source_language}")
+        # Optionally emit an error back to the sender
+        # emit('error', {'message': 'Missing data for audio processing.'})
+        return
+
+    logger.info(f"[{sid}] Received audio chunk for room '{room_id}', lang: {source_language}, targets: {target_languages}")
+
+    try:
+        # --- Get Services ---
+        speech_service = current_app.speech_service
+        translation_service = current_app.translation_service
+
+        if not speech_service or not translation_service:
+            logger.error(f"[{sid}] Speech or Translation service not available.")
+            emit('error', {'message': 'Backend services not available.'}) # Emit to sender
+            return
+
+        # --- 1. Speech Recognition ---
+        # We need a way for SpeechService to handle raw bytes.
+        # This might require modifying SpeechService or saving the chunk temporarily.
+        # For simplicity, let's assume recognize_from_bytes exists or adapt.
+        # If your service expects a file path, we need to save the chunk first.
+
+        # --- Option A: Assuming recognize_from_bytes exists ---
+        # recognized_text = speech_service.recognize_from_bytes(audio_chunk_bytes, source_language)
+
+        # --- Option B: Saving chunk temporarily (Less ideal for streaming) ---
+        temp_file_path = f"temp_audio_chunk_{sid}.webm" # Or appropriate extension
+        try:
+            with open(temp_file_path, 'wb') as f:
+                f.write(audio_chunk_bytes)
+            logger.debug(f"[{sid}] Saved temporary audio chunk to {temp_file_path}")
+            # Assuming recognize_from_file takes path and language
+            recognized_text = speech_service.recognize_from_file(temp_file_path, source_language)
+        finally:
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+                logger.debug(f"[{sid}] Removed temporary audio chunk {temp_file_path}")
+        # --- End Option B ---
+
+
+        if not recognized_text:
+            logger.info(f"[{sid}] No speech recognized from chunk for room {room_id}.")
+            # Don't emit anything if nothing was recognized
+            return
+
+        logger.info(f"[{sid}] Recognized for room '{room_id}': '{recognized_text}'")
+
+        # --- 2. Translation ---
+        translations = {}
+        if target_languages:
+            logger.info(f"[{sid}] Translating '{recognized_text[:30]}...' from {source_language} to {target_languages} for room {room_id}")
+            for target_lang in target_languages:
+                try:
+                    # Use the same translate method as the HTTP endpoint
+                    translated = translation_service.translate(recognized_text, target_lang, source_language)
+                    if translated:
+                        translations[target_lang] = translated
+                        logger.info(f"[{sid}] Translated to {target_lang} for room '{room_id}': '{translated[:30]}...'")
+                    else:
+                        translations[target_lang] = "[Translation unavailable]"
+                except Exception as e:
+                    logger.error(f"[{sid}] Error translating to {target_lang} for room {room_id}: {e}", exc_info=True)
+                    translations[target_lang] = "[Translation Error]"
+
+        # --- 3. Prepare Result Data ---
+        result_data = {
+            'original': recognized_text,
+            'translations': translations,
+            'source_language': source_language,
+            # Include target_languages list for context?
+            'room_id': room_id,
+            'is_manual': False # Indicate this is from live audio
+        }
+
+        # --- 4. Emit to Room ---
+        logger.info(f"[{sid}] Emitting 'translation_result' to room '{room_id}'")
+        socketio.emit('translation_result', result_data, room=room_id)
+
+    except Exception as e:
+        logger.error(f"[{sid}] Error processing audio chunk for room {room_id}: {e}", exc_info=True)
+        # Emit error only back to the sender (admin)
+        emit('error', {'message': f'Error processing audio: {str(e)}'})
