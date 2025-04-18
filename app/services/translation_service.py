@@ -161,7 +161,6 @@ class TranslationService:
             return ""
         
         # Convert language codes to format expected by DeepL
-        # DeepL uses two-letter language codes (ISO 639-1)
         target_lang_code = self._convert_language_code(target_language)
         source_lang_code = self._convert_language_code(source_language) if source_language else None
         
@@ -169,6 +168,9 @@ class TranslationService:
             logger.info(f"Translating text from {source_language} ({source_lang_code}) to {target_language} ({target_lang_code}) using {self.service_type} service")
             
             if self.service_type == "deepl":
+                # Log the exact parameters being sent to DeepL
+                logger.debug(f"DeepL API request parameters: target_lang={target_lang_code}, source_lang={source_lang_code}")
+                
                 # DeepL API call
                 result = self.translator.translate_text(
                     text,
@@ -191,7 +193,7 @@ class TranslationService:
         Convert language code to the format expected by the translation service.
         
         Args:
-            language_code (str): Language code (e.g., 'en-US', 'lv-LV')
+            language_code (str): Language code or name to convert
             
         Returns:
             str: Converted language code
@@ -199,33 +201,66 @@ class TranslationService:
         if not language_code:
             return None
         
-        # For DeepL, convert to the format they expect
         if self.service_type == "deepl":
-            # Map of language codes for DeepL
+            # Map of language codes and names for DeepL
             deepl_lang_map = {
+                # ISO codes
+                'en': 'EN',
                 'en-us': 'EN-US',
                 'en-gb': 'EN-GB',
-                'en': 'EN',
                 'de': 'DE',
                 'fr': 'FR',
                 'es': 'ES',
                 'it': 'IT',
                 'nl': 'NL',
                 'pl': 'PL',
+                'pt': 'PT',
                 'pt-br': 'PT-BR',
                 'pt-pt': 'PT-PT',
-                'pt': 'PT',
                 'ru': 'RU',
                 'ja': 'JA',
                 'zh': 'ZH',
                 'lv': 'LV',
-                'lv-lv': 'LV'  # DeepL uses 'LV' for Latvian
+                'lv-lv': 'LV',
+                'lt': 'LT',
+                'lt-lt': 'LT',
+                
+                # Language names
+                'english': 'EN',
+                'german': 'DE',
+                'french': 'FR',
+                'spanish': 'ES',
+                'italian': 'IT',
+                'dutch': 'NL',
+                'polish': 'PL',
+                'portuguese': 'PT',
+                'russian': 'RU',
+                'japanese': 'JA',
+                'chinese': 'ZH',
+                'latvian': 'LV',
+                'lithuanian': 'LT',
+                'bulgarian': 'BG',
+                'czech': 'CS',
+                'danish': 'DA',
+                'greek': 'EL',
+                'estonian': 'ET',
+                'finnish': 'FI',
+                'hungarian': 'HU',
+                'indonesian': 'ID',
+                'korean': 'KO',
+                'norwegian': 'NB',
+                'romanian': 'RO',
+                'slovak': 'SK',
+                'slovenian': 'SL',
+                'swedish': 'SV',
+                'turkish': 'TR',
+                'ukrainian': 'UK'
             }
             
             # Normalize to lowercase for lookup
             normalized = language_code.lower()
             
-            # Try the full code first
+            # Try the full code or name first
             if normalized in deepl_lang_map:
                 return deepl_lang_map[normalized]
             
@@ -234,9 +269,10 @@ class TranslationService:
                 lang_part = normalized.split('-')[0]
                 if lang_part in deepl_lang_map:
                     return deepl_lang_map[lang_part]
-                
-            # Default: just use the first two letters uppercase
-            return language_code.split('-')[0].upper()
+            
+            # Log warning for unmapped languages
+            logger.warning(f"No mapping found for language code/name: {language_code}, using as is")
+            return language_code
         
         # For other services, return as is or implement specific conversion
         return language_code
