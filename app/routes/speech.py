@@ -257,4 +257,9 @@ def translate_text_route():
 @speech_bp.route('/tts/<filename>', methods=['GET'])
 def get_tts_file(filename):
     """Serve TTS audio files."""
-    return send_from_directory('temp_audio', filename) 
+    logger.info(f"Request for TTS file: {filename}")
+    try:
+        return send_from_directory('temp_audio', filename)
+    except Exception as e:
+        logger.error(f"Error serving TTS file {filename}: {str(e)}")
+        return f"Error: {str(e)}", 404 

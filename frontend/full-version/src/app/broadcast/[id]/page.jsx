@@ -260,7 +260,9 @@ const BroadcastPage = () => {
     console.log(`TTS files available:`, ttsFiles);
     
     if (ttsFiles && ttsFiles[language]) {
-      const audioUrl = `${process.env.NEXT_PUBLIC_API_URL || ''}/speech/tts/${ttsFiles[language]}`;
+      // Make sure to use the full backend URL
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const audioUrl = `${backendUrl}/speech/tts/${ttsFiles[language]}`;
       console.log(`Playing audio from URL: ${audioUrl}`);
       
       const audio = new Audio(audioUrl);

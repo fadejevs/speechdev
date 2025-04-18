@@ -100,7 +100,10 @@ def create_app(config_class=Config):
          logger.info("--- create_app --- Flask logger configured by dictConfig. Level: %s", logging.getLevelName(app.logger.level))
 
     # Initialize extensions
-    CORS(app, resources={r"/*": {"origins": "*"}}) # Allow all origins for now
+    CORS(app, resources={
+        r"/*": {"origins": "*"},  # In production, restrict this to your frontend domain
+        r"/speech/tts/*": {"origins": "*"}  # Specifically allow access to TTS files
+    })
 
     # Initialize services BEFORE registering blueprints/routes that use them
     try:
