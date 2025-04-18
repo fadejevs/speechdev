@@ -132,7 +132,7 @@ const BroadcastPage = () => {
       console.log('Broadcast WebSocket connected:', socketRef.current.id);
       setSocketConnected(true);
       socketRef.current.emit('join_room', { room_id: id });
-      console.log(`Broadcast page attempting to join room: ${id}`);
+      console.log(`Broadcast page joined room: ${id}`);
     });
 
     socketRef.current.on('disconnect', (reason) => {
@@ -145,49 +145,40 @@ const BroadcastPage = () => {
       setSocketConnected(false);
     });
 
-    // Add the correct listener
-    socketRef.current.on('translation_result', (data) => {
-      console.log('Broadcast received translation result:', data);
-      
-      // Update Live Transcription display
-      if (data.original !== undefined) {
-        setLiveTranscription(prev => prev ? `${prev} ${data.original}` : data.original);
-      }
-      if (data.source_language) {
-        // Optionally update displayed source language if it changes dynamically
-        // setLiveTranscriptionLang(data.source_language); // Uncomment if needed
-      }
-
-      // Update Live Translation display
-      if (data.translations && data.target_language && data.translations[data.target_language] !== undefined) {
-        const translatedText = data.translations[data.target_language];
-        setLiveTranslations(prev => ({
-          ...prev,
-          [data.target_language]: prev[data.target_language]
-            ? `${prev[data.target_language]} ${translatedText}`
-            : translatedText
-        }));
-      }
-    });
-
-    // Add error listeners too for robustness
-    socketRef.current.on('translation_error', (error) => {
-        console.error('Broadcast received translation error:', error);
-        // Optionally display an error indicator on the broadcast page
-    });
-
-    // Add listener for room join confirmation/error
     socketRef.current.on('room_joined', (data) => {
-        console.log(`Successfully joined room: ${data.room_id}`);
-    });
-    socketRef.current.on('error', (error) => { // Listen for generic errors from backend emits
-        console.error('Broadcast received server error:', error);
-        if (error.message && error.message.includes('Room ID is required')) {
-            // Handle specific error if needed
-        }
+      console.log('Successfully joined room:', data.room_id);
     });
 
-    // Cleanup on component unmount
+    socketRef.current.on('translation_result', (data) => {
+      console.log('Received translation result:', data);
+      
+      if (data.original) {
+        setLiveTranscription(data.original);
+        setLiveTranscriptionLang(data.source_language);
+        console.log(`Updated transcription: "${data.original}" in language: ${data.source_language}`);
+      }
+      
+      if (data.translations && Object.keys(data.translations).length > 0) {
+        setLiveTranslations(prev => {
+          const updated = { ...prev, ...data.translations };
+          console.log('Updated translations:', updated);
+          return updated;
+        });
+      }
+    });
+
+    socketRef.current.on('translation_error', (error) => {
+        console.error('Translation error:', error);
+    });
+
+    socketRef.current.on('error', (error) => {
+      console.error('Socket error:', error);
+    });
+
+    socketRef.current.onAny((event, ...args) => {
+      console.log(`[Socket Debug] Event: ${event}`, args);
+    });
+
     return () => {
       if (socketRef.current) {
         console.log('Disconnecting broadcast WebSocket...');
@@ -195,6 +186,16 @@ const BroadcastPage = () => {
       }
     };
   }, [id]);
+
+  // Add this somewhere in your component to help debug
+  useEffect(() => {
+    console.log('Current transcription state:', {
+      liveTranscription,
+      liveTranscriptionLang,
+      liveTranslations,
+      socketConnected
+    });
+  }, [liveTranscription, liveTranscriptionLang, liveTranslations, socketConnected]);
 
   const handleTranscriptionMenuOpen = (event) => {
     setTranscriptionMenuAnchor(event.currentTarget);
@@ -336,9 +337,15 @@ const BroadcastPage = () => {
                 borderRadius: '0 0 8px 8px'
               }}
             >
-              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-                {liveTranscription || 'Waiting for live transcription...'}
-              </Typography>
+              <Box sx={{ p: 3 }}>
+                {liveTranscription ? (
+                  <Typography variant="body1">{liveTranscription}</Typography>
+                ) : (
+                  <Typography variant="body1" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
+                    Waiting for live transcription...
+                  </Typography>
+                )}
+              </Box>
             </Paper>
           </Box>
         </Box>
@@ -367,28 +374,20 @@ const BroadcastPage = () => {
           
           <Box sx={{ px: { xs: 2, sm: 3 }, py: 3, minHeight: '200px' }}>
             {eventData?.targetLanguages?.length > 0 ? (
-              eventData.targetLanguages.map(langCode => (
-                <Box key={langCode} sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 500 }}>
-                    {getFullLanguageName(langCode)}
-                  </Typography>
-                  <Paper 
-                    elevation={0} 
-                    sx={{ 
-                      p: 2, 
-                      minHeight: '100px', 
-                      maxHeight: '250px',
-                      overflowY: 'auto',
-                      bgcolor: '#F9FAFB', 
-                      borderRadius: '8px' 
-                    }}
-                  >
-                    <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-                      {liveTranslations[langCode] || 'Waiting for live translation...'}
+              Object.keys(liveTranslations).length > 0 ? (
+                Object.entries(liveTranslations).map(([lang, text]) => (
+                  <Box key={lang} sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      {getFullLanguageName(lang)}:
                     </Typography>
-                  </Paper>
-                </Box>
-              ))
+                    <Typography variant="body1">{text}</Typography>
+                  </Box>
+                ))
+              ) : (
+                <Typography variant="body1" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
+                  Waiting for live translation...
+                </Typography>
+              )
             ) : (
               <Typography sx={{ color: '#637381', fontStyle: 'italic' }}>
                 No target languages configured for this event.

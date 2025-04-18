@@ -184,10 +184,9 @@ const EventLivePage = () => {
     if (!id || !eventData) return;
 
     const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
-    console.log(`Attempting to connect WebSocket to: ${socketUrl}`);
-
+    
     if (socketRef.current) {
-        socketRef.current.disconnect();
+      socketRef.current.disconnect();
     }
 
     socketRef.current = io(socketUrl, {
@@ -200,14 +199,13 @@ const EventLivePage = () => {
     socketRef.current.on('connect', () => {
       console.log('Admin WebSocket connected:', socketRef.current.id);
       setSocketConnected(true);
-      setError(null);
-      toast.success('WebSocket Connected');
+      
+      // Join room with all necessary language data
       const roomData = {
-          room_id: id,
-          source_language: eventData.sourceLanguage,
-          target_languages: eventData.targetLanguages
+        room_id: id,
+        source_language: eventData.sourceLanguage,
+        target_languages: eventData.targetLanguages
       };
-      console.log(`Admin page joining room: ${id} with Langs: ${eventData.sourceLanguage} -> ${(eventData.targetLanguages || []).join(', ')}`);
       socketRef.current.emit('join_room', roomData);
     });
 
@@ -263,20 +261,11 @@ const EventLivePage = () => {
   const startRecording = useCallback(async () => {
     if (isRecording || !eventData) return;
 
-    console.log('Checking prerequisites:', {
-      device: selectedDevice,
-      socketConnected: socketRef.current?.connected,
-      sourceLang: eventData?.sourceLanguage
-    });
-
+    // Check prerequisites
     if (!selectedDevice || !socketRef.current?.connected || !eventData?.sourceLanguage) {
-        console.error('Cannot start recording: Missing device, socket connection, or source language.');
-        toast.error('Cannot start recording: Missing device, socket connection, or source language.');
-        setError('Cannot start recording: Missing device, socket connection, or source language.');
-        return;
+      toast.error('Cannot start recording: Missing device, socket connection, or source language.');
+      return;
     }
-
-    console.log(`Attempting to start recording with deviceId: ${selectedDevice}`);
 
     audioChunksRef.current = [];
     setError(null);
@@ -293,30 +282,26 @@ const EventLivePage = () => {
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0 && socketRef.current?.connected && eventData) {
-          console.log(`Storing audio chunk, size: ${event.data.size}`);
           audioChunksRef.current.push(event.data);
 
           const reader = new FileReader();
           reader.onload = () => {
-              const base64Audio = reader.result.split(',')[1];
-              if (socketRef.current?.connected && eventData?.sourceLanguage && eventData?.targetLanguages) {
-                  socketRef.current.emit('audio_chunk', {
-                      room_id: id,
-                      audio_data: base64Audio,
-                      language: eventData.sourceLanguage,
-                      target_languages: eventData.targetLanguages
-                  });
-                  console.log(`Sent audio chunk. Source: ${eventData.sourceLanguage}, Targets: ${eventData.targetLanguages.join(', ')}`);
-              } else {
-                  console.warn("WebSocket not connected or event data missing, cannot send audio chunk.");
-              }
+            const base64Audio = reader.result.split(',')[1];
+            if (socketRef.current?.connected) {
+              // Log the data being sent
+              console.log(`Sending audio chunk to room: ${id}`);
+              console.log(`Source language: ${eventData.sourceLanguage}`);
+              console.log(`Target languages: ${JSON.stringify(eventData.targetLanguages)}`);
+              
+              socketRef.current.emit('audio_chunk', {
+                room_id: id,
+                audio_data: base64Audio,
+                language: eventData.sourceLanguage,
+                target_languages: eventData.targetLanguages
+              });
+            }
           };
           reader.readAsDataURL(event.data);
-
-        } else if (!socketRef.current?.connected) {
-            console.warn("WebSocket disconnected, cannot send audio chunk.");
-        } else if (!eventData) {
-            console.warn("Event data not loaded, cannot send audio chunk with language info.");
         }
       };
 
@@ -414,18 +399,13 @@ const EventLivePage = () => {
         streamRef.current = null;
       };
 
-      mediaRecorderRef.current.start(options.timeslice);
+      mediaRecorderRef.current.start(1000); // Start with 1-second chunks
       setIsRecording(true);
-      console.log('MediaRecorder started successfully.');
-
     } catch (err) {
       console.error('Error starting recording:', err);
-      setProcessingAudio(false);
-      setError(`Could not start recording: ${err.message}. Check microphone permissions.`);
-      toast.error(`Could not start recording: ${err.message}`);
-      setIsRecording(false);
+      setError(`Failed to start recording: ${err.message}`);
     }
-  }, [selectedDevice, id, eventData, socketRef, streamRef, API_BASE_URL, isRecording]);
+  }, [id, selectedDevice, eventData, socketRef]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {

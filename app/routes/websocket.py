@@ -162,7 +162,7 @@ def on_manual_text(data):
 def on_audio_chunk(data):
     """Handles receiving an audio chunk from a client."""
     sid = request.sid
-    room_id = data.get('room_id') # Use 'room_id' to match frontend emit
+    room_id = data.get('room_id')
     audio_chunk_bytes = data.get('audio')
     source_language = data.get('language')
     target_languages = data.get('target_languages', [])
@@ -269,6 +269,32 @@ def on_audio_chunk(data):
                         'room_id': room_id, 'original': recognized_text, 'target_language': target_lang
                     })
 
+            # Modify this part to ensure proper broadcasting
+            result_data = {
+                'original': recognized_text,
+                'translations': translations,
+                'source_language': source_language,
+                'room_id': room_id,
+                'is_manual': False,
+                'is_final': False
+            }
+            
+            # Use socketio.emit with the room parameter to broadcast to all clients in the room
+            socketio.emit('translation_result', result_data, room=room_id)
+            logger.info(f"[{sid}] Broadcasted 'translation_result' to room '{room_id}' for lang {target_lang}")
+            
+            # Also emit the final result after processing all chunks
+            if is_final_chunk:
+                final_result = {
+                    'original': recognized_text,
+                    'translations': translations,
+                    'source_language': source_language,
+                    'room_id': room_id,
+                    'is_manual': False,
+                    'is_final': True
+                }
+                socketio.emit('translation_result', final_result, room=room_id)
+                logger.info(f"[{sid}] Broadcasted final 'translation_result' to room '{room_id}'")
 
     except Exception as e:
         logger.error(f"[{sid}] Error processing audio chunk for room {room_id}: {e}", exc_info=True)
