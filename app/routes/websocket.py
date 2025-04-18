@@ -160,23 +160,23 @@ def on_manual_text(data):
 # --- NEW: Audio Chunk Handler ---
 @socketio.on('audio_chunk')
 def on_audio_chunk(data):
-    """Handles receiving audio chunks for transcription and translation."""
+    """Handles receiving an audio chunk from a client."""
     sid = request.sid
-    room_id = data.get('room') # Frontend '/live' sends 'room'
-    audio_chunk_bytes = data.get('audio') # Expecting bytes
-    source_language = data.get('language', 'en-US') # Default if not provided
-    target_languages = data.get('target_languages', []) # Default to empty list
+    room_id = data.get('room_id') # Use 'room_id' to match frontend emit
+    audio_chunk_bytes = data.get('audio')
+    source_language = data.get('language')
+    target_languages = data.get('target_languages', [])
 
-    if not room_id or not audio_chunk_bytes or not source_language:
-        logger.warning(f"[{sid}] Missing data in audio_chunk event: room={room_id}, audio_present={bool(audio_chunk_bytes)}, lang={source_language}")
-        emit('translation_error', {'message': 'Missing data for audio processing.', 'room_id': room_id})
+    if not all([room_id, audio_chunk_bytes, source_language]):
+        logger.warning(f"[{sid}] Incomplete audio chunk data: room={room_id}, audio_present={bool(audio_chunk_bytes)}, lang={source_language}")
+        emit('translation_error', {'message': 'Incomplete audio data received.', 'room_id': room_id})
         return
 
     logger.info(f"[{sid}] Received audio chunk for room '{room_id}', lang: {source_language}, targets: {target_languages}")
 
-    temp_file_path = None # Initialize outside try block
+    temp_file_path = None
     try:
-        # --- Get Services ---
+        # Get services from app context
         speech_service = current_app.speech_service
         translation_service = current_app.translation_service
 
@@ -196,16 +196,11 @@ def on_audio_chunk(data):
             temp_file_path = temp_file.name
             logger.debug(f"[{sid}] Saved temporary audio chunk to {temp_file_path}")
 
-        # Assuming recognize_speech_from_file takes path and language
-        # *** THIS IS THE KEY CHANGE ***
-        # recognized_text = speech_service.recognize_from_file(temp_file_path, source_language) # Old incorrect name
-        recognized_text = speech_service.recognize_speech_from_file(temp_file_path, source_language) # Corrected method name
+        # Call the CORRECT method with BOTH arguments
+        recognized_text = speech_service.recognize_speech(temp_file_path, source_language)
 
         if not recognized_text:
             logger.info(f"[{sid}] No speech recognized from chunk for room {room_id}.")
-            # Don't emit anything if nothing was recognized, or emit empty if needed by frontend
-            # result_data = { ... 'original': '', ... }
-            # socketio.emit('translation_result', result_data, room=room_id)
             return # Exit early if no text
 
         logger.info(f"[{sid}] Recognized for room '{room_id}': '{recognized_text}'")
@@ -231,7 +226,6 @@ def on_audio_chunk(data):
             for target_lang in target_languages:
                 try:
                     # Use the translate method from TranslationService
-                    # Adjust method name/params if needed (e.g., translate_text)
                     translated = translation_service.translate(recognized_text, target_lang, source_language)
                     if translated:
                         translations[target_lang] = translated
@@ -253,7 +247,6 @@ def on_audio_chunk(data):
                     else:
                         translations[target_lang] = "[Translation unavailable]"
                         logger.warning(f"[{sid}] Translation to {target_lang} returned unavailable for room {room_id}")
-                        # Optionally emit an error or specific status
                         emit('translation_error', {
                              'message': f'Translation unavailable for target {target_lang}',
                              'room_id': room_id, 'original': recognized_text, 'target_language': target_lang
@@ -271,8 +264,7 @@ def on_audio_chunk(data):
 
     except Exception as e:
         logger.error(f"[{sid}] Error processing audio chunk for room {room_id}: {e}", exc_info=True)
-        # Emit error only back to the sender (admin)
-        emit('error', {'message': f'Error processing audio: {str(e)}', 'room_id': room_id}) # Add room_id for context
+        emit('error', {'message': f'Error processing audio: {str(e)}', 'room_id': room_id})
 
     finally:
         # --- Clean up temporary file ---

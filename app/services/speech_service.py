@@ -50,32 +50,42 @@ class SpeechService:
             logger.error(f"Failed to create recognizer: {e}")
             return None
 
-    def recognize_speech(self, audio_file):
-        """Speech-to-text conversion"""
+    def recognize_speech(self, audio_file, language='en-US'):
+        """Speech-to-text conversion for a given audio file and language."""
         if not self.azure_key or not self.azure_region:
             logger.error("Cannot recognize speech: Azure Speech not configured.")
             return None
         try:
-            logger.debug(f"Recognizing speech from file: {audio_file}")
+            logger.debug(f"Recognizing speech from file: {audio_file} for language: {language}")
+
+            # Create speech config *with the specified language*
+            speech_config = speechsdk.SpeechConfig(subscription=self.azure_key, region=self.azure_region)
+            speech_config.speech_recognition_language = language
+
+            # Create audio config from file
             audio_config = speechsdk.AudioConfig(filename=audio_file)
-            recognizer = speechsdk.SpeechRecognizer(speech_config=speechsdk.SpeechConfig(subscription=self.azure_key, region=self.azure_region), audio_config=audio_config)
+
+            # Create recognizer with the updated configs
+            recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
+
+            # Perform recognition
             result = recognizer.recognize_once()
 
             if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-                logger.info(f"Speech recognized: {result.text}")
+                logger.info(f"Speech recognized ({language}): {result.text}")
                 return result.text
             elif result.reason == speechsdk.ResultReason.NoMatch:
-                logger.warning("No speech could be recognized.")
+                logger.warning(f"No speech could be recognized ({language}).")
                 return None
             elif result.reason == speechsdk.ResultReason.Canceled:
                 cancellation_details = result.cancellation_details
-                logger.error(f"Speech Recognition canceled: {cancellation_details.reason}")
+                logger.error(f"Speech Recognition canceled ({language}): {cancellation_details.reason}")
                 if cancellation_details.reason == speechsdk.CancellationReason.Error:
                     logger.error(f"Error details: {cancellation_details.error_details}")
                 return None
             return None
         except Exception as e:
-            logger.error(f"Recognition error: {str(e)}")
+            logger.error(f"Recognition error ({language}): {str(e)}")
             return None
 
     def synthesize_speech(self, text, output_file, voice='en-US-JennyNeural'):
