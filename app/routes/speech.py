@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, send_from_directory
 import logging
 # import azure.cognitiveservices.speech as speechsdk # Not needed if using SpeechService
 from pydub import AudioSegment
@@ -8,6 +8,7 @@ import os
 import tempfile # For temporary file handling
 import json # To parse target languages
 from .. import socketio 
+from ..services.tts_service import TTSService
 
 # Remove the direct import of translation module if not used elsewhere
 # from app.routes.translation import simple_translation
@@ -31,6 +32,9 @@ if not os.path.exists(UPLOAD_TEMP_DIR):
 
 # Configure logger for this blueprint
 logger = logging.getLogger(__name__)
+
+# Initialize the TTS service
+tts_service = TTSService()
 
 @speech_bp.route('/recognize', methods=['POST'])
 def recognize_speech_route():
@@ -142,16 +146,38 @@ def transcribe_and_translate_audio():
                 logger.error(f"Error translating to {target_language}: {str(e)}")
                 translations[target_language] = f"[Translation error: {str(e)}]"
         
+        # --- Generate TTS for translations ---
+        tts_files = {}
+        for target_language, translated_text in translations.items():
+            # Skip TTS generation if there was a translation error
+            if translated_text.startswith('[Translation error:'):
+                continue
+                
+            try:
+                tts_file_path = tts_service.text_to_speech(
+                    translated_text,
+                    target_language
+                )
+                
+                if tts_file_path:
+                    # Get the filename only (not the full path)
+                    tts_filename = os.path.basename(tts_file_path)
+                    tts_files[target_language] = tts_filename
+                    logger.info(f"Generated TTS for {target_language}: {tts_filename}")
+            except Exception as e:
+                logger.error(f"Error generating TTS for {target_language}: {str(e)}")
+        
         # --- Prepare final data ---
         final_data = {
             'original': recognized_text,
             'source_language': source_language,
-            'translations': translations
+            'translations': translations,
+            'tts_files': tts_files  # Add TTS files to the response
         }
         
         # --- Emit result via Socket.IO ---
         logger.info(f"Emitting translation_result to room: {room_id}")
-        socketio.emit('translation_result', final_data, room=room_id) # <<< THIS IS THE CRUCIAL LINE
+        socketio.emit('translation_result', final_data, room=room_id)
         logger.info(f"Successfully emitted translation_result to room: {room_id}")
 
         # --- Return HTTP response ---
@@ -227,3 +253,8 @@ def translate_text_route():
 # Remove the old simple_translation function if it's no longer needed
 # def simple_translation(text, target_language):
 #     ... 
+
+@speech_bp.route('/tts/<filename>', methods=['GET'])
+def get_tts_file(filename):
+    """Serve TTS audio files."""
+    return send_from_directory('temp_audio', filename) 
