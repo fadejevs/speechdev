@@ -49,9 +49,13 @@ def transcribe_and_translate_audio():
     speech_service = current_app.speech_service
     translation_service = current_app.translation_service
 
-    if not speech_service or not speech_service.speech_config:
-         logger.error("Speech service not available or not configured.")
+    # --- CORRECTED CHECK ---
+    # Check if the service object exists and has the necessary config attributes
+    if not speech_service or not getattr(speech_service, 'azure_key', None) or not getattr(speech_service, 'azure_region', None):
+         logger.error("Speech service not available or not configured (missing key or region).")
+         # Return 503 Service Unavailable, as the service required isn't ready
          return jsonify({"error": "Speech service not configured"}), 503
+    # --- END CORRECTED CHECK ---
 
     if not translation_service or not translation_service.service_type:
         logger.error("Translation service not available or not configured.")

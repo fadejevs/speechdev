@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Audio Test (Live Backend)</title>
+    <style>
+        body { font-family: sans-serif; }
+        label { display: block; margin-top: 10px; }
+        input[type="text"] { width: 300px; }
+        pre { background-color: #f0f0f0; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+    <h1>Test Audio Transcription & Translation (Live Backend)</h1>
+    <p>This form sends data directly to your deployed backend endpoint.</p>
+
+    <!-- Verify this URL matches your Render service endpoint -->
+    <form id="test-form" action="https://speechdev.onrender.com/speech/transcribe-and-translate" method="post" enctype="multipart/form-data">
+        <label for="audio">Audio File:</label>
+        <input type="file" id="audio" name="audio" accept="audio/*" required><br><br>
+
+        <label for="source_language">Source Language (e.g., en-US, lv-LV):</label>
+        <input type="text" id="source_language" name="source_language" value="en-US" required><br><br>
+
+        <label for="target_languages">Target Languages (JSON list string, e.g., ["es-ES", "fr-FR", "lv-LV"]):</label>
+        <input type="text" id="target_languages" name="target_languages" value='["es-ES"]' required><br><br>
+
+        <button type="submit">Submit to Live Backend</button>
+    </form>
+
+    <h2>Result:</h2>
+    <pre id="result">Response will appear here...</pre>
+
+    <script>
+        const form = document.getElementById('test-form');
+        const resultArea = document.getElementById('result');
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault(); // Stop default form submission
+            resultArea.textContent = 'Processing...';
+
+            const formData = new FormData(form);
+            const actionUrl = form.action; // Get URL from form's action attribute
+
+            try {
+                // Use fetch API to send the request
+                const response = await fetch(actionUrl, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                // Try to parse the response as JSON regardless of status first
+                let responseData;
+                try {
+                    responseData = await response.json();
+                } catch (e) {
+                    // If JSON parsing fails, get text (might be HTML error page)
+                    responseData = await response.text();
+                }
+
+                // Check if the HTTP request itself was successful (status 2xx)
+                if (!response.ok) {
+                     // Throw an error with the parsed data or text
+                     throw new Error(typeof responseData === 'string' ? responseData : JSON.stringify(responseData));
+                }
+
+                // Display successful JSON response
+                resultArea.textContent = JSON.stringify(responseData, null, 2); // Pretty print JSON
+
+            } catch (error) {
+                console.error('Error:', error);
+                // Display the error message (which might be the JSON/text from the server)
+                resultArea.textContent = 'Error submitting form: \n' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
