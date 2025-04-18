@@ -37,16 +37,34 @@ def on_disconnect():
 # --- Add Room Handling ---
 @socketio.on('join_room')
 def on_join_room(data):
+    """Handle a client joining a room."""
     sid = request.sid
     room_id = data.get('room_id')
-    if room_id:
-        join_room(room_id)
-        logger.info(f"[{sid}] Client joined room: {room_id}")
-        # Optionally confirm join back to client
-        emit('room_joined', {'room_id': room_id})
-    else:
-        logger.warning(f"[{sid}] Client attempted to join without room_id.")
-        emit('error', {'message': 'Room ID is required to join.'})
+    
+    if not room_id:
+        logger.warning(f"[{sid}] Client tried to join room but no room_id provided")
+        return
+    
+    join_room(room_id)
+    logger.info(f"[{sid}] Client joined room: {room_id}")
+    
+    # Emit confirmation back to the client
+    emit('room_joined', {'room_id': room_id})
+    
+    # Add a test message to verify broadcasting works
+    test_data = {
+        'original': 'Test message from server',
+        'translations': {'en-US': 'This is a test translation'},
+        'source_language': 'lv-LV',
+        'target_language': 'en-US',
+        'room_id': room_id,
+        'is_manual': False,
+        'is_final': False
+    }
+    
+    # Broadcast the test message to all clients in the room
+    socketio.emit('translation_result', test_data, room=room_id)
+    logger.info(f"[{sid}] Sent test translation_result to room: {room_id}")
 
 
 # --- Remove Recognition Handlers ---
