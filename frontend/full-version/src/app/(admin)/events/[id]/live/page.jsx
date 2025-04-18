@@ -85,6 +85,8 @@ const EventLivePage = () => {
   };
   const languageCodeMap = Object.fromEntries(Object.entries(languageNameMap).map(([code, name]) => [name, code]));
 
+  const audioChunksRef = useRef([]);
+
   useEffect(() => {
     const fetchEvent = async () => {
       try {
@@ -218,6 +220,9 @@ const EventLivePage = () => {
     console.log(`Attempting to start recording with deviceId: ${selectedDevice}`);
     setProcessingAudio(true);
 
+    audioChunksRef.current = [];
+    setError(null);
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { deviceId: { exact: selectedDevice } }
@@ -230,42 +235,45 @@ const EventLivePage = () => {
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          if (socketRef.current && socketRef.current.connected) {
-             console.log('Sending audio chunk via WebSocket...');
-             socketRef.current.emit('audio_chunk', {
-               room_id: id,
-               audio: event.data,
-               language: eventData?.sourceLanguages?.[0],
-               target_languages: eventData?.targetLanguages || []
-             });
-          } else {
-            console.warn('WebSocket not connected, cannot send audio chunk.');
-          }
+          console.log(`Storing audio chunk, size: ${event.data.size}`);
+          audioChunksRef.current.push(event.data);
         }
       };
 
       mediaRecorderRef.current.onstop = async () => {
-        console.log('MediaRecorder stopped, processing audio.');
+        console.log(`MediaRecorder stopped. Collected ${audioChunksRef.current.length} chunks.`);
         setProcessingAudio(true);
         setError(null);
 
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (audioChunksRef.current.length === 0) {
+            console.warn("No audio chunks recorded.");
+            setProcessingAudio(false);
+            setIsRecording(false);
+            streamRef.current?.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+            return;
+        }
+
+        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         audioChunksRef.current = [];
 
         const formData = new FormData();
-        formData.append('audio', audioBlob, `recording-${Date.now()}.webm`);
+        const fileExtension = mimeType.split('/')[1].split(';')[0];
+        formData.append('audio', audioBlob, `recording-${Date.now()}.${fileExtension}`);
         formData.append('source_language', selectedSourceLang);
         formData.append('target_languages', JSON.stringify(selectedTargetLangs));
 
+        streamRef.current?.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+        console.log('Stream tracks stopped in onstop.');
+
         try {
-            console.log(`Uploading audio for ${selectedSourceLang} -> ${selectedTargetLangs.join(', ')}`);
+            console.log(`Uploading audio blob (${(audioBlob.size / 1024).toFixed(2)} KB) type: ${mimeType} for ${selectedSourceLang} -> ${selectedTargetLangs.join(', ')}`);
             const endpoint = `${API_BASE_URL}/speech/transcribe-and-translate`;
-            console.log(`Sending request to: ${endpoint}`);
-            
+            console.log(`Sending POST request to: ${endpoint}`);
+
             const response = await axios.post(endpoint, formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
                 timeout: 60000
             });
 
@@ -273,48 +281,37 @@ const EventLivePage = () => {
 
             if (response.data && response.data.original) {
                  setLiveTranscription(response.data.original);
-                 setLiveTranscriptionLang(selectedSourceLang);
+                 setLiveTranscriptionLang(response.data.source_language || selectedSourceLang);
                  
                  const translations = response.data.translations || {};
                  setLiveTranslations(translations);
                  
-                 Object.entries(translations).forEach(([targetLang, translatedText]) => {
-                     setTranscripts(prev => [...prev, {
-                         original: response.data.original,
-                         translated: translatedText,
-                         sourceLanguage: selectedSourceLang,
-                         targetLanguage: targetLang,
-                         timestamp: new Date().toISOString()
-                     }]);
-                 });
+                 const newTranscriptEntry = {
+                     original: response.data.original,
+                     translated: translations,
+                     sourceLanguage: response.data.source_language || selectedSourceLang,
+                     targetLanguages: selectedTargetLangs,
+                     timestamp: new Date().toISOString()
+                 };
+                 setTranscripts(prev => [...prev, newTranscriptEntry]);
                  
-                 if (Object.keys(translations).length === 0) {
-                     setTranscripts(prev => [...prev, {
-                         original: response.data.original,
-                         translated: response.data.original,
-                         sourceLanguage: selectedSourceLang,
-                         targetLanguage: selectedTargetLangs[0] || selectedSourceLang,
-                         timestamp: new Date().toISOString()
-                     }]);
-                 }
-
                  toast.success('Transcription successful.');
             } else if (response.data && response.data.error) {
                  throw new Error(response.data.error);
-            } else if (!response.data.original && !response.data.error) {
+            } else if (!response.data?.original && !response.data?.error) {
                 console.log("Transcription returned no match.");
                 toast.info("Could not recognize speech in the audio.");
                 setLiveTranscription("[No speech recognized]");
+                setLiveTranslations({});
                 setTranscripts(prev => [...prev, {
                     original: "[No speech recognized]",
-                    translated: null,
+                    translated: {},
                     sourceLanguage: selectedSourceLang,
-                    targetLanguage: null,
+                    targetLanguages: selectedTargetLangs,
                     timestamp: new Date().toISOString()
                 }]);
-            }
-            else {
-                 throw new Error('Invalid response from server.');
+            } else {
+                 throw new Error('Invalid response structure from server.');
             }
 
         } catch (uploadError) {
@@ -322,6 +319,8 @@ const EventLivePage = () => {
             const errorMsg = uploadError.response?.data?.error || uploadError.message || 'Failed to process audio.';
             setError(`Processing failed: ${errorMsg}`);
             toast.error(`Processing failed: ${errorMsg}`);
+            setLiveTranscription('');
+            setLiveTranslations({});
         } finally {
             setProcessingAudio(false);
         }
@@ -346,16 +345,23 @@ const EventLivePage = () => {
       toast.error(`Could not start recording: ${err.message}`);
       setIsRecording(false);
     }
-  }, [selectedDevice, id, eventData, socketRef, streamRef]);
+  }, [selectedDevice, id, eventData, socketRef, streamRef, selectedSourceLang, selectedTargetLangs, API_BASE_URL]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
+      console.log('Calling mediaRecorderRef.current.stop()');
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      console.log('Recording stopped, waiting for processing.');
+      console.log('Recording stopped by user, waiting for onstop processing.');
+    } else {
+      console.log('Stop recording called but recorder not active or found.');
+      setIsRecording(false);
+      setProcessingAudio(false);
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+      audioChunksRef.current = [];
     }
-  }, [isRecording]);
+  }, [isRecording, mediaRecorderRef, streamRef]);
 
   const handleBackToEvents = () => {
     router.push('/dashboard/analytics');

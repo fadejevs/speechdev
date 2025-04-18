@@ -196,11 +196,19 @@ def on_audio_chunk(data):
             temp_file_path = temp_file.name
             logger.debug(f"[{sid}] Saved temporary audio chunk to {temp_file_path}")
 
-        # Call the CORRECT method with BOTH arguments
-        recognized_text = speech_service.recognize_speech(temp_file_path, source_language)
+        # Call the CORRECT method WITHOUT the language argument
+        # Assuming SpeechService uses config or internal logic for language
+        recognized_text = speech_service.recognize_speech(temp_file_path) # REMOVE source_language argument
 
         if not recognized_text:
             logger.info(f"[{sid}] No speech recognized from chunk for room {room_id}.")
+            # Clean up before returning
+            if temp_file_path and os.path.exists(temp_file_path):
+                 try:
+                     os.remove(temp_file_path)
+                     logger.debug(f"[{sid}] Removed temporary audio chunk {temp_file_path} after no recognition.")
+                 except OSError as e:
+                     logger.error(f"[{sid}] Error removing temporary file {temp_file_path} after no recognition: {e}")
             return # Exit early if no text
 
         logger.info(f"[{sid}] Recognized for room '{room_id}': '{recognized_text}'")

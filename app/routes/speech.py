@@ -123,7 +123,7 @@ def transcribe_and_translate_audio():
             logger.info(f"Translating '{recognized_text[:50]}...' from {source_language} to {target_languages}")
             for target_lang in target_languages:
                  try:
-                     translated = translation_service.translate(recognized_text, target_lang, source_language)
+                     translated = translation_service.translate(recognized_text, source_language, target_lang)
                      if translated:
                          translations[target_lang] = translated
                          logger.info(f"Translated to {target_lang}: '{translated[:50]}...'")

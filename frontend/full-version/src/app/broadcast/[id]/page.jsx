@@ -122,18 +122,17 @@ const BroadcastPage = () => {
   // WebSocket Connection useEffect
   useEffect(() => {
     const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
-    socketRef.current = io(socketUrl, { 
+    socketRef.current = io(socketUrl, {
         transports: ['polling'], // Match server config
         reconnectionAttempts: 5,
-        timeout: 10000 
+        timeout: 10000
     });
 
     socketRef.current.on('connect', () => {
       console.log('Broadcast WebSocket connected:', socketRef.current.id);
       setSocketConnected(true);
-      // Join the room for this specific event
-      socketRef.current.emit('join', { room: id }); 
-      console.log(`Broadcast page joined room: ${id}`);
+      socketRef.current.emit('join_room', { room_id: id });
+      console.log(`Broadcast page attempting to join room: ${id}`);
     });
 
     socketRef.current.on('disconnect', (reason) => {
@@ -151,20 +150,22 @@ const BroadcastPage = () => {
       console.log('Broadcast received translation result:', data);
       
       // Update Live Transcription display
-      if (data.original !== undefined) { 
-        setLiveTranscription(prev => prev ? `${prev} ${data.original}` : data.original); 
+      if (data.original !== undefined) {
+        setLiveTranscription(prev => prev ? `${prev} ${data.original}` : data.original);
       }
       if (data.source_language) {
-        setLiveTranscriptionLang(data.source_language); 
+        // Optionally update displayed source language if it changes dynamically
+        // setLiveTranscriptionLang(data.source_language); // Uncomment if needed
       }
 
       // Update Live Translation display
-      if (data.target_language && data.translated !== undefined) {
+      if (data.translations && data.target_language && data.translations[data.target_language] !== undefined) {
+        const translatedText = data.translations[data.target_language];
         setLiveTranslations(prev => ({
           ...prev,
-          [data.target_language]: prev[data.target_language] 
-            ? `${prev[data.target_language]} ${data.translated}` 
-            : data.translated
+          [data.target_language]: prev[data.target_language]
+            ? `${prev[data.target_language]} ${translatedText}`
+            : translatedText
         }));
       }
     });
@@ -175,11 +176,21 @@ const BroadcastPage = () => {
         // Optionally display an error indicator on the broadcast page
     });
 
+    // Add listener for room join confirmation/error
+    socketRef.current.on('room_joined', (data) => {
+        console.log(`Successfully joined room: ${data.room_id}`);
+    });
+    socketRef.current.on('error', (error) => { // Listen for generic errors from backend emits
+        console.error('Broadcast received server error:', error);
+        if (error.message && error.message.includes('Room ID is required')) {
+            // Handle specific error if needed
+        }
+    });
+
     // Cleanup on component unmount
     return () => {
       if (socketRef.current) {
         console.log('Disconnecting broadcast WebSocket...');
-        socketRef.current.emit('leave', { room: id }); // Optional: Tell server to leave room
         socketRef.current.disconnect();
       }
     };
