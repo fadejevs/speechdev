@@ -109,13 +109,22 @@ def transcribe_and_translate_audio():
         # --- Speech Recognition ---
         logger.info(f"Starting speech recognition for language: {source_language} using file: {wav_path}")
         
-        # Change this line to use the correct method name
-        # It's likely called 'transcribe' or 'speech_to_text' instead of 'recognize_speech'
-        recognized_text = speech_service.speech_to_text(wav_path, source_language)
-        
-        # If that doesn't work, try these alternatives:
-        # recognized_text = speech_service.transcribe(wav_path, source_language)
-        # recognized_text = speech_service.recognize(wav_path, source_language)
+        # Try different method names that might exist in SpeechService
+        try:
+            # First attempt
+            recognized_text = speech_service.transcribe(wav_path, source_language)
+        except AttributeError:
+            try:
+                # Second attempt
+                recognized_text = speech_service.recognize(wav_path, source_language)
+            except AttributeError:
+                try:
+                    # Third attempt
+                    recognized_text = speech_service.transcribe_audio(wav_path, source_language)
+                except AttributeError:
+                    # Last resort - inspect the object to see what methods it has
+                    logger.error(f"Available methods in speech_service: {dir(speech_service)}")
+                    raise ValueError("Could not find appropriate speech recognition method")
         
         if not recognized_text:
             logger.warning(f"No text recognized from audio file: {wav_path}")
