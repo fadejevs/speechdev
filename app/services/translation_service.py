@@ -38,32 +38,54 @@ class TranslationService:
         
         logger.info(f"Finished initializing TranslationService. Service type: {self.service_type}")
 
+    def _simplify_lang_code(self, lang_code):
+        """Extracts the base 2-letter language code (e.g., 'en' from 'en-US')."""
+        if lang_code and isinstance(lang_code, str):
+            return lang_code.split('-')[0].upper() # Take first part and uppercase
+        return None # Return None if input is invalid
+
     def translate(self, text, target_lang, source_lang=None):
         """Translate text using the configured service"""
         if not text:
             return ""
             
-        logger.info(f"Translating text from {source_lang} to {target_lang} using {self.service_type} service")
+        # Simplify codes *before* logging and comparison
+        simple_source_lang = self._simplify_lang_code(source_lang)
+        simple_target_lang = self._simplify_lang_code(target_lang) # Simplify target too for consistency
+
+        # Log with original and simplified codes for clarity
+        logger.info(f"Translating text from {source_lang} ({simple_source_lang}) to {target_lang} ({simple_target_lang}) using {self.service_type} service")
         
-        # If source and target are the same, return the original text
-        if source_lang and target_lang and source_lang.lower() == target_lang.lower():
-            logger.info(f"Source and target languages are the same ({source_lang}), skipping translation")
+        # If source and target are the same (using simplified codes for comparison)
+        if simple_source_lang and simple_target_lang and simple_source_lang == simple_target_lang:
+            logger.info(f"Source and target languages simplify to the same code ({simple_source_lang}), skipping translation")
             return text
         
         try:
             if self.service_type == 'deepl' and self.translator:
-                # Use DeepL for translation
+                # Use DeepL for translation with simplified codes
+                logger.debug(f"Calling DeepL: text='{text[:50]}...', target_lang='{simple_target_lang}', source_lang='{simple_source_lang}'")
                 result = self.translator.translate_text(
                     text,
-                    target_lang=target_lang.upper(),
-                    source_lang=source_lang.upper() if source_lang else None
+                    target_lang=simple_target_lang, # Use simplified target
+                    source_lang=simple_source_lang  # Use simplified source
                 )
-                return result.text
+                # Check if result is valid before accessing .text
+                if result and hasattr(result, 'text'):
+                    logger.info(f"DeepL translation successful. Detected source: {result.detected_source_lang}")
+                    return result.text
+                else:
+                    logger.error("DeepL translation returned an unexpected result structure.")
+                    return f"[Translation error: Invalid DeepL response]"
             else:
                 # Fall back to mock translation
                 logger.warning(f"Using mock translation for {source_lang} to {target_lang}")
                 return f"[Translation to {target_lang}] {text}"
+        except deepl.exceptions.DeepLException as e:
+            # Catch specific DeepL errors for better logging
+            logger.error(f"DeepL API error: {e}", exc_info=True)
+            return f"[Translation error: {e}]"
         except Exception as e:
-            logger.error(f"Translation error: {e}")
+            logger.error(f"Generic translation error: {e}", exc_info=True)
             # Return a mock translation as fallback
             return f"[Translation error] {text}"
