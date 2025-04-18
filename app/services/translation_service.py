@@ -168,6 +168,11 @@ class TranslationService:
             logger.info(f"Translating text from {source_language} ({source_lang_code}) to {target_language} ({target_lang_code}) using {self.service_type} service")
             
             if self.service_type == "deepl":
+                # For DeepL, we need to simplify source language codes
+                # DeepL only accepts basic language codes for source_lang (e.g., 'EN', not 'EN-US')
+                if source_lang_code and '-' in source_lang_code:
+                    source_lang_code = source_lang_code.split('-')[0]
+                
                 # Log the exact parameters being sent to DeepL
                 logger.debug(f"DeepL API request parameters: target_lang={target_lang_code}, source_lang={source_lang_code}")
                 
@@ -206,8 +211,8 @@ class TranslationService:
             deepl_lang_map = {
                 # ISO codes
                 'en': 'EN',
-                'en-us': 'EN-US',
-                'en-gb': 'EN-GB',
+                'en-us': 'EN',  # Simplified to just 'EN' for DeepL
+                'en-gb': 'EN',  # Simplified to just 'EN' for DeepL
                 'de': 'DE',
                 'fr': 'FR',
                 'es': 'ES',
@@ -224,6 +229,22 @@ class TranslationService:
                 'lv-lv': 'LV',
                 'lt': 'LT',
                 'lt-lt': 'LT',
+                'bg': 'BG',
+                'cs': 'CS',
+                'da': 'DA',
+                'el': 'EL',
+                'et': 'ET',
+                'fi': 'FI',
+                'hu': 'HU',
+                'id': 'ID',
+                'ko': 'KO',
+                'nb': 'NB',
+                'ro': 'RO',
+                'sk': 'SK',
+                'sl': 'SL',
+                'sv': 'SV',
+                'tr': 'TR',
+                'uk': 'UK',
                 
                 # Language names
                 'english': 'EN',
