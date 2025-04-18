@@ -50,42 +50,55 @@ class SpeechService:
             logger.error(f"Failed to create recognizer: {e}")
             return None
 
-    def recognize_speech(self, audio_file, language='en-US'):
-        """Speech-to-text conversion for a given audio file and language."""
+    def recognize_speech_from_file(self, audio_filename, language='en-US'):
+        """Recognizes speech from an audio file, ensuring the specified language is used."""
         if not self.azure_key or not self.azure_region:
             logger.error("Cannot recognize speech: Azure Speech not configured.")
             return None
+
+        logger.info(f"SpeechService: Recognizing speech from file: {audio_filename}, Language: {language}")
         try:
-            logger.debug(f"Recognizing speech from file: {audio_file} for language: {language}")
-
-            # Create speech config *with the specified language*
             speech_config = speechsdk.SpeechConfig(subscription=self.azure_key, region=self.azure_region)
+
+            # --- Explicitly set the recognition language ---
             speech_config.speech_recognition_language = language
+            logger.info(f"SpeechService: Set speech_recognition_language to: {speech_config.speech_recognition_language}")
+            # --- End Change ---
 
-            # Create audio config from file
-            audio_config = speechsdk.AudioConfig(filename=audio_file)
+            # Assuming audio_filename is a WAV file suitable for direct use
+            audio_config = speechsdk.audio.AudioConfig(filename=audio_filename)
 
-            # Create recognizer with the updated configs
-            recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
+            # Creates a speech recognizer using a file as audio input.
+            # Note: SpeechRecognizer might be blocking. Consider using it in a thread or async context
+            # if used within a web request handler that needs to be responsive.
+            speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
 
-            # Perform recognition
-            result = recognizer.recognize_once()
+            logger.info("SpeechService: Starting recognize_once_async()...")
+            # Use recognize_once_async().get() for a blocking call that waits for the result
+            result = speech_recognizer.recognize_once_async().get()
+            logger.info(f"SpeechService: Recognition result status: {result.reason}")
 
+            # Check the result
             if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-                logger.info(f"Speech recognized ({language}): {result.text}")
+                # Log detected language from response properties if available for debugging
+                detected_lang_info = result.properties.get(speechsdk.PropertyId.SpeechServiceResponse_JsonResult, '{}')
+                logger.info(f"SpeechService: Recognized: '{result.text}' (Language info from SDK: {detected_lang_info})")
                 return result.text
             elif result.reason == speechsdk.ResultReason.NoMatch:
-                logger.warning(f"No speech could be recognized ({language}).")
+                logger.warning(f"SpeechService: No speech could be recognized from file: {audio_filename}. Reason: {result.no_match_details}")
                 return None
             elif result.reason == speechsdk.ResultReason.Canceled:
                 cancellation_details = result.cancellation_details
-                logger.error(f"Speech Recognition canceled ({language}): {cancellation_details.reason}")
+                logger.error(f"SpeechService: Speech Recognition canceled: {cancellation_details.reason}")
                 if cancellation_details.reason == speechsdk.CancellationReason.Error:
-                    logger.error(f"Error details: {cancellation_details.error_details}")
+                    logger.error(f"SpeechService: Error details: {cancellation_details.error_details}")
                 return None
-            return None
+            else:
+                 logger.error(f"SpeechService: Unexpected recognition result reason: {result.reason}")
+                 return None
+
         except Exception as e:
-            logger.error(f"Recognition error ({language}): {str(e)}")
+            logger.error(f"SpeechService: Error during recognition for {audio_filename} ({language}): {e}", exc_info=True)
             return None
 
     def synthesize_speech(self, text, output_file, voice='en-US-JennyNeural'):

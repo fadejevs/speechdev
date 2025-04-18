@@ -28,6 +28,7 @@ import { toast } from 'react-hot-toast';
 import axios from 'axios';
 import { CardContent, List, ListItem, ListItemText, Alert } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
+import Chip from '@mui/material/Chip';
 
 const languages = [
   { code: 'en', name: 'English' },
@@ -51,6 +52,7 @@ const EventLivePage = () => {
   const [eventData, setEventData] = useState(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [isRecording, setIsRecording] = useState(false);
   const [audioDevices, setAudioDevices] = useState([]);
@@ -66,8 +68,6 @@ const EventLivePage = () => {
   const [processingAudio, setProcessingAudio] = useState(false);
   const [error, setError] = useState(null);
   const [transcripts, setTranscripts] = useState([]);
-  const [selectedSourceLang, setSelectedSourceLang] = useState('en-US');
-  const [selectedTargetLangs, setSelectedTargetLangs] = useState([]);
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
 
@@ -88,30 +88,74 @@ const EventLivePage = () => {
   const audioChunksRef = useRef([]);
 
   useEffect(() => {
-    const fetchEvent = async () => {
+    const fetchEventDataFromLocal = () => {
+      setLoading(true);
+      setError(null);
+      console.log(`Attempting to load event data for ID: ${id} from localStorage`);
       try {
-        console.log(`Fetching event data for ID: ${id}`);
-        const mockData = {
-          id: id,
-          name: `Event ${id}`,
-          sourceLanguage: 'en-US',
-          targetLanguages: ['es-ES']
+        const savedEvents = localStorage.getItem('eventData'); // Key used in other components
+        if (!savedEvents) {
+          throw new Error('No event data found in localStorage.');
+        }
+
+        const events = JSON.parse(savedEvents);
+        // Find the specific event by ID. Ensure type consistency if needed (e.g., toString()).
+        const currentEvent = events.find(e => e.id.toString() === id.toString());
+
+        if (!currentEvent) {
+          throw new Error(`Event with ID ${id} not found in localStorage.`);
+        }
+
+        // --- Map localStorage structure to expected state structure ---
+        // Adjust these keys based on how data is actually stored in localStorage
+        // by your event creation/editing components.
+        const fetchedData = {
+            id: currentEvent.id,
+            name: currentEvent.title || `Event ${currentEvent.id}`, // Use 'title' or 'name' as appropriate
+            description: currentEvent.description,
+            location: currentEvent.location,
+            date: currentEvent.timestamp, // Use 'timestamp' or 'date'
+            type: currentEvent.type,
+            // CRITICAL: Ensure these keys match exactly what's in localStorage
+            sourceLanguage: currentEvent.sourceLanguages?.[0] || currentEvent.sourceLanguage, // Handle array vs single value
+            targetLanguages: currentEvent.targetLanguages || [], // Ensure it's an array
+            recordEvent: currentEvent.recordEvent
         };
-        console.log("Fetched Event Data:", mockData);
-        setEventData(mockData);
-        setSelectedSourceLang(mockData.sourceLanguage || 'en-US');
-        setSelectedTargetLangs(mockData.targetLanguages || ['es-ES']);
+        // --- End Mapping ---
+
+
+        if (!fetchedData.sourceLanguage || !fetchedData.targetLanguages) {
+            console.error('Loaded data is missing required language fields:', fetchedData);
+            throw new Error('Loaded event data from localStorage is incomplete (missing languages).');
+        }
+
+        setEventData(fetchedData);
+        console.log('Loaded Event Data from localStorage:', fetchedData);
+
+        // Set display states based on fetched data
+        setLiveTranscriptionLang(fetchedData.sourceLanguage || '');
+        const initialTranslations = {};
+        (fetchedData.targetLanguages || []).forEach(lang => {
+          initialTranslations[lang] = '';
+        });
+        setLiveTranslations(initialTranslations);
+
       } catch (err) {
-        console.error("Error fetching event data:", err);
-        setError(`Failed to load event details: ${err.message}`);
-        toast.error(`Failed to load event details: ${err.message}`);
+        console.error('Failed to load event details from localStorage:', err);
+        const errorMsg = err.message || 'Failed to load event details from local storage.';
+        setError(errorMsg);
+        toast.error(`Failed to load event details: ${errorMsg}`);
+        setEventData(null); // Clear data on error
+      } finally {
+        setLoading(false);
       }
     };
 
     if (id) {
-      fetchEvent();
+      fetchEventDataFromLocal();
     }
-  }, [id]);
+    // API_BASE_URL is no longer needed as a dependency
+  }, [id]); // Dependency is just the ID now
 
   useEffect(() => {
     const getDevices = async () => {
@@ -160,10 +204,10 @@ const EventLivePage = () => {
       toast.success('WebSocket Connected');
       const roomData = {
           room_id: id,
-          source_language: selectedSourceLang,
-          target_languages: selectedTargetLangs
+          source_language: eventData.sourceLanguage,
+          target_languages: eventData.targetLanguages
       };
-      console.log(`Admin page joining room: ${id} with Langs: ${selectedSourceLang} -> ${selectedTargetLangs.join(', ')}`);
+      console.log(`Admin page joining room: ${id} with Langs: ${eventData.sourceLanguage} -> ${(eventData.targetLanguages || []).join(', ')}`);
       socketRef.current.emit('join_room', roomData);
     });
 
@@ -193,6 +237,13 @@ const EventLivePage = () => {
                 targetLanguage: data.target_language,
                 timestamp: new Date().toISOString()
             }]);
+        } else {
+            console.log('Received non-manual translation result:', data);
+            if (data.original) setLiveTranscription(data.original);
+            if (data.source_language) setLiveTranscriptionLang(data.source_language);
+            if (data.translations) {
+                setLiveTranslations(prev => ({ ...prev, ...data.translations }));
+            }
         }
     });
 
@@ -207,10 +258,10 @@ const EventLivePage = () => {
         socketRef.current.disconnect();
       }
     };
-  }, [id, eventData, selectedSourceLang, selectedTargetLangs]);
+  }, [id, eventData]);
 
   const startRecording = useCallback(async () => {
-    if (isRecording) return;
+    if (isRecording || !eventData) return;
 
     console.log('Checking prerequisites:', {
       device: selectedDevice,
@@ -221,6 +272,7 @@ const EventLivePage = () => {
     if (!selectedDevice || !socketRef.current?.connected || !eventData?.sourceLanguage) {
         console.error('Cannot start recording: Missing device, socket connection, or source language.');
         toast.error('Cannot start recording: Missing device, socket connection, or source language.');
+        setError('Cannot start recording: Missing device, socket connection, or source language.');
         return;
     }
 
@@ -240,9 +292,31 @@ const EventLivePage = () => {
       mediaRecorderRef.current = recorder;
 
       mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        if (event.data.size > 0 && socketRef.current?.connected && eventData) {
           console.log(`Storing audio chunk, size: ${event.data.size}`);
           audioChunksRef.current.push(event.data);
+
+          const reader = new FileReader();
+          reader.onload = () => {
+              const base64Audio = reader.result.split(',')[1];
+              if (socketRef.current?.connected && eventData?.sourceLanguage && eventData?.targetLanguages) {
+                  socketRef.current.emit('audio_chunk', {
+                      room_id: id,
+                      audio_data: base64Audio,
+                      language: eventData.sourceLanguage,
+                      target_languages: eventData.targetLanguages
+                  });
+                  console.log(`Sent audio chunk. Source: ${eventData.sourceLanguage}, Targets: ${eventData.targetLanguages.join(', ')}`);
+              } else {
+                  console.warn("WebSocket not connected or event data missing, cannot send audio chunk.");
+              }
+          };
+          reader.readAsDataURL(event.data);
+
+        } else if (!socketRef.current?.connected) {
+            console.warn("WebSocket disconnected, cannot send audio chunk.");
+        } else if (!eventData) {
+            console.warn("Event data not loaded, cannot send audio chunk with language info.");
         }
       };
 
@@ -267,15 +341,15 @@ const EventLivePage = () => {
         const formData = new FormData();
         const fileExtension = mimeType.split('/')[1].split(';')[0];
         formData.append('audio', audioBlob, `recording-${Date.now()}.${fileExtension}`);
-        formData.append('source_language', selectedSourceLang);
-        formData.append('target_languages', JSON.stringify(selectedTargetLangs));
+        formData.append('source_language', eventData.sourceLanguage);
+        formData.append('target_languages', JSON.stringify(eventData.targetLanguages));
 
         streamRef.current?.getTracks().forEach(track => track.stop());
         streamRef.current = null;
         console.log('Stream tracks stopped in onstop.');
 
         try {
-            console.log(`Uploading audio blob (${(audioBlob.size / 1024).toFixed(2)} KB) type: ${mimeType} for ${selectedSourceLang} -> ${selectedTargetLangs.join(', ')}`);
+            console.log(`Uploading audio blob (${(audioBlob.size / 1024).toFixed(2)} KB) type: ${mimeType} for ${eventData.sourceLanguage} -> ${eventData.targetLanguages.join(', ')}`);
             const endpoint = `${API_BASE_URL}/speech/transcribe-and-translate`;
             console.log(`Sending POST request to: ${endpoint}`);
 
@@ -287,16 +361,16 @@ const EventLivePage = () => {
 
             if (response.data && response.data.original) {
                  setLiveTranscription(response.data.original);
-                 setLiveTranscriptionLang(response.data.source_language || selectedSourceLang);
+                 setLiveTranscriptionLang(response.data.source_language || eventData.sourceLanguage);
                  
                  const translations = response.data.translations || {};
                  setLiveTranslations(translations);
                  
                  const newTranscriptEntry = {
                      original: response.data.original,
-                     translated: translations,
-                     sourceLanguage: response.data.source_language || selectedSourceLang,
-                     targetLanguages: selectedTargetLangs,
+                     translations: translations,
+                     sourceLanguage: response.data.source_language || eventData.sourceLanguage,
+                     targetLanguages: eventData.targetLanguages,
                      timestamp: new Date().toISOString()
                  };
                  setTranscripts(prev => [...prev, newTranscriptEntry]);
@@ -311,9 +385,9 @@ const EventLivePage = () => {
                 setLiveTranslations({});
                 setTranscripts(prev => [...prev, {
                     original: "[No speech recognized]",
-                    translated: {},
-                    sourceLanguage: selectedSourceLang,
-                    targetLanguages: selectedTargetLangs,
+                    translations: {},
+                    sourceLanguage: eventData.sourceLanguage,
+                    targetLanguages: eventData.targetLanguages,
                     timestamp: new Date().toISOString()
                 }]);
             } else {
@@ -351,7 +425,7 @@ const EventLivePage = () => {
       toast.error(`Could not start recording: ${err.message}`);
       setIsRecording(false);
     }
-  }, [selectedDevice, id, eventData, socketRef, streamRef, selectedSourceLang, selectedTargetLangs, API_BASE_URL, isRecording]);
+  }, [selectedDevice, id, eventData, socketRef, streamRef, API_BASE_URL, isRecording]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
@@ -506,8 +580,33 @@ const EventLivePage = () => {
     }
   };
 
-  if (!eventData && !error) {
-      return <Box sx={{ p: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}><CircularProgress /></Box>;
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>Loading Event Details...</Typography>
+      </Box>
+    );
+  }
+
+  if (error) {
+     return (
+       <Box sx={{ p: 3 }}>
+         <Alert severity="error">
+           Error loading event details: {error}
+           <Button onClick={() => router.back()} sx={{ ml: 2 }}>Go Back</Button>
+         </Alert>
+       </Box>
+     );
+  }
+
+  if (!eventData) {
+      return (
+          <Box sx={{ p: 3 }}>
+              <Alert severity="warning">Event data could not be loaded or is incomplete.</Alert>
+              <Button onClick={() => router.back()} sx={{ ml: 2 }}>Go Back</Button>
+          </Box>
+      );
   }
 
   return (

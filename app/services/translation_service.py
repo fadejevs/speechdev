@@ -33,8 +33,13 @@ class TranslationService:
                 logger.info(f"Using DeepL for translation with key: {self.deepl_key[:4]}...")
                 self.service_type = 'deepl'
             except Exception as e:
-                logger.error(f"Failed to initialize DeepL translator: {e}")
+                logger.error(f"Failed to initialize DeepL translator: {e}", exc_info=True)
                 self.translator = None
+        elif self.azure_key and self.azure_region:
+            self.service_type = 'azure'
+            logger.info("Using Azure for translation.")
+        else:
+            logger.warning("No translation service (DeepL or Azure) is fully configured.")
         
         logger.info(f"Finished initializing TranslationService. Service type: {self.service_type}")
 
@@ -44,48 +49,98 @@ class TranslationService:
             return lang_code.split('-')[0].upper() # Take first part and uppercase
         return None # Return None if input is invalid
 
-    def translate(self, text, target_lang, source_lang=None):
-        """Translate text using the configured service"""
-        if not text:
-            return ""
-            
-        # Simplify codes *before* logging and comparison
-        simple_source_lang = self._simplify_lang_code(source_lang)
-        simple_target_lang = self._simplify_lang_code(target_lang) # Simplify target too for consistency
+    def _get_deepl_target_lang(self, lang_code):
+        """
+        Converts language code like 'en-US' to DeepL compatible format ('EN-US').
+        Handles potential variations.
+        """
+        if not lang_code:
+            return None
+        # DeepL generally uses uppercase country codes and supports variants.
+        # It accepts 'EN' but prefers 'EN-US'/'EN-GB' to avoid ambiguity/deprecation.
+        parts = lang_code.strip().split('-')
+        base_lang = parts[0].upper()
+        if len(parts) == 2:
+            country = parts[1].upper()
+            # For English, DeepL specifically wants EN-GB or EN-US
+            if base_lang == 'EN' and country in ['US', 'GB']:
+                return f"{base_lang}-{country}" # Return EN-US or EN-GB
+            # For Portuguese, PT-PT or PT-BR
+            if base_lang == 'PT' and country in ['PT', 'BR']:
+                 return f"{base_lang}-{country}" # Return PT-PT or PT-BR
+            # For Chinese, ZH-CN (Simplified) is common
+            if base_lang == 'ZH' and country == 'CN':
+                 return "ZH" # DeepL uses ZH for Simplified Chinese
 
-        # Log with original and simplified codes for clarity
-        logger.info(f"Translating text from {source_lang} ({simple_source_lang}) to {target_lang} ({simple_target_lang}) using {self.service_type} service")
-        
-        # If source and target are the same (using simplified codes for comparison)
-        if simple_source_lang and simple_target_lang and simple_source_lang == simple_target_lang:
-            logger.info(f"Source and target languages simplify to the same code ({simple_source_lang}), skipping translation")
-            return text
-        
-        try:
-            if self.service_type == 'deepl' and self.translator:
-                # Use DeepL for translation with simplified codes
-                logger.debug(f"Calling DeepL: text='{text[:50]}...', target_lang='{simple_target_lang}', source_lang='{simple_source_lang}'")
+            # For other languages, DeepL might accept the full code or just the base.
+            # Let's try passing the full uppercase code first. Check DeepL docs for specifics.
+            # Example: 'lv-LV' -> 'LV-LV'. If this fails, try returning just base_lang.
+            return f"{base_lang}-{country}"
+        else:
+            # Handle base codes like 'en', 'lv'. Convert 'en' -> 'EN-US' (default) or 'EN-GB'.
+            if base_lang == 'EN':
+                logger.warning(f"Received base 'en' target code. Defaulting to 'EN-US'. Use 'en-US' or 'en-GB' for clarity.")
+                return "EN-US" # Or make this configurable?
+            # For others, return the uppercase base code.
+            return base_lang # e.g., 'lv' -> 'LV'
+
+    def translate(self, text, source_lang, target_lang):
+        """Translates text using the configured service."""
+        if not text or not target_lang:
+            logger.warning(f"Translation skipped: Text empty ({not text}), Target lang empty ({not target_lang})")
+            return "" if text else "[No text to translate]" # Return empty if text was empty, else indicate missing target
+
+        # --- Prepare language codes ---
+        # Source language: DeepL often works best with auto-detect (None) or just the base code.
+        deepl_source_lang = source_lang.split('-')[0].upper() if source_lang else None
+        # Target language: Needs specific formatting.
+        deepl_target_lang = self._get_deepl_target_lang(target_lang)
+
+        if not deepl_target_lang:
+             logger.error(f"Could not determine a valid DeepL target language code for input: {target_lang}")
+             return f"[Invalid target language: {target_lang}]"
+        # --- End Preparation ---
+
+        logger.info(f"Translating text from {source_lang} ({deepl_source_lang or 'auto'}) to {target_lang} ({deepl_target_lang}) using {self.service_type} service")
+
+        if self.service_type == 'deepl' and self.translator:
+            try:
+                # --- Use prepared DeepL codes ---
                 result = self.translator.translate_text(
                     text,
-                    target_lang=simple_target_lang, # Use simplified target
-                    source_lang=simple_source_lang  # Use simplified source
+                    source_lang=deepl_source_lang, # Pass 'LV' or None
+                    target_lang=deepl_target_lang  # Pass 'EN-US', 'LV-LV', 'LV' etc.
                 )
-                # Check if result is valid before accessing .text
-                if result and hasattr(result, 'text'):
-                    logger.info(f"DeepL translation successful. Detected source: {result.detected_source_lang}")
-                    return result.text
-                else:
-                    logger.error("DeepL translation returned an unexpected result structure.")
-                    return f"[Translation error: Invalid DeepL response]"
-            else:
-                # Fall back to mock translation
-                logger.warning(f"Using mock translation for {source_lang} to {target_lang}")
-                return f"[Translation to {target_lang}] {text}"
-        except deepl.exceptions.DeepLException as e:
-            # Catch specific DeepL errors for better logging
-            logger.error(f"DeepL API error: {e}", exc_info=True)
-            return f"[Translation error: {e}]"
-        except Exception as e:
-            logger.error(f"Generic translation error: {e}", exc_info=True)
-            # Return a mock translation as fallback
-            return f"[Translation error] {text}"
+                # --- End Use ---
+                translated_text = result.text
+                detected_source = result.detected_source_lang # This is just the base code, e.g., 'LV'
+                logger.info(f"DeepL translation successful. Detected source: {detected_source}. Result: {translated_text[:50]}...")
+                return translated_text
+            except deepl.exceptions.DeepLException as e:
+                # Log the specific DeepL error
+                logger.error(f"DeepL API error during translation from {deepl_source_lang or 'auto'} to {deepl_target_lang}: {e}")
+                return f"[Translation error: {e}]"
+            except Exception as e:
+                logger.error(f"Unexpected error during DeepL translation: {e}", exc_info=True)
+                return "[Unexpected translation error]"
+
+        elif self.service_type == 'azure':
+            # --- Azure Translation Logic ---
+            # Ensure Azure logic also uses source_lang and target_lang correctly
+            logger.warning("Azure translation logic needs implementation or review.")
+            # Example structure (replace with actual Azure SDK calls)
+            try:
+                # azure_source = source_lang # Azure might need 'lv-LV'
+                # azure_target = target_lang # Azure might need 'en-US'
+                # translated_text = call_azure_translation(text, source=azure_source, target=azure_target)
+                # logger.info("Azure translation successful.")
+                # return translated_text
+                return "[Azure translation not implemented]" # Placeholder
+            except Exception as e:
+                logger.error(f"Error during Azure translation: {e}", exc_info=True)
+                return "[Azure translation error]"
+            # --- End Azure ---
+
+        else:
+            logger.warning("No translation service configured or available.")
+            return "[Translation service not available]"
