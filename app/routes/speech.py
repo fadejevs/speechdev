@@ -122,36 +122,41 @@ def transcribe_and_translate_audio():
         if recognized_text and target_languages:
             logger.info(f"Translating '{recognized_text[:50]}...' from {source_language} to {target_languages}")
             for target_lang in target_languages:
-                 # Ensure target_lang format is correct for your service (e.g., 'es-ES' vs 'es')
                  try:
-                     translated = translation_service.translate(recognized_text, source_language, target_lang)
+                     translated = translation_service.translate(recognized_text, target_lang, source_language)
                      if translated:
                          translations[target_lang] = translated
                          logger.info(f"Translated to {target_lang}: '{translated[:50]}...'")
                      else:
-                         logger.warning(f"Translation to {target_lang} returned empty result.")
-                         translations[target_lang] = None # Or some error indicator
+                         logger.warning(f"Translation to {target_lang} returned empty or None.")
+                         translations[target_lang] = "[Translation unavailable]" # Or some placeholder
+
                  except Exception as e:
                      logger.error(f"Error translating to {target_lang}: {e}", exc_info=True)
-                     translations[target_lang] = f"[Translation Error: {e}]" # Include error in response
+                     translations[target_lang] = f"[Translation Error: {e}]"
 
         # --- Return Combined Result ---
-        return jsonify({
+        response_data = {
             "original": recognized_text,
             "translations": translations
-        })
+        }
+        logger.info(f"Returning response: {response_data}")
+        return jsonify(response_data)
 
     except Exception as e:
-        # Catch any unexpected errors
+        # Generic catch-all for unexpected errors in the route logic itself
         logger.error(f"Unexpected error during transcribe/translate processing: {e}", exc_info=True)
+        # Ensure cleanup happens even with unexpected errors
+        # Note: The finally block below handles cleanup more reliably
         return jsonify({"error": "An unexpected server error occurred"}), 500
     finally:
         # --- Cleanup Temporary Files ---
+        # This block ensures cleanup happens whether the try block succeeded or failed
         try:
-            if os.path.exists(upload_path):
+            if 'upload_path' in locals() and os.path.exists(upload_path):
                 os.remove(upload_path)
                 logger.debug(f"Cleaned up temporary file: {upload_path}")
-            if os.path.exists(wav_path):
+            if 'wav_path' in locals() and os.path.exists(wav_path):
                 os.remove(wav_path)
                 logger.debug(f"Cleaned up temporary file: {wav_path}")
         except Exception as e:
