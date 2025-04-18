@@ -144,3 +144,90 @@ class TranslationService:
         else:
             logger.warning("No translation service configured or available.")
             return "[Translation service not available]"
+
+    def translate_text(self, text, target_language, source_language=None):
+        """
+        Translate text to the target language.
+        
+        Args:
+            text (str): Text to translate
+            target_language (str): Target language code (e.g., 'en-US', 'lv-LV')
+            source_language (str, optional): Source language code
+            
+        Returns:
+            str: Translated text
+        """
+        if not text:
+            return ""
+        
+        # Convert language codes to format expected by DeepL
+        # DeepL uses two-letter language codes (ISO 639-1)
+        target_lang_code = self._convert_language_code(target_language)
+        source_lang_code = self._convert_language_code(source_language) if source_language else None
+        
+        try:
+            logger.info(f"Translating text from {source_language} ({source_lang_code}) to {target_language} ({target_lang_code}) using {self.service_type} service")
+            
+            if self.service_type == "deepl":
+                # DeepL API call
+                result = self.translator.translate_text(
+                    text,
+                    target_lang=target_lang_code,
+                    source_lang=source_lang_code
+                )
+                return result.text
+            else:
+                # Azure translation or other service
+                # ... existing code ...
+                pass
+                
+        except Exception as e:
+            logger.error(f"DeepL API error during translation from {source_lang_code} to {target_lang_code}: {str(e)}")
+            return f"[Translation error: {str(e)}]"
+
+    def _convert_language_code(self, language_code):
+        """
+        Convert language codes from format like 'en-US' to format required by DeepL ('EN')
+        
+        Args:
+            language_code (str): Language code in format like 'en-US'
+            
+        Returns:
+            str: Language code in format required by translation service
+        """
+        if not language_code:
+            return None
+        
+        # For DeepL, convert to uppercase two-letter code
+        if self.service_type == "deepl":
+            # Map of special cases for DeepL
+            deepl_lang_map = {
+                'en': 'EN',
+                'en-us': 'EN-US',
+                'en-gb': 'EN-GB',
+                'pt': 'PT',
+                'pt-br': 'PT-BR',
+                'pt-pt': 'PT-PT',
+                'zh': 'ZH',
+                'lv': 'LV',
+                'lv-lv': 'LV'  # DeepL might just use 'LV' for Latvian
+            }
+            
+            # Normalize to lowercase for lookup
+            normalized = language_code.lower()
+            
+            # Try the full code first
+            if normalized in deepl_lang_map:
+                return deepl_lang_map[normalized]
+            
+            # Try just the language part (before the hyphen)
+            if '-' in normalized:
+                lang_part = normalized.split('-')[0]
+                if lang_part in deepl_lang_map:
+                    return deepl_lang_map[lang_part]
+                
+            # Default: just use the first two letters uppercase
+            return language_code.split('-')[0].upper()
+        
+        # For other services, return as is or implement specific conversion
+        return language_code
