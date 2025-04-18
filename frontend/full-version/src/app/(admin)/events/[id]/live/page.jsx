@@ -328,6 +328,7 @@ const EventLivePage = () => {
         formData.append('audio', audioBlob, `recording-${Date.now()}.${fileExtension}`);
         formData.append('source_language', eventData.sourceLanguage);
         formData.append('target_languages', JSON.stringify(eventData.targetLanguages));
+        formData.append('room_id', id);
 
         streamRef.current?.getTracks().forEach(track => track.stop());
         streamRef.current = null;
