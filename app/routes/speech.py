@@ -7,6 +7,7 @@ import os
 # import requests # Not needed if using TranslationService
 import tempfile # For temporary file handling
 import json # To parse target languages
+from .. import socketio 
 
 # Remove the direct import of translation module if not used elsewhere
 # from app.routes.translation import simple_translation
@@ -44,6 +45,28 @@ def synthesize_speech_route():
 @speech_bp.route('/transcribe-and-translate', methods=['POST'])
 def transcribe_and_translate_audio():
     logger.info("Received request for /transcribe-and-translate")
+    
+    # --- Get data from request ---
+    if 'audio' not in request.files:
+        logger.warning("No audio file part in the request")
+        return jsonify({"error": "No audio file part"}), 400
+    
+    file = request.files['audio']
+    source_language = request.form.get('source_language')
+    target_languages_str = request.form.get('target_languages', '[]')
+    room_id = request.form.get('room_id') # <<< Make sure we get the room_id
+
+    if not file or file.filename == '':
+        logger.warning("No selected audio file")
+        return jsonify({"error": "No selected file"}), 400
+        
+    if not source_language:
+        logger.warning("Source language not provided")
+        return jsonify({"error": "Source language is required"}), 400
+        
+    if not room_id: # <<< Check if room_id was provided
+        logger.warning("Room ID not provided in the request")
+        return jsonify({"error": "Room ID is required"}), 400
 
     # Access services
     speech_service = current_app.speech_service
@@ -61,25 +84,8 @@ def transcribe_and_translate_audio():
         logger.error("Translation service not available or not configured.")
         return jsonify({"error": "Translation service not configured"}), 503
 
-    # --- File and Form Data Handling ---
-    if 'audio' not in request.files:
-        logger.error("No audio file part in the request")
-        return jsonify({"error": "No audio file part"}), 400
-
-    file = request.files['audio']
-    source_language = request.form.get('source_language')
-    target_languages_json = request.form.get('target_languages', '[]') # Expecting a JSON string array
-
-    if not file or file.filename == '':
-        logger.error("No selected audio file")
-        return jsonify({"error": "No selected file"}), 400
-
-    if not source_language:
-        logger.error("Missing 'source_language' in form data")
-        return jsonify({"error": "Missing 'source_language'"}), 400
-
     try:
-        target_languages = json.loads(target_languages_json)
+        target_languages = json.loads(target_languages_str)
         if not isinstance(target_languages, list):
             raise ValueError("target_languages should be a list")
     except (json.JSONDecodeError, ValueError) as e:
@@ -136,20 +142,27 @@ def transcribe_and_translate_audio():
                 logger.error(f"Error translating to {target_language}: {str(e)}")
                 translations[target_language] = f"[Translation error: {str(e)}]"
         
-        # --- Return Combined Result ---
-        response_data = {
-            "original": recognized_text,
-            "translations": translations
+        # --- Prepare final data ---
+        final_data = {
+            'original': recognized_text,
+            'source_language': source_language,
+            'translations': translations
         }
-        logger.info(f"Returning response: {response_data}")
-        return jsonify(response_data)
+        
+        # --- Emit result via Socket.IO ---
+        logger.info(f"Emitting translation_result to room: {room_id}")
+        socketio.emit('translation_result', final_data, room=room_id) # <<< THIS IS THE CRUCIAL LINE
+        logger.info(f"Successfully emitted translation_result to room: {room_id}")
+
+        # --- Return HTTP response ---
+        logger.info(f"Returning HTTP response: {final_data}")
+        return jsonify(final_data), 200
 
     except Exception as e:
-        # Generic catch-all for unexpected errors in the route logic itself
-        logger.error(f"Unexpected error during transcribe/translate processing: {e}", exc_info=True)
-        # Ensure cleanup happens even with unexpected errors
-        # Note: The finally block below handles cleanup more reliably
-        return jsonify({"error": "An unexpected server error occurred"}), 500
+        logger.exception(f"An error occurred during transcription/translation for room {room_id}: {e}")
+        # Optionally emit an error event
+        socketio.emit('translation_error', {'error': str(e)}, room=room_id)
+        return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
     finally:
         # --- Cleanup Temporary Files ---
         # This block ensures cleanup happens whether the try block succeeded or failed

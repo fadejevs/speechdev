@@ -121,35 +121,41 @@ const BroadcastPage = () => {
 
   // WebSocket Connection useEffect
   useEffect(() => {
+    const broadcastId = id;
     const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
     socketRef.current = io(socketUrl, {
-        transports: ['polling'], // Match server config
         reconnectionAttempts: 5,
-        timeout: 10000
+        reconnectionDelay: 1000,
     });
 
-    socketRef.current.on('connect', () => {
-      console.log('Broadcast WebSocket connected:', socketRef.current.id);
+    const socket = socketRef.current;
+
+    socket.on('connect', () => {
+      console.log(`Socket connected: ${socket.id}`);
+      if (broadcastId) {
+        console.log(`Attempting to join room: ${broadcastId}`);
+        socket.emit('join_room', { room: broadcastId });
+      } else {
+        console.error('Broadcast ID is missing from URL, cannot join room.');
+      }
       setSocketConnected(true);
-      socketRef.current.emit('join_room', { room_id: id });
-      console.log(`Broadcast page joined room: ${id}`);
     });
 
-    socketRef.current.on('disconnect', (reason) => {
+    socket.on('disconnect', (reason) => {
       console.log('Broadcast WebSocket disconnected:', reason);
       setSocketConnected(false);
     });
 
-    socketRef.current.on('connect_error', (error) => {
+    socket.on('connect_error', (error) => {
       console.error('Broadcast WebSocket connection error:', error);
       setSocketConnected(false);
     });
 
-    socketRef.current.on('room_joined', (data) => {
+    socket.on('room_joined', (data) => {
       console.log('Successfully joined room:', data.room_id);
     });
 
-    socketRef.current.on('translation_result', (data) => {
+    socket.on('translation_result', (data) => {
       console.log('Received translation result:', data);
       
       // Update transcription if original text exists
@@ -164,10 +170,11 @@ const BroadcastPage = () => {
       }
       
       // Update translations if they exist
-      if (data.translations && Object.keys(data.translations).length > 0) {
+      if (data.translations) {
         console.log('Setting liveTranslations to:', data.translations);
         setLiveTranslations(prev => {
           const updated = { ...prev, ...data.translations };
+          console.log('Updated liveTranslations state:', updated);
           return updated;
         });
       }
@@ -182,23 +189,21 @@ const BroadcastPage = () => {
       }, 100);
     });
 
-    socketRef.current.on('translation_error', (error) => {
+    socket.on('translation_error', (error) => {
         console.error('Translation error:', error);
     });
 
-    socketRef.current.on('error', (error) => {
+    socket.on('error', (error) => {
       console.error('Socket error:', error);
     });
 
-    socketRef.current.onAny((event, ...args) => {
+    socket.onAny((event, ...args) => {
       console.log(`[Socket Debug] Event: ${event}`, args);
     });
 
     return () => {
-      if (socketRef.current) {
-        console.log('Disconnecting broadcast WebSocket...');
-        socketRef.current.disconnect();
-      }
+      console.log('Disconnecting socket...');
+      socket.disconnect();
     };
   }, [id]);
 
