@@ -212,13 +212,19 @@ const EventLivePage = () => {
   const startRecording = useCallback(async () => {
     if (isRecording) return;
 
-    if (!selectedDevice || !socketRef.current?.connected || !eventData?.sourceLanguages?.[0]) {
+    console.log('Checking prerequisites:', {
+      device: selectedDevice,
+      socketConnected: socketRef.current?.connected,
+      sourceLang: eventData?.sourceLanguage
+    });
+
+    if (!selectedDevice || !socketRef.current?.connected || !eventData?.sourceLanguage) {
         console.error('Cannot start recording: Missing device, socket connection, or source language.');
+        toast.error('Cannot start recording: Missing device, socket connection, or source language.');
         return;
     }
 
     console.log(`Attempting to start recording with deviceId: ${selectedDevice}`);
-    setProcessingAudio(true);
 
     audioChunksRef.current = [];
     setError(null);
@@ -345,7 +351,7 @@ const EventLivePage = () => {
       toast.error(`Could not start recording: ${err.message}`);
       setIsRecording(false);
     }
-  }, [selectedDevice, id, eventData, socketRef, streamRef, selectedSourceLang, selectedTargetLangs, API_BASE_URL]);
+  }, [selectedDevice, id, eventData, socketRef, streamRef, selectedSourceLang, selectedTargetLangs, API_BASE_URL, isRecording]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
@@ -782,21 +788,7 @@ const EventLivePage = () => {
         </Box>
       </Box>
 
-      <Box sx={{ mt: 4 }}>
-        <Typography variant="h6">Transcripts</Typography>
-        {transcripts.length === 0 ? (
-          <Typography color="text.secondary">No transcripts yet</Typography>
-        ) : (
-          transcripts.map((transcript, index) => (
-            <Card key={index} sx={{ mb: 2, p: 2 }}>
-              <Typography variant="subtitle1">Original ({transcript.sourceLanguage}):</Typography>
-              <Typography paragraph>{transcript.original}</Typography>
-              <Typography variant="subtitle1">Translated ({transcript.targetLanguage}):</Typography>
-              <Typography paragraph>{transcript.translated}</Typography>
-            </Card>
-          ))
-        )}
-      </Box>
+  
 
       <Dialog 
         open={shareDialogOpen} 
@@ -883,15 +875,6 @@ const EventLivePage = () => {
           </Box>
         </Box>
       </Dialog>
-
-      <Button 
-        variant="contained" 
-        color="info" 
-        onClick={testEndpoints}
-        sx={{ mt: 2 }}
-      >
-        Test API Endpoints
-      </Button>
     </Box>
   );
 };
