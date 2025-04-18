@@ -108,7 +108,7 @@ def transcribe_and_translate_audio():
 
         # --- Speech Recognition ---
         logger.info(f"Starting speech recognition for language: {source_language} using file: {wav_path}")
-        recognized_text = speech_service.recognize_speech(wav_path) # Pass language if needed by service
+        recognized_text = speech_service.recognize_speech(wav_path, source_language) # Pass language if needed by service
 
         if recognized_text is None: # Check if service returns None on failure
             logger.warning("Speech recognition did not return text.")
@@ -123,7 +123,7 @@ def transcribe_and_translate_audio():
             logger.info(f"Translating '{recognized_text[:50]}...' from {source_language} to {target_languages}")
             for target_lang in target_languages:
                  try:
-                     translated = translation_service.translate(recognized_text, target_lang, source_language)
+                     translated = translation_service.translate(recognized_text, source_language, target_lang)
                      if translated:
                          translations[target_lang] = translated
                          logger.info(f"Translated to {target_lang}: '{translated[:50]}...'")
