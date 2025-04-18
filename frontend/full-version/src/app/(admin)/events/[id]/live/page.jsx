@@ -210,18 +210,37 @@ const EventLivePage = () => {
   const startRecording = useCallback(async () => {
     if (isRecording) return;
 
+    if (!selectedDevice || !socketRef.current?.connected || !eventData?.sourceLanguages?.[0]) {
+        console.error('Cannot start recording: Missing device, socket connection, or source language.');
+        return;
+    }
+
+    console.log(`Attempting to start recording with deviceId: ${selectedDevice}`);
+    setProcessingAudio(true);
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: selectedDevice } }
+      });
+      streamRef.current = stream;
+
+      const options = { mimeType: 'audio/webm;codecs=opus', timeslice: 1000 };
+      const recorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = recorder;
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          socketRef.current.emit('audio_chunk', {
-            room: id,
-            audio: event.data,
-            language: selectedSourceLang,
-            target_languages: selectedTargetLangs
-          });
+          if (socketRef.current && socketRef.current.connected) {
+             console.log('Sending audio chunk via WebSocket...');
+             socketRef.current.emit('audio_chunk', {
+               room_id: id,
+               audio: event.data,
+               language: eventData?.sourceLanguages?.[0],
+               target_languages: eventData?.targetLanguages || []
+             });
+          } else {
+            console.warn('WebSocket not connected, cannot send audio chunk.');
+          }
         }
       };
 
@@ -308,17 +327,26 @@ const EventLivePage = () => {
         }
       };
 
-      mediaRecorderRef.current.start();
+      mediaRecorderRef.current.onerror = (event) => {
+        console.error('MediaRecorder error:', event.error);
+        setIsRecording(false);
+        setProcessingAudio(false);
+        streamRef.current?.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      };
+
+      mediaRecorderRef.current.start(options.timeslice);
       setIsRecording(true);
-      console.log('MediaRecorder started.');
+      console.log('MediaRecorder started successfully.');
 
     } catch (err) {
       console.error('Error starting recording:', err);
+      setProcessingAudio(false);
       setError(`Could not start recording: ${err.message}. Check microphone permissions.`);
       toast.error(`Could not start recording: ${err.message}`);
       setIsRecording(false);
     }
-  }, [isRecording, selectedSourceLang, selectedTargetLangs, id]);
+  }, [selectedDevice, id, eventData, socketRef, streamRef]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
@@ -626,7 +654,7 @@ const EventLivePage = () => {
           color={isRecording ? "error" : "primary"}
           startIcon={isRecording ? <StopIcon /> : <MicIcon />}
           onClick={isRecording ? stopRecording : startRecording}
-          disabled={!selectedDevice}
+          disabled={!selectedDevice || processingAudio || !eventData}
           sx={{
              px: 3, py: 1, borderRadius: '8px', height: '40px',
              bgcolor: isRecording ? '#F04438' : '#6366F1',
