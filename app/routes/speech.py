@@ -108,12 +108,13 @@ def transcribe_and_translate_audio():
 
         # --- Speech Recognition ---
         logger.info(f"Starting speech recognition for language: {source_language} using file: {wav_path}")
-        recognized_text = speech_service.recognize_speech(wav_path, source_language) # Pass language if needed by service
+        recognized_text = speech_service.recognize_speech_from_file(wav_path, language=source_language) # CORRECT METHOD NAME
 
-        if recognized_text is None: # Check if service returns None on failure
-            logger.warning("Speech recognition did not return text.")
-            # Return an empty result or specific error? Let's return empty for now.
-            return jsonify({"original": None, "translations": {}, "error": "Speech could not be recognized"}), 200 # Use 200 OK but indicate no match
+        if recognized_text is None:
+            logger.warning(f"Speech recognition returned None for {wav_path}")
+            # Decide how to handle - return error or empty transcription?
+            # Let's return an error for clarity
+            return jsonify({"error": "Speech could not be recognized"}), 400 # Or 200 with empty text?
 
         logger.info(f"Recognition successful: '{recognized_text}'")
 
