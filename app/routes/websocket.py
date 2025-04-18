@@ -36,35 +36,30 @@ def on_disconnect():
 
 # --- Add Room Handling ---
 @socketio.on('join_room')
-def on_join_room(data):
-    """Handle a client joining a room."""
-    sid = request.sid
-    room_id = data.get('room_id')
-    
-    if not room_id:
-        logger.warning(f"[{sid}] Client tried to join room but no room_id provided")
+def handle_join_room(data):
+    """Handles a client joining a room."""
+    room = data.get('room')
+    if not room:
+        logger.warning(f"[{request.sid}] Client attempted to join without specifying a room.")
+        # Optionally emit an error back to the client
+        # emit('error', {'message': 'Room must be specified.'})
         return
-    
-    join_room(room_id)
-    logger.info(f"[{sid}] Client joined room: {room_id}")
-    
-    # Emit confirmation back to the client
-    emit('room_joined', {'room_id': room_id})
-    
-    # Add a test message to verify broadcasting works
-    test_data = {
-        'original': 'Test message from server',
-        'translations': {'en-US': 'This is a test translation'},
-        'source_language': 'lv-LV',
-        'target_language': 'en-US',
-        'room_id': room_id,
-        'is_manual': False,
-        'is_final': False
-    }
-    
-    # Broadcast the test message to all clients in the room
-    socketio.emit('translation_result', test_data, room=room_id)
-    logger.info(f"[{sid}] Sent test translation_result to room: {room_id}")
+
+    join_room(room)
+    logger.info(f"[{request.sid}] Client joined room: {room}")
+
+    # REMOVE OR COMMENT OUT THE TEST MESSAGE:
+    # logger.info(f"[{request.sid}] Sent test translation_result to room: {room}")
+    # test_data = {
+    #     'original': 'Test message from the server',
+    #     'source_language': 'en-US',
+    #     'translations': {
+    #         'es-ES': 'Mensaje de prueba del servidor',
+    #         'fr-FR': 'Message test du serveur',
+    #         'lv-LV': 'Testa ziņojums no servera' # Added Latvian test
+    #     }
+    # }
+    # emit('translation_result', test_data, room=room)
 
 
 # --- Remove Recognition Handlers ---
@@ -177,7 +172,7 @@ def on_manual_text(data):
 
 # --- NEW: Audio Chunk Handler ---
 @socketio.on('audio_chunk')
-def on_audio_chunk(data):
+def handle_audio_chunk(data):
     """Handles receiving an audio chunk from a client."""
     sid = request.sid
     room_id = data.get('room_id')
