@@ -43,14 +43,31 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { formatForSpeechRecognition, formatForTranslationTarget } from '@/utils/languageUtils';
 
 const languages = [
-  { code: 'en', name: 'English' },
-  { code: 'lv', name: 'Latvian' },
-  { code: 'lt', name: 'Lithuanian' },
-  { code: 'et', name: 'Estonian' },
-  { code: 'ru', name: 'Russian' },
-  { code: 'fr', name: 'French' },
-  { code: 'de', name: 'German' },
-  { code: 'es', name: 'Spanish' }
+  { code: 'en-US', name: 'English' },
+  { code: 'de-DE', name: 'German' },
+  { code: 'es-ES', name: 'Spanish' },
+  { code: 'fr-FR', name: 'French' },
+  { code: 'it-IT', name: 'Italian' },
+  { code: 'ja-JP', name: 'Japanese' },
+  { code: 'ko-KR', name: 'Korean' },
+  { code: 'pt-BR', name: 'Portuguese' },
+  { code: 'ru-RU', name: 'Russian' },
+  { code: 'zh-CN', name: 'Chinese' },
+  { code: 'lv-LV', name: 'Latvian' },
+  { code: 'lt-LT', name: 'Lithuanian' },
+  { code: 'et-EE', name: 'Estonian' },
+  { code: 'pl-PL', name: 'Polish' },
+  { code: 'nl-NL', name: 'Dutch' },
+  { code: 'cs-CZ', name: 'Czech' },
+  { code: 'da-DK', name: 'Danish' },
+  { code: 'fi-FI', name: 'Finnish' },
+  { code: 'hu-HU', name: 'Hungarian' },
+  { code: 'nb-NO', name: 'Norwegian' },
+  { code: 'ro-RO', name: 'Romanian' },
+  { code: 'sk-SK', name: 'Slovak' },
+  { code: 'sv-SE', name: 'Swedish' },
+  { code: 'tr-TR', name: 'Turkish' },
+  { code: 'uk-UA', name: 'Ukrainian' }
 ];
 
 const EditEventPage = () => {
@@ -292,11 +309,9 @@ const EditEventPage = () => {
     }
   };
 
-  const filteredLanguages = (term) => {
-    return languages.filter(lang => 
-      lang.name.toLowerCase().includes(term.toLowerCase())
-    );
-  };
+  const filteredSourceLanguages = languages.filter(lang => 
+    lang.name.toLowerCase().includes(languageSearch.toLowerCase())
+  );
 
   const handleOpenShareDialog = () => {
     setShareDialogOpen(true);
@@ -707,19 +722,28 @@ const EditEventPage = () => {
                       </Box>
                       
                       <List sx={{ pt: 0 }}>
-                        {languages
-                          .filter(lang => !eventData.sourceLanguages.includes(lang.code) && 
-                            lang.name.toLowerCase().includes(languageSearch.toLowerCase()))
-                          .map(lang => (
-                            <ListItem 
-                              button 
-                              key={lang.code} 
-                              onClick={() => handleAddSourceLanguage(lang.code)}
-                              sx={{ borderRadius: 1 }}
-                            >
-                              <ListItemText primary={lang.name} />
-                            </ListItem>
-                          ))}
+                        {filteredSourceLanguages.map((language) => (
+                          <ListItem 
+                            key={language.code} 
+                            button
+                            onClick={() => handleAddSourceLanguage(language.code)}
+                            sx={{ 
+                              py: 1,
+                              '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
+                            }}
+                          >
+                            <ListItemText 
+                              primary={language.name}
+                              sx={{ 
+                                '& .MuiListItemText-primary': { 
+                                  fontSize: '0.875rem',
+                                  fontWeight: 400,
+                                  color: '#212B36'
+                                }
+                              }}
+                            />
+                          </ListItem>
+                        ))}
                       </List>
                     </Box>
                   </Popover>
@@ -828,66 +852,35 @@ const EditEventPage = () => {
                         }}
                       />
                       <List sx={{ maxHeight: 250, overflow: 'auto', py: 0 }}>
-                        {filteredLanguages(searchTerm).map(lang => {
-                          const isSelected = eventData.targetLanguages.includes(lang.code);
-                          const isSourceLanguage = eventData.sourceLanguages.includes(lang.code);
-                          
-                          return (
-                            <ListItem 
-                              key={lang.code} 
-                              button 
-                              onClick={() => !isSelected && !isSourceLanguage && handleAddLanguage('targetLanguages', lang.code)}
+                        {languages.filter(lang => 
+                          lang.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+                          !eventData.targetLanguages.includes(lang.code)
+                        ).map((language) => (
+                          <ListItem 
+                            key={language.code} 
+                            button
+                            onClick={() => handleAddLanguage('targetLanguages', language.code)}
+                            sx={{ 
+                              py: 1,
+                              '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
+                            }}
+                          >
+                            <ListItemText 
+                              primary={language.name}
                               sx={{ 
-                                borderRadius: '6px',
-                                py: 0.75,
-                                opacity: isSelected || isSourceLanguage ? 0.5 : 1,
-                                pointerEvents: isSelected || isSourceLanguage ? 'none' : 'auto',
-                                bgcolor: isSelected ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
-                                '&:hover': { 
-                                  bgcolor: isSelected || isSourceLanguage ? 
-                                    (isSelected ? 'rgba(99, 102, 241, 0.08)' : 'transparent') : 
-                                    'rgba(99, 102, 241, 0.08)' 
+                                '& .MuiListItemText-primary': { 
+                                  fontSize: '0.875rem',
+                                  fontWeight: 400,
+                                  color: '#212B36'
                                 }
                               }}
-                            >
-                              <ListItemText 
-                                primary={lang.name} 
-                                primaryTypographyProps={{ 
-                                  fontSize: '14px',
-                                  fontWeight: 500,
-                                  color: isSelected ? '#6366f1' : (isSourceLanguage ? '#637381' : '#212B36')
-                                }}
-                              />
-                              {isSelected && (
-                                <Box 
-                                  component="span" 
-                                  sx={{ 
-                                    ml: 1, 
-                                    color: '#6366f1',
-                                    fontSize: '12px',
-                                    fontWeight: 500
-                                  }}
-                                >
-                                  (Target)
-                                </Box>
-                              )}
-                              {isSourceLanguage && (
-                                <Box 
-                                  component="span" 
-                                  sx={{ 
-                                    ml: 1, 
-                                    color: '#637381',
-                                    fontSize: '12px',
-                                    fontWeight: 500
-                                  }}
-                                >
-                                  (Source)
-                                </Box>
-                              )}
-                            </ListItem>
-                          );
-                        })}
-                        {filteredLanguages(searchTerm).length === 0 && (
+                            />
+                          </ListItem>
+                        ))}
+                        {languages.filter(lang => 
+                          lang.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+                          !eventData.targetLanguages.includes(lang.code)
+                        ).length === 0 && (
                           <ListItem sx={{ py: 1 }}>
                             <ListItemText 
                               primary="No languages found" 

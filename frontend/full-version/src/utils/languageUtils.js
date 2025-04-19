@@ -35,16 +35,19 @@ const languageFormats = {
     'tr': 'tr-TR',
     'zh': 'zh-CN',
     
-    // Languages that might not be fully supported
-    'lv': 'en-US', // Latvian - fallback to English
-    'lt': 'en-US', // Lithuanian - fallback to English
-    'et': 'en-US', // Estonian - fallback to English
-    'uk': 'en-US', // Ukrainian - fallback to English
-    'bg': 'en-US', // Bulgarian - fallback to English
-    'hr': 'en-US', // Croatian - fallback to English
-    'ro': 'en-US', // Romanian - fallback to English
-    'sk': 'en-US', // Slovak - fallback to English
-    'sl': 'en-US', // Slovenian - fallback to English
+    // Baltic languages
+    'lv': 'lv-LV',
+    'lt': 'lt-LT',
+    'et': 'et-EE',
+    
+    // Other European languages
+    'bg': 'bg-BG',
+    'hr': 'hr-HR',
+    'hu': 'hu-HU',
+    'ro': 'ro-RO',
+    'sk': 'sk-SK',
+    'sl': 'sl-SI',
+    'uk': 'uk-UA',
   },
   
   // Translation formats (DeepL)

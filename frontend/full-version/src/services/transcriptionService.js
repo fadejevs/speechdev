@@ -78,23 +78,6 @@ const transcriptionService = {
     }
   },
   
-  // Text-to-speech conversion using your existing backend
-  textToSpeech: async (text, voice) => {
-    try {
-      const response = await axios.post(`${API_BASE_URL}/text-to-speech`, {
-        text,
-        voice
-      }, {
-        responseType: 'blob'
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('Text-to-speech error:', error);
-      throw error;
-    }
-  },
-  
   // Get transcript history
   getTranscriptHistory: async () => {
     try {
