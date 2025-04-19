@@ -40,6 +40,7 @@ import DialogActions from '@mui/material/DialogActions';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import { formatForSpeechRecognition, formatForTranslationTarget } from '@/utils/languageUtils';
 
 const languages = [
   { code: 'en', name: 'English' },
@@ -153,49 +154,68 @@ const EditEventPage = () => {
   };
 
   const handleLanguageChange = (field, language, action) => {
-    setEventData(prev => {
-      if (action === 'add') {
-        if (field === 'sourceLanguages') {
-          return { 
-            ...prev, 
-            [field]: [language]
-          };
-        } else {
-          return { 
-            ...prev, 
-            [field]: [...prev[field], language] 
-          };
-        }
-      } else if (action === 'remove') {
-        return { 
-          ...prev, 
-          [field]: prev[field].filter(lang => lang !== language) 
-        };
+    if (action === 'remove') {
+      setEventData(prev => ({
+        ...prev,
+        [field]: prev[field].filter(lang => lang !== language)
+      }));
+    } else if (action === 'add') {
+      // Format the language based on the field
+      let formattedLanguage = language;
+      if (field === 'sourceLanguages') {
+        formattedLanguage = formatForSpeechRecognition(language);
+      } else if (field === 'targetLanguages') {
+        formattedLanguage = formatForTranslationTarget(language);
       }
-      return prev;
-    });
+      
+      setEventData(prev => ({
+        ...prev,
+        [field]: [...prev[field], formattedLanguage]
+      }));
+    }
   };
 
-  const handleSaveChanges = () => {
+  const handleSaveChanges = async () => {
     setIsSaving(true);
     
-    // Save changes to localStorage
     try {
-      const savedEvents = localStorage.getItem('eventData');
-      const events = savedEvents ? JSON.parse(savedEvents) : [];
+      // Format all source languages
+      const formattedSourceLanguages = eventData.sourceLanguages.map(lang => 
+        formatForSpeechRecognition(lang)
+      );
       
-      const updatedEvents = events.map(event => {
-        if (event.id.toString() === id) {
+      // Format all target languages
+      const formattedTargetLanguages = eventData.targetLanguages.map(lang => 
+        formatForTranslationTarget(lang)
+      );
+      
+      console.log('Saving event with formatted languages:');
+      console.log('Source languages:', formattedSourceLanguages);
+      console.log('Target languages:', formattedTargetLanguages);
+      
+      // Create a new object with formatted languages
+      const formattedEventData = {
+        ...eventData,
+        sourceLanguages: formattedSourceLanguages,
+        targetLanguages: formattedTargetLanguages
+      };
+      
+      // Get existing events from localStorage
+      const existingEvents = JSON.parse(localStorage.getItem('eventData') || '[]');
+      
+      // Update the event with the formatted data
+      const updatedEvents = existingEvents.map(event => {
+        if (event.id === id) {
           return {
             ...event,
-            title: eventData.name,
-            description: eventData.description,
-            location: eventData.location,
-            timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : event.timestamp,
-            type: eventData.type || event.type,
-            sourceLanguages: eventData.sourceLanguages,
-            targetLanguages: eventData.targetLanguages,
-            recordEvent: eventData.recordEvent
+            name: formattedEventData.name || event.name,
+            description: formattedEventData.description || event.description,
+            location: formattedEventData.location || event.location,
+            date: formattedEventData.date || event.date,
+            type: formattedEventData.type || event.type,
+            sourceLanguages: formattedEventData.sourceLanguages,
+            targetLanguages: formattedEventData.targetLanguages,
+            recordEvent: formattedEventData.recordEvent
           };
         }
         return event;
@@ -216,9 +236,14 @@ const EditEventPage = () => {
   };
 
   const handleAddSourceLanguage = (language) => {
+    console.log(`Adding source language: ${language}`);
+    // Format the language code for speech recognition
+    const formattedLanguage = formatForSpeechRecognition(language);
+    console.log(`Formatted source language: ${formattedLanguage}`);
+    
     setEventData(prev => ({
       ...prev,
-      sourceLanguages: [language]
+      sourceLanguages: [formattedLanguage]
     }));
     
     setSourceMenuAnchorEl(null);
@@ -243,10 +268,23 @@ const EditEventPage = () => {
   };
 
   const handleAddLanguage = (field, language) => {
+    console.log(`Adding language to ${field}: ${language}`);
+    
+    // Format the language based on the field
+    let formattedLanguage = language;
+    if (field === 'sourceLanguages') {
+      formattedLanguage = formatForSpeechRecognition(language);
+      console.log(`Formatted source language: ${formattedLanguage}`);
+    } else if (field === 'targetLanguages') {
+      formattedLanguage = formatForTranslationTarget(language);
+      console.log(`Formatted target language: ${formattedLanguage}`);
+    }
+    
     setEventData(prev => ({
       ...prev,
-      [field]: [...prev[field], language]
+      [field]: [...prev[field], formattedLanguage]
     }));
+    
     if (field === 'sourceLanguages') {
       handleCloseSourceMenu();
     } else {
@@ -270,6 +308,22 @@ const EditEventPage = () => {
   };
 
   const handleOpenStartDialog = () => {
+    // Format languages before opening the start dialog
+    const formattedSourceLanguages = eventData.sourceLanguages.map(lang => 
+      formatForSpeechRecognition(lang)
+    );
+    
+    const formattedTargetLanguages = eventData.targetLanguages.map(lang => 
+      formatForTranslationTarget(lang)
+    );
+    
+    // Update the event data with formatted languages
+    setEventData(prev => ({
+      ...prev,
+      sourceLanguages: formattedSourceLanguages,
+      targetLanguages: formattedTargetLanguages
+    }));
+    
     setStartDialogOpen(true);
   };
 
