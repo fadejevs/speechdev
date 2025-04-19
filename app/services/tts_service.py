@@ -131,7 +131,20 @@ class TTSService:
             # Check result
             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
                 logger.info(f"TTS completed successfully, saved to: {output_path}")
-                return output_path
+                
+                # Verify file exists and has content
+                if os.path.exists(output_path):
+                    file_size = os.path.getsize(output_path)
+                    logger.info(f"TTS file created: {output_path}, size: {file_size} bytes")
+                    
+                    # Ensure file has proper permissions
+                    os.chmod(output_path, 0o644)  # Read/write for owner, read for others
+                    logger.info(f"Set permissions on TTS file: {output_path}")
+                    
+                    return output_path
+                else:
+                    logger.error(f"TTS file not found after synthesis: {output_path}")
+                    return None
             else:
                 logger.error(f"TTS failed: {result.reason}")
                 return None

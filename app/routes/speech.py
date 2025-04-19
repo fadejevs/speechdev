@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app, send_from_directory
+from flask import Blueprint, request, jsonify, current_app
 import logging
 # import azure.cognitiveservices.speech as speechsdk # Not needed if using SpeechService
 from pydub import AudioSegment
@@ -253,13 +253,3 @@ def translate_text_route():
 # Remove the old simple_translation function if it's no longer needed
 # def simple_translation(text, target_language):
 #     ... 
-
-@speech_bp.route('/tts/<filename>', methods=['GET'])
-def get_tts_file(filename):
-    """Serve TTS audio files."""
-    logger.info(f"Request for TTS file: {filename}")
-    try:
-        return send_from_directory('temp_audio', filename)
-    except Exception as e:
-        logger.error(f"Error serving TTS file {filename}: {str(e)}")
-        return f"Error: {str(e)}", 404 

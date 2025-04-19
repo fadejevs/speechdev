@@ -87,9 +87,6 @@ const BroadcastPage = () => {
   const [socketConnected, setSocketConnected] = useState(false);
   const socketRef = useRef(null);
 
-  // Add this to your state
-  const [ttsFiles, setTtsFiles] = useState({});
-
   useEffect(() => {
     // Fetch event data from localStorage (in production this would be an API call)
     const storedEvents = localStorage.getItem('eventData');
@@ -182,14 +179,6 @@ const BroadcastPage = () => {
         });
       }
       
-      // Update TTS files if they exist
-      if (data.tts_files) {
-        console.log('Setting ttsFiles to:', data.tts_files);
-        setTtsFiles(data.tts_files);
-      } else {
-        console.log('No TTS files in the data');
-      }
-      
       // Log the current state after updates
       setTimeout(() => {
         console.log('State after update:', {
@@ -252,26 +241,6 @@ const BroadcastPage = () => {
   const handleChangeTranslationLanguage = (language) => {
     setTranslationLanguage(language);
     handleTranslationMenuClose();
-  };
-
-  // Add audio player functionality
-  const playTranslationAudio = (language) => {
-    console.log(`Attempting to play audio for ${language}`);
-    console.log(`TTS files available:`, ttsFiles);
-    
-    if (ttsFiles && ttsFiles[language]) {
-      // Make sure to use the full backend URL
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      const audioUrl = `${backendUrl}/speech/tts/${ttsFiles[language]}`;
-      console.log(`Playing audio from URL: ${audioUrl}`);
-      
-      const audio = new Audio(audioUrl);
-      audio.play().catch(error => {
-        console.error(`Error playing audio for ${language}:`, error);
-      });
-    } else {
-      console.log(`No TTS file available for ${language}`);
-    }
   };
 
   if (loading) {
@@ -426,26 +395,13 @@ const BroadcastPage = () => {
           <Box sx={{ px: { xs: 2, sm: 3 }, py: 3, minHeight: '200px' }}>
             {eventData?.targetLanguages?.length > 0 ? (
               Object.keys(liveTranslations).length > 0 ? (
-                Object.entries(liveTranslations).map(([language, translation]) => (
-                  <div key={language} className="mb-4">
-                    <div className="flex items-center mb-1">
-                      <h3 className="text-sm font-medium text-gray-700">{language}</h3>
-                      {ttsFiles && ttsFiles[language] && (
-                        <button 
-                          onClick={() => playTranslationAudio(language)}
-                          className="ml-2 p-1 rounded-full bg-blue-500 text-white hover:bg-blue-600"
-                          title="Play audio"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                    <div className="p-3 bg-white rounded-lg border border-gray-200">
-                      {translation}
-                    </div>
-                  </div>
+                Object.entries(liveTranslations).map(([lang, text]) => (
+                  <Box key={lang} sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      {getFullLanguageName(lang)}:
+                    </Typography>
+                    <Typography variant="body1">{text}</Typography>
+                  </Box>
                 ))
               ) : (
                 <Typography variant="body1" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
