@@ -140,6 +140,21 @@ const EventLivePage = () => {
         });
         setLiveTranslations(initialTranslations);
 
+        // After setting the event data, update the status to "Live"
+        const storedEvents = JSON.parse(localStorage.getItem('eventData') || '[]');
+        const updatedEvents = storedEvents.map(event => {
+          if (event.id === id) {
+            return {
+              ...event,
+              status: 'Live'
+            };
+          }
+          return event;
+        });
+        
+        localStorage.setItem('eventData', JSON.stringify(updatedEvents));
+        console.log('Event marked as Live in localStorage');
+
       } catch (err) {
         console.error('Failed to load event details from localStorage:', err);
         const errorMsg = err.message || 'Failed to load event details from local storage.';
@@ -446,8 +461,24 @@ const EventLivePage = () => {
 
   const handleCompleteEvent = () => {
     if (isRecording) {
-        stopRecording();
+      stopRecording();
     }
+    
+    // Update event status in localStorage
+    const storedEvents = JSON.parse(localStorage.getItem('eventData') || '[]');
+    const updatedEvents = storedEvents.map(event => {
+      if (event.id === id) {
+        return {
+          ...event,
+          status: 'Completed'
+        };
+      }
+      return event;
+    });
+    
+    localStorage.setItem('eventData', JSON.stringify(updatedEvents));
+    console.log('Event marked as completed in localStorage');
+    
     router.push(`/events/${id}/complete`);
   };
 

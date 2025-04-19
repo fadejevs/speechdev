@@ -142,38 +142,42 @@ const AnalyticsDashboard = () => {
     setTranscripts([newEvent, ...transcripts]);
   };
 
-  // Add this useEffect to load events from localStorage on component mount
+  // Add this useEffect to refresh event data from localStorage
   useEffect(() => {
-    try {
-      const savedEvents = localStorage.getItem('eventData');
-      if (savedEvents) {
-        const parsedEvents = JSON.parse(savedEvents);
-        
-        // Ensure all events have default values for empty fields
-        const eventsWithDefaults = parsedEvents.map(event => ({
-          ...event,
-          title: event.title || 'Not specified',
-          timestamp: event.timestamp || 'Not specified',
-          location: event.location || 'Not specified',
-          type: event.type || 'Not specified',
-          description: event.description || 'Not specified',
-          sourceLanguages: event.sourceLanguages || [],
-          targetLanguages: event.targetLanguages || []
-        }));
-        
-        setTranscripts(eventsWithDefaults);
-        
-        // Update localStorage with the normalized data
-        localStorage.setItem('eventData', JSON.stringify(eventsWithDefaults));
-      } else {
-        // Initialize localStorage with mock data if empty
-        localStorage.setItem('eventData', JSON.stringify(initialMockData));
-        setTranscripts(initialMockData);
+    const loadEventsFromLocalStorage = () => {
+      try {
+        const storedEvents = localStorage.getItem('eventData');
+        if (storedEvents) {
+          const parsedEvents = JSON.parse(storedEvents);
+          
+          // Map the stored events to the format expected by the dashboard
+          const formattedEvents = parsedEvents.map(event => ({
+            id: event.id,
+            title: event.name || 'Not specified',
+            timestamp: event.date || 'Not specified',
+            location: event.location || 'Not specified',
+            type: event.type || 'Not specified',
+            sourceLanguages: event.sourceLanguages || [],
+            targetLanguages: event.targetLanguages || [],
+            status: event.status || 'Draft event',
+            description: event.description || 'Not specified'
+          }));
+          
+          setTranscripts(formattedEvents);
+        }
+      } catch (error) {
+        console.error('Error loading events from localStorage:', error);
       }
-    } catch (error) {
-      console.error('Error loading events:', error);
-      setTranscripts(initialMockData);
-    }
+    };
+    
+    // Load events when the component mounts
+    loadEventsFromLocalStorage();
+    
+    // Also set up an interval to refresh the data periodically
+    const intervalId = setInterval(loadEventsFromLocalStorage, 5000);
+    
+    // Clean up the interval when the component unmounts
+    return () => clearInterval(intervalId);
   }, []);
 
   const getStatusChip = (status) => {
@@ -381,6 +385,8 @@ const AnalyticsDashboard = () => {
         }}>Edit</MenuItem>
         <MenuItem onClick={handleDelete}>Delete</MenuItem>
       </Menu>
+
+      
     </Box>
   );
 };

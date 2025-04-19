@@ -58,8 +58,8 @@ def transcribe_and_translate_audio():
     file = request.files['audio']
     source_language = request.form.get('source_language')
     target_languages_str = request.form.get('target_languages', '[]')
-    room_id = request.form.get('room_id') # <<< Make sure we get the room_id
-
+    room_id = request.form.get('room_id')
+    
     if not file or file.filename == '':
         logger.warning("No selected audio file")
         return jsonify({"error": "No selected file"}), 400
@@ -68,25 +68,13 @@ def transcribe_and_translate_audio():
         logger.warning("Source language not provided")
         return jsonify({"error": "Source language is required"}), 400
         
-    if not room_id: # <<< Check if room_id was provided
+    if not room_id:
         logger.warning("Room ID not provided in the request")
         return jsonify({"error": "Room ID is required"}), 400
 
     # Access services
     speech_service = current_app.speech_service
     translation_service = current_app.translation_service
-
-    # --- CORRECTED CHECK ---
-    # Check if the service object exists and has the necessary config attributes
-    if not speech_service or not getattr(speech_service, 'azure_key', None) or not getattr(speech_service, 'azure_region', None):
-         logger.error("Speech service not available or not configured (missing key or region).")
-         # Return 503 Service Unavailable, as the service required isn't ready
-         return jsonify({"error": "Speech service not configured"}), 503
-    # --- END CORRECTED CHECK ---
-
-    if not translation_service or not translation_service.service_type:
-        logger.error("Translation service not available or not configured.")
-        return jsonify({"error": "Translation service not configured"}), 503
 
     try:
         target_languages = json.loads(target_languages_str)
@@ -107,72 +95,48 @@ def transcribe_and_translate_audio():
         logger.info(f"Attempting to convert {upload_path} to WAV format at {wav_path}")
         try:
             audio = AudioSegment.from_file(upload_path)
-            # Optional: Add parameters like frame_rate, channels if needed by Azure
             audio.export(wav_path, format="wav")
             logger.info(f"Audio successfully converted to WAV: {wav_path}")
         except Exception as e:
             logger.error(f"Error converting audio file: {e}", exc_info=True)
-            # Clean up upload before returning
             if os.path.exists(upload_path): os.remove(upload_path)
             return jsonify({"error": f"Audio conversion failed: {e}"}), 500
 
         # --- Speech Recognition ---
         logger.info(f"Starting speech recognition for language: {source_language} using file: {wav_path}")
         
-        # Use the correct method name from the logs
         recognized_text = speech_service.recognize_speech_from_file(wav_path, source_language)
         
         if not recognized_text:
             logger.warning(f"No text recognized from audio file: {wav_path}")
             return jsonify({"error": "No speech could be recognized"}), 400
-            
-        logger.info(f"Recognition successful: '{recognized_text}'")
 
         # --- Translation ---
-        logger.info(f"Translating '{recognized_text[:20]}....' from {source_language} to {target_languages}")
-        
         translations = {}
+        
         for target_language in target_languages:
+            if target_language == source_language:
+                translations[target_language] = recognized_text
+                continue
+                
             try:
-                # Fix: source_language should be the source, target_language should be the target
                 translated_text = translation_service.translate_text(
-                    recognized_text, 
-                    target_language=target_language,  # This is the target language
-                    source_language=source_language   # This is the source language
+                    recognized_text,
+                    source_language,
+                    target_language
                 )
-                logger.info(f"Translated to {target_language}: '{translated_text[:40]}...'")
                 translations[target_language] = translated_text
+                logger.info(f"Translated to {target_language}: {translated_text[:50]}...")
             except Exception as e:
                 logger.error(f"Error translating to {target_language}: {str(e)}")
                 translations[target_language] = f"[Translation error: {str(e)}]"
         
-        # --- Generate TTS for translations ---
-        tts_files = {}
-        for target_language, translated_text in translations.items():
-            # Skip TTS generation if there was a translation error
-            if translated_text.startswith('[Translation error:'):
-                continue
-                
-            try:
-                tts_file_path = tts_service.text_to_speech(
-                    translated_text,
-                    target_language
-                )
-                
-                if tts_file_path:
-                    # Get the filename only (not the full path)
-                    tts_filename = os.path.basename(tts_file_path)
-                    tts_files[target_language] = tts_filename
-                    logger.info(f"Generated TTS for {target_language}: {tts_filename}")
-            except Exception as e:
-                logger.error(f"Error generating TTS for {target_language}: {str(e)}")
-        
         # --- Prepare final data ---
+        # Removed TTS files from the response
         final_data = {
             'original': recognized_text,
             'source_language': source_language,
-            'translations': translations,
-            'tts_files': tts_files  # Add TTS files to the response
+            'translations': translations
         }
         
         # --- Emit result via Socket.IO ---
@@ -186,21 +150,17 @@ def transcribe_and_translate_audio():
 
     except Exception as e:
         logger.exception(f"An error occurred during transcription/translation for room {room_id}: {e}")
-        # Optionally emit an error event
         socketio.emit('translation_error', {'error': str(e)}, room=room_id)
         return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
     finally:
-        # --- Cleanup Temporary Files ---
-        # This block ensures cleanup happens whether the try block succeeded or failed
-        try:
-            if 'upload_path' in locals() and os.path.exists(upload_path):
-                os.remove(upload_path)
-                logger.debug(f"Cleaned up temporary file: {upload_path}")
-            if 'wav_path' in locals() and os.path.exists(wav_path):
-                os.remove(wav_path)
-                logger.debug(f"Cleaned up temporary file: {wav_path}")
-        except Exception as e:
-            logger.error(f"Error cleaning up temporary files: {e}")
+        # Clean up temporary files
+        for path in [upload_path, wav_path]:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                    logger.debug(f"Removed temporary file: {path}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove temporary file {path}: {e}")
 
 # Refactored /translate route using TranslationService
 @speech_bp.route('/translate', methods=['POST'])
