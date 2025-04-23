@@ -8,6 +8,9 @@ from flask_socketio import emit, join_room, leave_room # Import room functions
 import io # Needed for handling audio bytes
 import tempfile # For temporary files
 import traceback # For detailed error logging
+import uuid
+from pydub import AudioSegment
+from io import BytesIO
 
 from app import socketio
 from app.services.speech_service import SpeechService # Assuming SpeechService can handle bytes
@@ -22,6 +25,8 @@ logger = logging.getLogger(__name__)
 # session_lock = threading.Lock()
 # sessions = {}
 
+# Add a dictionary to track active real-time sessions
+active_realtime_sessions = {}
 
 @socketio.on('connect')
 def on_connect():
@@ -33,6 +38,16 @@ def on_disconnect():
     # No specific session cleanup needed anymore for recognition
     logger.info(f"Client disconnected: {request.sid}")
     # If using rooms, Flask-SocketIO handles leaving rooms on disconnect by default
+
+    # Clean up any active real-time session
+    if request.sid in active_realtime_sessions:
+        try:
+            session = active_realtime_sessions[request.sid]
+            session['recognizer'].stop_continuous_recognition_async()
+            del active_realtime_sessions[request.sid]
+            logger.info(f"[{request.sid}] Cleaned up real-time session on disconnect")
+        except Exception as e:
+            logger.error(f"[{request.sid}] Error cleaning up real-time session: {e}", exc_info=True)
 
 # --- Add Room Handling ---
 @socketio.on('join_room')
@@ -321,3 +336,202 @@ def handle_audio_chunk(data):
                 logger.debug(f"[{sid}] Removed temporary audio chunk {temp_file_path}")
             except OSError as e:
                  logger.error(f"[{sid}] Error removing temporary file {temp_file_path}: {e}")
+
+@socketio.on('start_realtime_recognition')
+def on_start_realtime_recognition(data):
+    """Initialize a real-time recognition session"""
+    sid = request.sid
+    room_id = data.get('room_id')
+    language = data.get('language', 'en-US')
+    target_languages = data.get('target_languages', [])
+    
+    logger.info(f"[{sid}] Starting real-time recognition for room '{room_id}' in language '{language}'")
+    
+    if not room_id:
+        emit('error', {'message': 'Room ID is required for real-time recognition'})
+        return
+    
+    # Get services from the app context
+    speech_service = current_app.speech_service
+    
+    # Create a speech recognizer for this session
+    recognizer_data = speech_service.create_recognizer(language)
+    if not recognizer_data:
+        emit('error', {'message': 'Failed to create speech recognizer'})
+        return
+    
+    # Store session data
+    active_realtime_sessions[sid] = {
+        'room_id': room_id,
+        'language': language,
+        'target_languages': target_languages,
+        'recognizer': recognizer_data['recognizer'],
+        'audio_stream': recognizer_data['audio_stream'],
+        'partial_result': '',
+        'last_final_result': ''
+    }
+    
+    # Set up event handlers for the recognizer
+    recognizer = recognizer_data['recognizer']
+    
+    # Handle intermediate results (real-time updates)
+    recognizer.recognizing.connect(lambda evt: handle_recognizing(evt, sid))
+    
+    # Handle final recognition results
+    recognizer.recognized.connect(lambda evt: handle_recognized(evt, sid))
+    
+    # Start continuous recognition
+    recognizer.start_continuous_recognition_async()
+    
+    emit('realtime_recognition_started', {
+        'message': 'Real-time recognition started',
+        'room_id': room_id
+    })
+
+def handle_recognizing(evt, sid):
+    """Handle intermediate recognition results"""
+    if sid not in active_realtime_sessions:
+        return
+    
+    session = active_realtime_sessions[sid]
+    room_id = session['room_id']
+    partial_text = evt.result.text
+    
+    if not partial_text:
+        return
+    
+    # Update the session's partial result
+    session['partial_result'] = partial_text
+    
+    # Emit the partial result to the room
+    socketio.emit('realtime_transcription', {
+        'text': partial_text,
+        'is_final': False,
+        'source_language': session['language'],
+        'room_id': room_id
+    }, room=room_id)
+
+def handle_recognized(evt, sid):
+    """Handle final recognition results"""
+    if sid not in active_realtime_sessions:
+        return
+    
+    session = active_realtime_sessions[sid]
+    room_id = session['room_id']
+    final_text = evt.result.text
+    
+    if not final_text:
+        return
+    
+    # Skip if this is a duplicate of the last final result
+    if final_text == session['last_final_result']:
+        return
+    
+    # Update the session's last final result
+    session['last_final_result'] = final_text
+    
+    # Emit the final transcription
+    socketio.emit('realtime_transcription', {
+        'text': final_text,
+        'is_final': True,
+        'source_language': session['language'],
+        'room_id': room_id
+    }, room=room_id)
+    
+    # Process translations for the final text
+    process_realtime_translation(sid, final_text)
+
+def process_realtime_translation(sid, text):
+    """Translate the recognized text in real-time"""
+    if sid not in active_realtime_sessions:
+        return
+    
+    session = active_realtime_sessions[sid]
+    room_id = session['room_id']
+    source_language = session['language']
+    target_languages = session['target_languages']
+    
+    # Get translation service
+    translation_service = current_app.translation_service
+    
+    # Process translations for each target language
+    translations = {}
+    for target_lang in target_languages:
+        try:
+            translated = translation_service.translate_text(
+                text, 
+                target_lang, 
+                source_language
+            )
+            
+            if translated:
+                translations[target_lang] = translated
+                logger.info(f"[{sid}] Translated to {target_lang}: '{translated[:30]}...'")
+        except Exception as e:
+            logger.error(f"[{sid}] Error translating to {target_lang}: {e}", exc_info=True)
+            translations[target_lang] = f"[Translation error: {str(e)}]"
+    
+    # Emit the translation results
+    socketio.emit('realtime_translation', {
+        'original': text,
+        'translations': translations,
+        'source_language': source_language,
+        'room_id': room_id
+    }, room=room_id)
+
+@socketio.on('realtime_audio_chunk')
+def on_realtime_audio_chunk(data):
+    """Process real-time audio chunks"""
+    sid = request.sid
+    room_id = data.get('room_id')
+    audio_data = data.get('audio_data')
+    
+    if sid not in active_realtime_sessions:
+        logger.warning(f"[{sid}] Received audio chunk but no active real-time session")
+        return
+    
+    session = active_realtime_sessions[sid]
+    
+    if not audio_data:
+        logger.warning(f"[{sid}] Received empty audio chunk")
+        return
+    
+    try:
+        # Decode the base64 audio data
+        audio_bytes = base64.b64decode(audio_data)
+        
+        # Push the audio data to the stream
+        session['audio_stream'].write(audio_bytes)
+        
+    except Exception as e:
+        logger.error(f"[{sid}] Error processing real-time audio chunk: {e}", exc_info=True)
+        emit('error', {'message': f'Error processing audio: {str(e)}'})
+
+@socketio.on('stop_realtime_recognition')
+def on_stop_realtime_recognition(data):
+    """Stop real-time recognition"""
+    sid = request.sid
+    
+    if sid not in active_realtime_sessions:
+        return
+    
+    session = active_realtime_sessions[sid]
+    room_id = session['room_id']
+    
+    try:
+        # Stop the recognizer
+        session['recognizer'].stop_continuous_recognition_async()
+        
+        # Clean up the session
+        del active_realtime_sessions[sid]
+        
+        logger.info(f"[{sid}] Stopped real-time recognition for room '{room_id}'")
+        
+        emit('realtime_recognition_stopped', {
+            'message': 'Real-time recognition stopped',
+            'room_id': room_id
+        })
+        
+    except Exception as e:
+        logger.error(f"[{sid}] Error stopping real-time recognition: {e}", exc_info=True)
+        emit('error', {'message': f'Error stopping recognition: {str(e)}'})

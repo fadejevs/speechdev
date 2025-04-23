@@ -265,6 +265,64 @@ const EventLivePage = () => {
       toast.error(`Error: ${data.message}`);
     });
 
+    socketRef.current.on('realtime_recognition_started', (data) => {
+      console.log('Real-time recognition started:', data);
+      toast.success('Real-time recognition started');
+    });
+
+    socketRef.current.on('realtime_transcription', (data) => {
+      console.log('Real-time transcription:', data);
+      
+      if (data.text) {
+        setLiveTranscription(data.text);
+        
+        if (data.source_language) {
+          setLiveTranscriptionLang(data.source_language);
+        }
+        
+        // If this is a final result, add it to the transcripts
+        if (data.is_final) {
+          setTranscripts(prev => [...prev, {
+            original: data.text,
+            sourceLanguage: data.source_language,
+            timestamp: new Date().toISOString(),
+            translations: {} // This will be filled by the translation event
+          }]);
+        }
+      }
+    });
+
+    socketRef.current.on('realtime_translation', (data) => {
+      console.log('Real-time translation:', data);
+      
+      if (data.translations) {
+        setLiveTranslations(prev => ({ ...prev, ...data.translations }));
+        
+        // Update the latest transcript with translations
+        setTranscripts(prev => {
+          if (prev.length === 0) return prev;
+          
+          const updated = [...prev];
+          const latest = updated[updated.length - 1];
+          
+          // Only update if this translation is for the latest transcript
+          if (latest.original === data.original) {
+            updated[updated.length - 1] = {
+              ...latest,
+              translations: { ...latest.translations, ...data.translations }
+            };
+          }
+          
+          return updated;
+        });
+      }
+    });
+
+    socketRef.current.on('realtime_recognition_stopped', (data) => {
+      console.log('Real-time recognition stopped:', data);
+      toast.info('Real-time recognition stopped');
+    });
+
     return () => {
       if (socketRef.current) {
         console.log('Disconnecting Admin WebSocket');
@@ -273,6 +331,7 @@ const EventLivePage = () => {
     };
   }, [id, eventData]);
 
+  // Replace the startRecording function with this real-time version
   const startRecording = useCallback(async () => {
     if (isRecording || !eventData) return;
 
@@ -291,9 +350,12 @@ const EventLivePage = () => {
       });
       streamRef.current = stream;
 
-      const options = { mimeType: 'audio/webm;codecs=opus', timeslice: 1000 };
+      const options = { mimeType: 'audio/webm;codecs=opus' };
       const recorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = recorder;
+
+      // Set a shorter timeslice (e.g., 500ms) for more frequent chunks
+      const TIMESLICE_MS = 500; // Send audio chunks every 500ms
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0 && socketRef.current?.connected && eventData) {
@@ -303,12 +365,9 @@ const EventLivePage = () => {
           reader.onload = () => {
             const base64Audio = reader.result.split(',')[1];
             if (socketRef.current?.connected) {
-              // Log the data being sent
-              console.log(`Sending audio chunk to room: ${id}`);
-              console.log(`Source language: ${eventData.sourceLanguage}`);
-              console.log(`Target languages: ${JSON.stringify(eventData.targetLanguages)}`);
+              console.log(`Sending real-time audio chunk to room: ${id}`);
               
-              socketRef.current.emit('audio_chunk', {
+              socketRef.current.emit('realtime_audio_chunk', {
                 room_id: id,
                 audio_data: base64Audio,
                 language: eventData.sourceLanguage,
@@ -320,103 +379,32 @@ const EventLivePage = () => {
         }
       };
 
-      mediaRecorderRef.current.onstop = async () => {
-        console.log(`MediaRecorder stopped. Collected ${audioChunksRef.current.length} chunks.`);
-        setProcessingAudio(true);
-        setError(null);
-
-        if (audioChunksRef.current.length === 0) {
-            console.warn("No audio chunks recorded.");
-            setProcessingAudio(false);
-            setIsRecording(false);
-            streamRef.current?.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
-            return;
-        }
-
-        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        audioChunksRef.current = [];
-
-        const formData = new FormData();
-        const fileExtension = mimeType.split('/')[1].split(';')[0];
-        formData.append('audio', audioBlob, `recording-${Date.now()}.${fileExtension}`);
-        formData.append('source_language', eventData.sourceLanguage);
-        formData.append('target_languages', JSON.stringify(eventData.targetLanguages));
-        formData.append('room_id', id);
-
+      // Handle recording stop
+      mediaRecorderRef.current.onstop = () => {
+        console.log('MediaRecorder stopped.');
+        setIsRecording(false);
         streamRef.current?.getTracks().forEach(track => track.stop());
         streamRef.current = null;
-        console.log('Stream tracks stopped in onstop.');
-
-        try {
-            console.log(`Uploading audio blob (${(audioBlob.size / 1024).toFixed(2)} KB) type: ${mimeType} for ${eventData.sourceLanguage} -> ${eventData.targetLanguages.join(', ')}`);
-            const endpoint = `${API_BASE_URL}/speech/transcribe-and-translate`;
-            console.log(`Sending POST request to: ${endpoint}`);
-
-            const response = await axios.post(endpoint, formData, {
-                timeout: 60000
-            });
-
-            console.log('Transcription/Translation Response:', response.data);
-
-            if (response.data && response.data.original) {
-                 setLiveTranscription(response.data.original);
-                 setLiveTranscriptionLang(response.data.source_language || eventData.sourceLanguage);
-                 
-                 const translations = response.data.translations || {};
-                 setLiveTranslations(translations);
-                 
-                 const newTranscriptEntry = {
-                     original: response.data.original,
-                     translations: translations,
-                     sourceLanguage: response.data.source_language || eventData.sourceLanguage,
-                     targetLanguages: eventData.targetLanguages,
-                     timestamp: new Date().toISOString()
-                 };
-                 setTranscripts(prev => [...prev, newTranscriptEntry]);
-                 
-                 toast.success('Transcription successful.');
-            } else if (response.data && response.data.error) {
-                 throw new Error(response.data.error);
-            } else if (!response.data?.original && !response.data?.error) {
-                console.log("Transcription returned no match.");
-                toast.info("Could not recognize speech in the audio.");
-                setLiveTranscription("[No speech recognized]");
-                setLiveTranslations({});
-                setTranscripts(prev => [...prev, {
-                    original: "[No speech recognized]",
-                    translations: {},
-                    sourceLanguage: eventData.sourceLanguage,
-                    targetLanguages: eventData.targetLanguages,
-                    timestamp: new Date().toISOString()
-                }]);
-            } else {
-                 throw new Error('Invalid response structure from server.');
-            }
-
-        } catch (uploadError) {
-            console.error('Error uploading/processing audio:', uploadError);
-            const errorMsg = uploadError.response?.data?.error || uploadError.message || 'Failed to process audio.';
-            setError(`Processing failed: ${errorMsg}`);
-            toast.error(`Processing failed: ${errorMsg}`);
-            setLiveTranscription('');
-            setLiveTranslations({});
-        } finally {
-            setProcessingAudio(false);
-        }
       };
 
       mediaRecorderRef.current.onerror = (event) => {
         console.error('MediaRecorder error:', event.error);
         setIsRecording(false);
-        setProcessingAudio(false);
         streamRef.current?.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       };
 
-      mediaRecorderRef.current.start(1000); // Start with 1-second chunks
+      // Start recording with the specified timeslice
+      mediaRecorderRef.current.start(TIMESLICE_MS);
       setIsRecording(true);
+      
+      // Notify the server that we're starting a real-time session
+      socketRef.current.emit('start_realtime_recognition', {
+        room_id: id,
+        language: eventData.sourceLanguage,
+        target_languages: eventData.targetLanguages
+      });
+      
     } catch (err) {
       console.error('Error starting recording:', err);
       setError(`Failed to start recording: ${err.message}`);
@@ -591,6 +579,30 @@ const EventLivePage = () => {
       }
     }
   };
+
+  // Add a function to stop real-time recognition
+  const stopRealTimeRecording = useCallback(() => {
+    if (!isRecording || !socketRef.current?.connected) return;
+    
+    // Stop the MediaRecorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    // Stop the real-time recognition on the server
+    socketRef.current.emit('stop_realtime_recognition', {
+      room_id: id
+    });
+    
+    // Stop the audio tracks
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    setIsRecording(false);
+    setProcessingAudio(false);
+  }, [id, isRecording]);
 
   if (loading) {
     return (
@@ -775,9 +787,9 @@ const EventLivePage = () => {
         <Button
           variant="contained"
           color={isRecording ? "error" : "primary"}
+          onClick={isRecording ? stopRealTimeRecording : startRecording}
+          disabled={!selectedDevice || processingAudio || !socketConnected}
           startIcon={isRecording ? <StopIcon /> : <MicIcon />}
-          onClick={isRecording ? stopRecording : startRecording}
-          disabled={!selectedDevice || processingAudio || !eventData}
           sx={{
              px: 3, py: 1, borderRadius: '8px', height: '40px',
              bgcolor: isRecording ? '#F04438' : '#6366F1',
@@ -785,7 +797,7 @@ const EventLivePage = () => {
              '&.Mui-disabled': { bgcolor: '#cbd5e1', color: '#94a3b8' }
           }}
         >
-          {isRecording ? 'Stop Recording' : 'Start Recording'}
+          {isRecording ? "Stop Recording" : "Start Recording"}
         </Button>
          {processingAudio && <CircularProgress size={24} />}
          {!socketConnected && <Typography variant="caption" color="error">Connecting...</Typography>}
