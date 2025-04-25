@@ -1,367 +1,405 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'next/navigation';
-import { 
-  Box, 
-  Typography, 
+import React, { useState, useEffect, useRef } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk";
+import {
+  Box,
+  Typography,
   CircularProgress,
-  Paper, 
-  Switch, 
+  Paper,
+  Switch,
   Button,
-  KeyboardArrowDownIcon,
   Menu,
-  MenuItem,
-  Link
-} from '@mui/material';
-import io from 'socket.io-client';
+  MenuItem
+} from "@mui/material";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 
-// Language mapping for full names
+
+// ISO‐code ↔ human name
 const languageMap = {
-  'en': 'English',
-  'lv': 'Latvian',
-  'lt': 'Lithuanian',
-  'ru': 'Russian',
-  'de': 'German',
-  'fr': 'French',
-  'es': 'Spanish',
-  'it': 'Italian',
-  'zh': 'Chinese',
-  'ja': 'Japanese',
-  'ko': 'Korean',
-  'ar': 'Arabic',
-  'hi': 'Hindi',
-  'pt': 'Portuguese',
-  'nl': 'Dutch',
-  'sv': 'Swedish',
-  'fi': 'Finnish',
-  'da': 'Danish',
-  'no': 'Norwegian',
-  'pl': 'Polish',
-  'tr': 'Turkish',
-  'cs': 'Czech',
-  'hu': 'Hungarian',
-  'ro': 'Romanian',
-  'bg': 'Bulgarian',
-  'el': 'Greek',
-  'he': 'Hebrew',
-  'th': 'Thai',
-  'vi': 'Vietnamese',
-  'id': 'Indonesian',
-  'ms': 'Malay',
-  'uk': 'Ukrainian',
-  'sk': 'Slovak',
-  'sl': 'Slovenian',
-  'sr': 'Serbian',
-  'hr': 'Croatian',
-  'et': 'Estonian',
-  'lv': 'Latvian',
-  'lt': 'Lithuanian'
+  en: "English",    lv: "Latvian",    lt: "Lithuanian", ru: "Russian",
+  de: "German",     fr: "French",     es: "Spanish",     it: "Italian",
+  zh: "Chinese",    ja: "Japanese",   ko: "Korean",      ar: "Arabic",
+  hi: "Hindi",      pt: "Portuguese", nl: "Dutch",       sv: "Swedish",
+  fi: "Finnish",    da: "Danish",     no: "Norwegian",   pl: "Polish",
+  tr: "Turkish",    cs: "Czech",      hu: "Hungarian",   ro: "Romanian",
+  bg: "Bulgarian",  el: "Greek",      he: "Hebrew",      th: "Thai",
+  vi: "Vietnamese", id: "Indonesian", ms: "Malay",        uk: "Ukrainian",
+  sk: "Slovak",     sl: "Slovenian",  sr: "Serbian",     hr: "Croatian",
+  et: "Estonian",
+};
+const getFullLanguageName = (code = "") => languageMap[code] || code;
+const getLanguageCode     = (full = "") => {
+  const entry = Object.entries(languageMap).find(([, name]) => name === full);
+  return entry ? entry[0] : full;
 };
 
-// Get full language name
-const getFullLanguageName = (code) => {
-  // If it's already a full name, return it
-  if (code.length > 2) return code;
-  
-  // Otherwise look up the code
-  return languageMap[code.toLowerCase()] || code;
-};
-
-const BroadcastPage = () => {
+export default function BroadcastPage() {
   const { id } = useParams();
-  const [eventData, setEventData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [listenAudio, setListenAudio] = useState(false);
-  const [transcriptionLanguage, setTranscriptionLanguage] = useState('Latvian');
-  const [translationLanguage, setTranslationLanguage] = useState('English');
-  const [transcriptionMenuAnchor, setTranscriptionMenuAnchor] = useState(null);
-  const [translationMenuAnchor, setTranslationMenuAnchor] = useState(null);
-  const [availableSourceLanguages, setAvailableSourceLanguages] = useState(['Latvian']);
-  const [availableTargetLanguages, setAvailableTargetLanguages] = useState(['English', 'Lithuanian']);
 
-  // State for live data from WebSocket
-  const [liveTranscription, setLiveTranscription] = useState('');
-  const [liveTranscriptionLang, setLiveTranscriptionLang] = useState('');
-  const [liveTranslations, setLiveTranslations] = useState({});
-  const [socketConnected, setSocketConnected] = useState(false);
-  const socketRef = useRef(null);
+  // ── 1) Load event & init langs ─────────────────────────────────────────────
+  const [eventData, setEventData] = useState(null);
+  const [loading, setLoading]     = useState(true);
+
+  const [availableSourceLanguages, setAvailableSourceLanguages] = useState([]);
+  const [availableTargetLanguages, setAvailableTargetLanguages] = useState([]);
+
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState("");
+  const [translationLanguage, setTranslationLanguage]     = useState("");
+
+  const [transcriptionMenuAnchor, setTranscriptionMenuAnchor] = useState(null);
+  const [translationMenuAnchor, setTranslationMenuAnchor]     = useState(null);
 
   useEffect(() => {
-    // Fetch event data from localStorage (in production this would be an API call)
-    const storedEvents = localStorage.getItem('eventData');
-    if (storedEvents) {
-      const parsedEvents = JSON.parse(storedEvents);
-      const event = parsedEvents.find(event => event.id === id);
-      if (event) {
-        setEventData(event);
-        
-        // Set source languages
-        if (event.sourceLanguages && event.sourceLanguages.length > 0) {
-          const fullSourceLanguages = event.sourceLanguages.map(lang => getFullLanguageName(lang));
-          setAvailableSourceLanguages(fullSourceLanguages);
-          setTranscriptionLanguage(fullSourceLanguages[0]);
-        }
-        
-        // Set target languages
-        if (event.targetLanguages && event.targetLanguages.length > 0) {
-          const fullTargetLanguages = event.targetLanguages.map(lang => getFullLanguageName(lang));
-          setAvailableTargetLanguages(fullTargetLanguages);
-          setTranslationLanguage(fullTargetLanguages[0]);
+    const stored = localStorage.getItem("eventData");
+    if (stored) {
+      const arr = JSON.parse(stored);
+      const ev  = arr.find((e) => e.id === id);
+      if (ev) {
+        setEventData(ev);
+
+        if (ev.sourceLanguages?.length) {
+          const fulls = ev.sourceLanguages.map(getFullLanguageName);
+          setAvailableSourceLanguages(fulls);
+          setTranscriptionLanguage(fulls[0]);
+          // lang‐code for live label
+          setLiveTranscriptionLang(ev.sourceLanguages[0]);
         }
 
-        // Set initial display languages based on event data if needed
-        if (event.sourceLanguages && event.sourceLanguages.length > 0) {
-          setLiveTranscriptionLang(event.sourceLanguages[0]); 
+        if (ev.targetLanguages?.length) {
+          const fullt = ev.targetLanguages.map(getFullLanguageName);
+          setAvailableTargetLanguages(fullt);
+          setTranslationLanguage(fullt[0]);
         }
       }
     }
     setLoading(false);
   }, [id]);
 
-  // WebSocket Connection useEffect
+  // ── State: live transcript, translations, history ──────────────────────────
+  const [liveTranscription, setLiveTranscription] = useState("");
+  const [liveTranscriptionLang, setLiveTranscriptionLang] = useState("");
+  const [liveTranslations, setLiveTranslations]   = useState({});
+  const [history, setHistory]                     = useState([]);
+
+  // ── Azure recognizer ref + listening flag ─────────────────────────────────
+  const recognizerRef = useRef(null);
+  const [listening, setListening] = useState(false);
+
+  // ── Audio‐input device selection ──────────────────────────────
+  const [audioInputs, setAudioInputs] = useState([]);
+  const [selectedAudioInput, setSelectedAudioInput] = useState("");
+  const [audioMenuAnchor, setAudioMenuAnchor] = useState(null);
+
   useEffect(() => {
-    const broadcastId = id;
-    const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
-    socketRef.current = io(socketUrl, {
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-    });
+    navigator.mediaDevices
+      .enumerateDevices()
+      .then((devices) => {
+        const inputs = devices.filter((d) => d.kind === "audioinput");
+        setAudioInputs(inputs);
+        if (inputs[0]) setSelectedAudioInput(inputs[0].deviceId);
+      })
+      .catch((err) => console.error("enumerateDevices failed:", err));
+  }, []);
 
-    const socket = socketRef.current;
+  const handleAudioMenuOpen = (e) => setAudioMenuAnchor(e.currentTarget);
+  const handleAudioMenuClose = () => setAudioMenuAnchor(null);
+  const handleAudioSelect = (deviceId) => {
+    setSelectedAudioInput(deviceId);
+    handleAudioMenuClose();
+  };
 
-    socket.on('connect', () => {
-      console.log(`Socket connected: ${socket.id}`);
-      if (broadcastId) {
-        console.log(`Attempting to join room: ${broadcastId}`);
-        socket.emit('join_room', { room: broadcastId });
-      } else {
-        console.error('Broadcast ID is missing from URL, cannot join room.');
+  // unpack Azure PropertyCollection → plain object
+  const toPlain = (raw) => {
+    if (!raw?.privKeys?.length) return {};
+    return raw.privKeys.reduce((acc, k, i) => {
+      acc[k] = raw.privValues[i];
+      return acc;
+    }, {});
+  };
+
+  // fallback via your /api/translate route
+  const fetchTranslations = async (text) => {
+    const out = {};
+    const raw = getLanguageCode(translationLanguage);
+    if (!raw) {
+      console.warn("No target language set, skipping fallback");
+      return out;
+    }
+    const toCode = raw.split(/[-_]/)[0].toLowerCase();
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ text, to: toCode }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        console.error("Translate API error:", err);
+        return out;
       }
-      setSocketConnected(true);
-    });
+      const { translation } = await res.json();
+      out[toCode] = translation;
+    } catch (e) {
+      console.error("fetchTranslations failed:", e);
+    }
+    return out;
+  };
 
-    socket.on('disconnect', (reason) => {
-      console.log('Broadcast WebSocket disconnected:', reason);
-      setSocketConnected(false);
-    });
+  // ── Start / Stop handlers ──────────────────────────────────────────────────
+  const startListening = () => {
+    if (!eventData || !transcriptionLanguage || !translationLanguage) return;
 
-    socket.on('connect_error', (error) => {
-      console.error('Broadcast WebSocket connection error:', error);
-      setSocketConnected(false);
-    });
+    const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(
+      process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+      process.env.NEXT_PUBLIC_AZURE_REGION
+    );
+    const srcCode = getLanguageCode(transcriptionLanguage);
+    speechConfig.speechRecognitionLanguage = srcCode;
+    setLiveTranscriptionLang(srcCode);
 
-    socket.on('room_joined', (data) => {
-      console.log('Successfully joined room:', data.room_id);
-    });
+    const tgtCode = getLanguageCode(translationLanguage);
+    speechConfig.addTargetLanguage(tgtCode);
 
-    socket.on('translation_result', (data) => {
-      console.log('Received translation result:', data);
-      
-      // Update transcription if original text exists
-      if (data.original) {
-        console.log(`Setting liveTranscription to: "${data.original}"`);
-        setLiveTranscription(data.original);
-        
-        if (data.source_language) {
-          console.log(`Setting liveTranscriptionLang to: "${data.source_language}"`);
-          setLiveTranscriptionLang(data.source_language);
-        }
-      }
-      
-      // Update translations if they exist
-      if (data.translations) {
-        console.log('Setting liveTranslations to:', data.translations);
-        setLiveTranslations(prev => {
-          const updated = { ...prev, ...data.translations };
-          console.log('Updated liveTranslations state:', updated);
-          return updated;
-        });
-      }
-      
-      // Log the current state after updates
-      setTimeout(() => {
-        console.log('State after update:', {
-          liveTranscription,
-          liveTranscriptionLang,
-          liveTranslations
-        });
-      }, 100);
-    });
+    const audioConfig =
+      selectedAudioInput
+        ? SpeechSDK.AudioConfig.fromMicrophoneInput(selectedAudioInput)
+        : SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+    const recognizer  = new SpeechSDK.TranslationRecognizer(
+      speechConfig,
+      audioConfig
+    );
 
-    socket.on('translation_error', (error) => {
-        console.error('Translation error:', error);
-    });
-
-    socket.on('error', (error) => {
-      console.error('Socket error:', error);
-    });
-
-    socket.onAny((event, ...args) => {
-      console.log(`[Socket Debug] Event: ${event}`, args);
-    });
-
-    return () => {
-      console.log('Disconnecting socket...');
-      socket.disconnect();
+    recognizer.recognizing = (_s, evt) => {
+      const txt = evt.result.text || "";
+      setLiveTranscription(txt);
+      setLiveTranscriptionLang(srcCode);
     };
-  }, [id]);
 
-  // Add this somewhere in your component to help debug
-  useEffect(() => {
-    console.log('Current transcription state:', {
-      liveTranscription,
-      liveTranscriptionLang,
-      liveTranslations,
-      socketConnected
-    });
-  }, [liveTranscription, liveTranscriptionLang, liveTranslations, socketConnected]);
+    recognizer.recognized = async (_s, evt) => {
+      const txt = evt.result.text || "";
+      let plain = toPlain(evt.result.translations);
+      if (!Object.keys(plain).length && txt.trim()) {
+        plain = await fetchTranslations(txt);
+      }
+      setLiveTranscription(txt);
+      setLiveTranslations(plain);
+      setHistory((h) => [...h, { text: txt, translations: plain }]);
+    };
 
-  const handleTranscriptionMenuOpen = (event) => {
-    setTranscriptionMenuAnchor(event.currentTarget);
+    recognizer.sessionStopped = () => {
+      setListening(false);
+      recognizerRef.current = null;
+    };
+
+    recognizer.startContinuousRecognitionAsync(
+      () => setListening(true),
+      (err) => console.error("Azure start error:", err)
+    );
+    recognizerRef.current = recognizer;
   };
 
-  const handleTranscriptionMenuClose = () => {
-    setTranscriptionMenuAnchor(null);
+  const stopListening = () => {
+    const rec = recognizerRef.current;
+    if (!rec) return;
+    rec.stopContinuousRecognitionAsync(
+      () => {
+        setListening(false);
+        recognizerRef.current = null;
+      },
+      (err) => console.error("Azure stop error:", err)
+    );
   };
 
-  const handleTranslationMenuOpen = (event) => {
-    setTranslationMenuAnchor(event.currentTarget);
-  };
-
-  const handleTranslationMenuClose = () => {
-    setTranslationMenuAnchor(null);
-  };
-
-  const handleChangeTranscriptionLanguage = (language) => {
-    setTranscriptionLanguage(language);
-    handleTranscriptionMenuClose();
-  };
-
-  const handleChangeTranslationLanguage = (language) => {
-    setTranslationLanguage(language);
-    handleTranslationMenuClose();
-  };
-
+  // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>;
+    return (
+      <Box sx={{ height:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <CircularProgress />
+      </Box>
+    );
   }
-
   if (!eventData) {
     return (
-      <Box sx={{ p: 4, textAlign: 'center' }}>
-        <Typography variant="h5" sx={{ mb: 2 }}>Event not found</Typography>
-        <Typography variant="body1">The event you're looking for doesn't exist or has ended.</Typography>
+      <Box sx={{ p:4, textAlign:"center" }}>
+        <Typography variant="h5">Event not found</Typography>
+        <Typography>The event you're looking for doesn't exist.</Typography>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {/* Header - Exactly like admin dashboard */}
-      <Box
-        component="header"
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          height: 64,
-          px: 2,
-          borderBottom: '1px solid #f0f0f0',
-          backgroundColor: 'background.default'
-        }}
-      >
-        <Link href="/" style={{ textDecoration: 'none' }}>
-          <Typography 
-            variant="h5" 
-            sx={{ 
-              fontWeight: 600, 
-              color: '#6366F1',
-              letterSpacing: '-0.5px'
-            }}
-          >
+    <Box sx={{ display:"flex", flexDirection:"column", minHeight:"100vh" }}>
+      {/* Header */}
+      <Box component="header" sx={{
+        display:"flex", alignItems:"center", height:64,
+        px:2, borderBottom:"1px solid #f0f0f0",
+        backgroundColor:"background.default"
+      }}>
+        <Link href="/" style={{ textDecoration:"none" }}>
+          <Typography variant="h5" sx={{
+            fontWeight:600, color:"#6366F1", letterSpacing:"-0.5px"
+          }}>
             interpretd
           </Typography>
         </Link>
       </Box>
-      
+
       {/* Main Content */}
-      <Box sx={{ 
-        flex: 1, 
-        maxWidth: '1200px', 
-        width: '100%', 
-        mx: 'auto', 
-        p: { xs: 2, sm: 3 } 
-      }}>
+      <Box sx={{ flex:1, maxWidth:"1200px", width:"100%", mx:"auto", p:{ xs:2, sm:3 } }}>
         {/* Event Header */}
-        <Box sx={{ 
-          mb: 3, 
-          p: { xs: 2, sm: 3 }, 
-          borderRadius: 2, 
-          bgcolor: 'white',
-          boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.06)',
-          border: '1px solid #F2F3F5'
+        <Box sx={{
+          mb:3, p:{ xs:2, sm:3 }, borderRadius:2,
+          bgcolor:"white", boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
+          border:"1px solid #F2F3F5"
         }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#212B36', mb: 1 }}>
-            {eventData.title || 'Demo Event'}
+          <Typography variant="h6" sx={{ fontWeight:600, color:"#212B36", mb:1 }}>
+            {eventData.title}
           </Typography>
-          <Typography variant="body2" sx={{ color: '#637381' }}>
-            {eventData.description || 'Debitis consequatur et facilis consequatur fugiat fugit nulla quo.'}
+          <Typography variant="body2" sx={{ color:"#637381" }}>
+            {eventData.description}
           </Typography>
         </Box>
 
+        {/* Language Pickers */}
+        {/* <Box sx={{ display:"flex", alignItems:"center", gap:2, mb:3, ml:{ xs:1, sm:2 } }}>
+          <Button variant="outlined" onClick={(e)=>setTranscriptionMenuAnchor(e.currentTarget)}>
+            {transcriptionLanguage}
+          </Button>
+          <Menu
+            anchorEl={transcriptionMenuAnchor}
+            open={Boolean(transcriptionMenuAnchor)}
+            onClose={()=>setTranscriptionMenuAnchor(null)}
+          >
+            {availableSourceLanguages.map((lang)=>(
+              <MenuItem key={lang} onClick={()=>{ setTranscriptionLanguage(lang); setTranscriptionMenuAnchor(null); }}>
+                {lang}
+              </MenuItem>
+            ))}
+          </Menu>
+
+          <Button variant="outlined" onClick={(e)=>setTranslationMenuAnchor(e.currentTarget)}>
+            {translationLanguage}
+          </Button>
+          <Menu
+            anchorEl={translationMenuAnchor}
+            open={Boolean(translationMenuAnchor)}
+            onClose={()=>setTranslationMenuAnchor(null)}
+          >
+            {availableTargetLanguages.map((lang)=>(
+              <MenuItem key={lang} onClick={()=>{ setTranslationLanguage(lang); setTranslationMenuAnchor(null); }}>
+                {lang}
+              </MenuItem>
+            ))}
+          </Menu>
+        </Box> */}
+
+        {/* Listen toggle (auto–start / stop) */}
+        <Box sx={{ display:"flex", alignItems:"center", mb:3, ml:{ xs:1, sm:2 } }}>
+          <Switch
+            checked={listening}
+            onChange={async (e) => {
+              if (e.target.checked) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) {
+                  const ctx = new AudioCtx();
+                  await ctx.resume();
+                }
+                startListening();
+              } else {
+                stopListening();
+              }
+            }}
+            sx={{ mr:1 }}
+          />
+          <Typography>Listen Audio Interpretation</Typography>
+
+          <Button
+            size="small"
+            endIcon={<ArrowDropDownIcon />}
+            onClick={handleAudioMenuOpen}
+            sx={{ ml:2, textTransform:"none", fontSize:"14px" }}
+          >
+            {audioInputs.find((i) => i.deviceId === selectedAudioInput)?.label ||
+              "Select Microphone"}
+          </Button>
+          <Menu
+            anchorEl={audioMenuAnchor}
+            open={Boolean(audioMenuAnchor)}
+            onClose={handleAudioMenuClose}
+          >
+            {audioInputs.map((input) => (
+              <MenuItem
+                key={input.deviceId}
+                onClick={() => handleAudioSelect(input.deviceId)}
+              >
+                {input.label || input.deviceId}
+              </MenuItem>
+            ))}
+          </Menu>
+        </Box>
+
         {/* Live Transcription */}
-        <Box sx={{ 
-          mb: 3, 
-          borderRadius: 2, 
-          bgcolor: 'white',
-          boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.06)',
-          border: '1px solid #F2F3F5',
-          overflow: 'hidden'
+        <Box sx={{
+          mb:3, borderRadius:2, bgcolor:"white",
+          boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
+          border:"1px solid #F2F3F5", overflow:"hidden"
         }}>
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            px: { xs: 2, sm: 3 },
-            py: 2,
-            borderBottom: '1px solid #F2F3F5'
-          }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#212B36' }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              px: { xs: 2, sm: 3 },
+              py: 2,
+              borderBottom: "1px solid #F2F3F5",
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 600, color: "#212B36" }}>
               Live Transcription
             </Typography>
-            
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ 
-                bgcolor: '#EEF2FF', 
-                color: '#6366F1', 
-                px: 1.5, 
-                py: 0.5, 
-                borderRadius: 1,
-                fontSize: '14px',
-                fontWeight: 500
-              }}>
-                {getFullLanguageName(liveTranscriptionLang || eventData?.sourceLanguages?.[0] || '')}
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Box
+                sx={{
+                  bgcolor: "#EEF2FF",
+                  color: "#6366F1",
+                  px: 1.5,
+                  py: 0.5,
+                  borderRadius: 1,
+                  fontSize: "14px",
+                  fontWeight: 500,
+                }}
+              >
+                {getFullLanguageName(liveTranscriptionLang)}
               </Box>
+              <Button
+                size="small"
+                endIcon={<ArrowDropDownIcon />}
+                onClick={(e) => setTranscriptionMenuAnchor(e.currentTarget)}
+                sx={{
+                  textTransform: "none",
+                  fontSize: "14px",
+                  color: "#6366F1",
+                }}
+              >
+                Change Language
+              </Button>
             </Box>
           </Box>
-          
-          <Box sx={{ px: { xs: 2, sm: 3 }, py: 3, minHeight: '200px' }}>
-            <Paper 
-              elevation={0} 
-              sx={{ 
-                p: 2, 
-                minHeight: '150px', 
-                maxHeight: '300px',
-                overflowY: 'auto',
-                bgcolor: '#F9FAFB', 
-                borderRadius: '0 0 8px 8px'
-              }}
-            >
-              <Box sx={{ p: 3 }}>
+          <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
+            <Paper elevation={0} sx={{
+              p:2, minHeight:"150px", maxHeight:"300px",
+              overflowY:"auto", bgcolor:"#F9FAFB",
+              borderRadius:"0 0 8px 8px"
+            }}>
+              <Box sx={{ p:3 }}>
                 {liveTranscription ? (
                   <Typography variant="body1">{liveTranscription}</Typography>
                 ) : (
-                  <Typography variant="body1" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
+                  <Typography variant="body1" sx={{ color:"text.secondary", fontStyle:"italic" }}>
                     Waiting for live transcription...
                   </Typography>
                 )}
@@ -371,83 +409,125 @@ const BroadcastPage = () => {
         </Box>
 
         {/* Live Translation */}
-        <Box sx={{ 
-          mb: 3, 
-          borderRadius: 2, 
-          bgcolor: 'white',
-          boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.06)',
-          border: '1px solid #F2F3F5',
-          overflow: 'hidden'
+        <Box sx={{
+          mb:3, borderRadius:2, bgcolor:"white",
+          boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
+          border:"1px solid #F2F3F5", overflow:"hidden"
         }}>
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            px: { xs: 2, sm: 3 },
-            py: 2,
-            borderBottom: '1px solid #F2F3F5'
-          }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#212B36' }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              px: { xs: 2, sm: 3 },
+              py: 2,
+              borderBottom: "1px solid #F2F3F5",
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 600, color: "#212B36" }}>
               Live Translation
             </Typography>
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Box
+                sx={{
+                  bgcolor: "#EEF2FF",
+                  color: "#6366F1",
+                  px: 1.5,
+                  py: 0.5,
+                  borderRadius: 1,
+                  fontSize: "14px",
+                  fontWeight: 500,
+                }}
+              >
+                {getFullLanguageName(translationLanguage)}
+              </Box>
+              <Button
+                size="small"
+                endIcon={<ArrowDropDownIcon />}
+                onClick={(e) => setTranslationMenuAnchor(e.currentTarget)}
+                sx={{
+                  textTransform: "none",
+                  fontSize: "14px",
+                  color: "#6366F1",
+                }}
+              >
+                Change Language
+              </Button>
+            </Box>
           </Box>
-          
-          <Box sx={{ px: { xs: 2, sm: 3 }, py: 3, minHeight: '200px' }}>
-            {eventData?.targetLanguages?.length > 0 ? (
+          <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
+            {availableTargetLanguages.length > 0 ? (
               Object.keys(liveTranslations).length > 0 ? (
-                Object.entries(liveTranslations).map(([lang, text]) => (
-                  <Box key={lang} sx={{ mb: 2 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                Object.entries(liveTranslations).map(([lang, txt]) => (
+                  <Box key={lang} sx={{ mb:2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
                       {getFullLanguageName(lang)}:
                     </Typography>
-                    <Typography variant="body1">{text}</Typography>
+                    <Typography variant="body1">{txt}</Typography>
                   </Box>
                 ))
               ) : (
-                <Typography variant="body1" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
+                <Typography variant="body1" sx={{ color:"text.secondary", fontStyle:"italic" }}>
                   Waiting for live translation...
                 </Typography>
               )
             ) : (
-              <Typography sx={{ color: '#637381', fontStyle: 'italic' }}>
+              <Typography sx={{ color:"#637381", fontStyle:"italic" }}>
                 No target languages configured for this event.
               </Typography>
             )}
           </Box>
         </Box>
 
-        {/* Audio Interpretation Toggle */}
-        <Box sx={{ 
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2,
-          mb: 3,
-          ml: { xs: 1, sm: 2 }
-        }}>
-          <Switch 
-            checked={listenAudio}
-            onChange={(e) => setListenAudio(e.target.checked)}
+        {/* Session History */}
+        <Box
+          sx={{
+            mb:3,
+            borderRadius:2,
+            bgcolor:"white",
+            boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
+            border:"1px solid #F2F3F5",
+            overflow:"hidden",
+          }}
+        >
+          <Box
             sx={{
-              '& .MuiSwitch-switchBase.Mui-checked': {
-                color: '#6366f1',
-              },
-              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                backgroundColor: '#6366f1',
-              },
+              display:"flex",
+              justifyContent:"space-between",
+              alignItems:"center",
+              px:{ xs:2, sm:3 },
+              py:2,
+              borderBottom:"1px solid #F2F3F5",
             }}
-          />
-          <Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 500, color: '#212B36' }}>
-              Listen Audio Interpretation
+          >
+            <Typography variant="h6" sx={{ fontWeight:600 }}>
+              Session History
             </Typography>
-            <Typography variant="body2" sx={{ color: '#637381' }}>
-              Please make sure your headphones are plugged in
-            </Typography>
+          </Box>
+
+          <Box sx={{ px:{ xs:2, sm:3 }, py:3 }}>
+            {history.length === 0 ? (
+              <Typography sx={{ fontStyle:"italic", color:"text.secondary" }}>
+                No completed segments yet…
+              </Typography>
+            ) : (
+              history.map((entry,i) => (
+                <Box key={i} sx={{ mb:1 }}>
+                  <Typography variant="body1">
+                    <strong>EN:</strong> {entry.text}
+                  </Typography>
+                  {Object.entries(entry.translations).map(([lang, txt]) => (
+                    <Typography key={lang} variant="body2">
+                      <strong>{getFullLanguageName(lang)}:</strong> {txt}
+                    </Typography>
+                  ))}
+                </Box>
+              ))
+            )}
           </Box>
         </Box>
       </Box>
     </Box>
   );
-};
-
-export default BroadcastPage; 
+}

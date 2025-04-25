@@ -19,12 +19,27 @@ const nextConfig = {
   async headers() {
     return [
       {
-        // Apply these headers to all routes
-        source: '/:path*',
+        // apply to every route in your app
+        source: "/:path*",
         headers: [
           {
-            key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://speechdev.onrender.com wss://speechdev.onrender.com ws://speechdev.onrender.com;",
+            key: "Content-Security-Policy",
+            value: [
+              // default
+              "default-src 'self'",
+              // Must allow blob: + data: for the SDK's inline workers
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:",
+              // Explicit worker-src too (fallback to script-src if omitted)
+              "worker-src 'self' blob: data:",
+              // allow Azure Speech websockets
+              "connect-src 'self' https://speechdev.onrender.com " +
+                "ws://speechdev.onrender.com wss://speechdev.onrender.com " +
+                "wss://*.s2s.speech.microsoft.com",
+              // the rest of your assets
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data:",
+              "font-src 'self'",
+            ].join("; "),
           },
         ],
       },

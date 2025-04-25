@@ -81,10 +81,21 @@ const AnalyticsDashboard = () => {
   };
 
   const handleDelete = () => {
-    if (selectedEventId) {
-      setTranscripts(prev => prev.filter(t => t.id !== selectedEventId));
-      handleMenuClose();
+    if (!selectedEventId) return;
+
+    // 1) Remove from state
+    setTranscripts(prev => prev.filter(t => t.id !== selectedEventId));
+
+    // 2) ALSO remove from localStorage
+    try {
+      const stored = JSON.parse(localStorage.getItem('eventData') || '[]');
+      const filtered = stored.filter(evt => evt.id !== selectedEventId);
+      localStorage.setItem('eventData', JSON.stringify(filtered));
+    } catch (e) {
+      console.error('Error deleting from localStorage:', e);
     }
+
+    handleMenuClose();
   };
 
   const handleEditEvent = (event) => {
