@@ -42,12 +42,11 @@ const apiService = {
   // Text-to-speech conversion
   synthesizeSpeech: async (text, language) => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/speech/synthesize`, {
-        text,
-        language
-      }, {
-        responseType: 'blob'
-      });
+      const response = await axios.post(
+        `${API_BASE_URL}/api/speech/synthesize`,
+        { text, language },
+        { responseType: 'blob' }
+      );
       
       return response.data;
     } catch (error) {

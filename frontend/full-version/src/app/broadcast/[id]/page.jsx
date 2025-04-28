@@ -15,6 +15,8 @@ import {
   MenuItem
 } from "@mui/material";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import apiService from "@/services/apiService";
 
 
 // ISO‐code ↔ human name
@@ -93,6 +95,9 @@ export default function BroadcastPage() {
   const [selectedAudioInput, setSelectedAudioInput] = useState("");
   const [audioMenuAnchor, setAudioMenuAnchor] = useState(null);
 
+  // Add state for currently playing audio
+  const [audioUrl, setAudioUrl] = useState(null);
+
   useEffect(() => {
     navigator.mediaDevices
       .enumerateDevices()
@@ -146,6 +151,72 @@ export default function BroadcastPage() {
       console.error("fetchTranslations failed:", e);
     }
     return out;
+  };
+
+  // Handler to play TTS for a translation
+  const handlePlayTTS = async (text, lang) => {
+    try {
+      // Debug: log what is being sent
+      console.log("Requesting TTS for:", { text, lang });
+
+      const audioBlob = await apiService.synthesizeSpeech(text, lang);
+
+      // Debug: check the blob type
+      console.log("Received blob:", audioBlob);
+
+      // If the blob is not audio, try to read it as text (error from backend)
+      if (!audioBlob || audioBlob.type.indexOf("audio") === -1) {
+        const errorText = await audioBlob.text();
+        console.error("TTS backend error:", errorText);
+        alert("TTS failed: " + errorText);
+        return;
+      }
+
+      const url = URL.createObjectURL(audioBlob);
+      setAudioUrl(url);
+
+      // Play the audio
+      const audio = new Audio(url);
+      audio.play();
+    } catch (err) {
+      console.error("TTS failed:", err);
+      alert("TTS failed: " + err.message);
+    }
+  };
+
+  const speakText = (text, lang = "en-US") => {
+    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+      alert("Azure Speech key/region not set");
+      return;
+    }
+    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
+      process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+      process.env.NEXT_PUBLIC_AZURE_REGION
+    );
+    // speechConfig.speechSynthesisLanguage = lang;
+    speechConfig.speechSynthesisVoiceName = "en-US-JennyNeural";
+
+    const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
+    const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
+
+    // Log the text to be sure
+    console.log("TTS input text:", text);
+
+    synthesizer.speakTextAsync(
+      text,
+      result => {
+        if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+          console.log("Speech synthesized for text: " + text);
+        } else {
+          console.error("Speech synthesis canceled, " + result.errorDetails);
+        }
+        synthesizer.close();
+      },
+      error => {
+        console.error(error);
+        synthesizer.close();
+      }
+    );
   };
 
   // ── Start / Stop handlers ──────────────────────────────────────────────────
@@ -211,6 +282,34 @@ export default function BroadcastPage() {
       },
       (err) => console.error("Azure stop error:", err)
     );
+  };
+
+  // Add this download handler function inside your component:
+  const handleDownloadSession = () => {
+    if (!history.length) {
+      alert("No session history to download.");
+      return;
+    }
+    let content = "";
+    history.forEach((entry, i) => {
+      content += `Segment ${i + 1}:\n`;
+      content += `Original: ${entry.text}\n`;
+      Object.entries(entry.translations).forEach(([lang, txt]) => {
+        content += `  [${lang}]: ${txt}\n`;
+      });
+      content += "\n";
+    });
+
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "session_transcript.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -460,11 +559,20 @@ export default function BroadcastPage() {
             {availableTargetLanguages.length > 0 ? (
               Object.keys(liveTranslations).length > 0 ? (
                 Object.entries(liveTranslations).map(([lang, txt]) => (
-                  <Box key={lang} sx={{ mb:2 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
-                      {getFullLanguageName(lang)}:
-                    </Typography>
-                    <Typography variant="body1">{txt}</Typography>
+                  <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
+                        {getFullLanguageName(lang)}:
+                      </Typography>
+                      <Typography variant="body1">{txt}</Typography>
+                    </Box>
+                    <Button
+                      onClick={() => speakText(txt, lang)}
+                      sx={{ ml: 2, minWidth: 0 }}
+                      aria-label={`Listen to ${getFullLanguageName(lang)}`}
+                    >
+                      <VolumeUpIcon />
+                    </Button>
                   </Box>
                 ))
               ) : (
@@ -480,52 +588,11 @@ export default function BroadcastPage() {
           </Box>
         </Box>
 
-        {/* Session History */}
-        <Box
-          sx={{
-            mb:3,
-            borderRadius:2,
-            bgcolor:"white",
-            boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
-            border:"1px solid #F2F3F5",
-            overflow:"hidden",
-          }}
-        >
-          <Box
-            sx={{
-              display:"flex",
-              justifyContent:"space-between",
-              alignItems:"center",
-              px:{ xs:2, sm:3 },
-              py:2,
-              borderBottom:"1px solid #F2F3F5",
-            }}
-          >
-            <Typography variant="h6" sx={{ fontWeight:600 }}>
-              Session History
-            </Typography>
-          </Box>
-
-          <Box sx={{ px:{ xs:2, sm:3 }, py:3 }}>
-            {history.length === 0 ? (
-              <Typography sx={{ fontStyle:"italic", color:"text.secondary" }}>
-                No completed segments yet…
-              </Typography>
-            ) : (
-              history.map((entry,i) => (
-                <Box key={i} sx={{ mb:1 }}>
-                  <Typography variant="body1">
-                    <strong>EN:</strong> {entry.text}
-                  </Typography>
-                  {Object.entries(entry.translations).map(([lang, txt]) => (
-                    <Typography key={lang} variant="body2">
-                      <strong>{getFullLanguageName(lang)}:</strong> {txt}
-                    </Typography>
-                  ))}
-                </Box>
-              ))
-            )}
-          </Box>
+        {/* Add this button where you want users to download the session (e.g., above or below your main content): */}
+        <Box sx={{ mb: 2 }}>
+          <Button variant="contained" onClick={handleDownloadSession}>
+            Download Session Transcript
+          </Button>
         </Box>
       </Box>
     </Box>

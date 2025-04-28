@@ -34,7 +34,9 @@ const nextConfig = {
               // allow Azure Speech websockets
               "connect-src 'self' https://speechdev.onrender.com " +
                 "ws://speechdev.onrender.com wss://speechdev.onrender.com " +
-                "wss://*.s2s.speech.microsoft.com",
+                "wss://*.s2s.speech.microsoft.com wss://*.tts.speech.microsoft.com",
+              // Allow blob: for audio playback
+              "media-src 'self' blob:",
               // the rest of your assets
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data:",

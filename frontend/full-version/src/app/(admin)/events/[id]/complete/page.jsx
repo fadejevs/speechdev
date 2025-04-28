@@ -10,6 +10,19 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import IconButton from '@mui/material/IconButton';
 import SelfieDoodle from '@/images/illustration/SelfieDoodle';
 
+// ── 1) add this mapping under your imports ──────────────────────
+const languagesMap = {
+  en: "English",
+  lv: "Latvian",
+  lt: "Lithuanian",
+  et: "Estonian",
+  ru: "Russian",
+  fr: "French",
+  de: "German",
+  es: "Spanish",
+};
+const getFullLanguageName = (code) => languagesMap[code] || code;
+
 const EventCompletionPage = () => {
   const { id } = useParams();
   const router = useRouter();
@@ -22,7 +35,19 @@ const EventCompletionPage = () => {
       const parsedEvents = JSON.parse(storedEvents);
       const event = parsedEvents.find(event => event.id === id);
       if (event) {
-        setEventData(event);
+        // unify shape so we always have arrays to iterate
+        const srcArr =
+          event.sourceLanguages ||
+          (event.sourceLanguage ? [event.sourceLanguage] : []);
+        const tgtArr =
+          event.targetLanguages ||
+          (event.targetLanguage ? [event.targetLanguage] : []);
+
+        setEventData({
+          ...event,
+          sourceLanguages: srcArr,
+          targetLanguages: tgtArr,
+        });
       }
     }
   }, [id]);
@@ -30,6 +55,10 @@ const EventCompletionPage = () => {
   const handleBackToEvents = () => {
     router.push('/dashboard/analytics');
   };
+
+  if (!eventData) {
+    return <Typography>Loading…</Typography>;
+  }
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3 },  minHeight: '100vh' }}>
@@ -224,7 +253,7 @@ const EventCompletionPage = () => {
           color: '#212B36',
           mb: 1
         }}>
-          Languages
+          Published Languages
         </Typography>
 
         <Typography variant="body2" sx={{ color: '#637381', mb: 3 }}>
@@ -233,82 +262,69 @@ const EventCompletionPage = () => {
 
         {/* Language List */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {/* Source Language */}
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            py: 2,
-            borderBottom: '1px solid #F2F3F5'
-          }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="subtitle1">Latvian</Typography>
-              <Box sx={{ 
-                bgcolor: '#EEF2FF', 
-                color: '#6366F1', 
-                px: 1, 
-                py: 0.5, 
-                borderRadius: 1,
-                fontSize: '12px'
+          {/* Source language */}
+          {eventData.sourceLanguages.map((lang, i) => (
+            <Box
+              key={`src-${lang}-${i}`}
+              sx={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                py: 2,
+                borderBottom: '1px solid #F2F3F5'
               }}>
-                Source
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="subtitle1">
+                  {getFullLanguageName(lang)}
+                </Typography>
+                <Box sx={{ 
+                  bgcolor: '#EEF2FF', 
+                  color: '#6366F1', 
+                  px: 1, 
+                  py: 0.5, 
+                  borderRadius: 1,
+                  fontSize: '12px'
+                }}>
+                  Source
+                </Box>
               </Box>
+              <IconButton size="small">
+                <MoreVertIcon />
+              </IconButton>
             </Box>
-            <IconButton>
-              <MoreVertIcon />
-            </IconButton>
-          </Box>
+          ))}
 
-          {/* Target Languages */}
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            py: 2,
-            borderBottom: '1px solid #F2F3F5'
-          }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="subtitle1">English</Typography>
-              <Box sx={{ 
-                bgcolor: '#E5F7FF', 
-                color: '#0EA5E9', 
-                px: 1, 
-                py: 0.5, 
-                borderRadius: 1,
-                fontSize: '12px'
+          {/* Target languages */}
+          {eventData.targetLanguages.map((lang, i) => (
+            <Box
+              key={`tgt-${lang}-${i}`}
+              sx={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                py: 2,
+                borderBottom: '1px solid #F2F3F5'
               }}>
-                Translation
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="subtitle1">
+                  {getFullLanguageName(lang)}
+                </Typography>
+                <Box sx={{ 
+                  bgcolor: '#E5F7FF', 
+                  color: '#0EA5E9', 
+                  px: 1, 
+                  py: 0.5, 
+                  borderRadius: 1,
+                  fontSize: '12px'
+                }}>
+                  Translation
+                </Box>
               </Box>
+              <IconButton size="small">
+                <MoreVertIcon />
+              </IconButton>
             </Box>
-            <IconButton>
-              <MoreVertIcon />
-            </IconButton>
-          </Box>
-
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            py: 2,
-            borderBottom: '1px solid #F2F3F5'
-          }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="subtitle1">Lithuanian</Typography>
-              <Box sx={{ 
-                bgcolor: '#E5F7FF', 
-                color: '#0EA5E9', 
-                px: 1, 
-                py: 0.5, 
-                borderRadius: 1,
-                fontSize: '12px'
-              }}>
-                Translation
-              </Box>
-            </Box>
-            <IconButton>
-              <MoreVertIcon />
-            </IconButton>
-          </Box>
+          ))}
         </Box>
       </Box>
     </Box>
