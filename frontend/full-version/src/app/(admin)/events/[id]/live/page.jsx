@@ -34,10 +34,43 @@ const languages = [
   { code: "de", name: "German" },
   { code: "es", name: "Spanish" },
 ];
-const getFullLanguageName = (code) => {
-  const found = languages.find((l) => l.code === code);
-  return found ? found.name : code;
+
+const deepLCodesToNames = {
+  EN: 'English',
+  DE: 'German',
+  ES: 'Spanish',
+  FR: 'French',
+  IT: 'Italian',
+  JA: 'Japanese',
+  KO: 'Korean',
+  PT: 'Portuguese',
+  RU: 'Russian',
+  ZH: 'Chinese',
+  LV: 'Latvian',
+  LT: 'Lithuanian',
+  ET: 'Estonian',
+  PL: 'Polish',
+  NL: 'Dutch',
+  CS: 'Czech',
+  DA: 'Danish',
+  FI: 'Finnish',
+  HU: 'Hungarian',
+  NB: 'Norwegian',
+  RO: 'Romanian',
+  SK: 'Slovak',
+  SV: 'Swedish',
+  TR: 'Turkish',
+  UK: 'Ukrainian'
 };
+
+const getLanguageName = (code) => {
+  const found = languages.find(l => l.code === code);
+  if (found) return found.name;
+  if (deepLCodesToNames[code]) return deepLCodesToNames[code];
+  return code;
+};
+
+const getBaseLangCode = (code) => code?.split('-')[0]?.toLowerCase() || code;
 
 export default function EventLivePage() {
   const { id } = useParams();
@@ -111,8 +144,19 @@ export default function EventLivePage() {
     }
     router.push(`/events/${id}/complete`);
   };
-  const handlePauseEvent = () => {
-    // stub: disable for now
+  const handlePauseResumeEvent = () => {
+    try {
+      const raw = localStorage.getItem("eventData") || "[]";
+      const all = JSON.parse(raw);
+      const newStatus = eventData.status === "Paused" ? "Live" : "Paused";
+      const updated = all.map((e) =>
+        e.id === eventData.id ? { ...e, status: newStatus } : e
+      );
+      localStorage.setItem("eventData", JSON.stringify(updated));
+      setEventData(prev => ({ ...prev, status: newStatus }));
+    } catch (e) {
+      console.error("Failed to update event status:", e);
+    }
   };
 
   if (loading) {
@@ -153,6 +197,8 @@ export default function EventLivePage() {
     );
   }
 
+  console.log('eventData:', eventData);
+
   return (
     <Box sx={{ p: { xs: 2, sm: 3 }, minHeight: "100vh" }}>
       {/* Header with Back, Pause, Complete */}
@@ -179,8 +225,7 @@ export default function EventLivePage() {
         <Box sx={{ display: "flex", gap: 2 }}>
           <Button
             variant="outlined"
-            onClick={handlePauseEvent}
-            disabled
+            onClick={handlePauseResumeEvent}
             sx={{
               textTransform: "none",
               px: 3,
@@ -188,7 +233,7 @@ export default function EventLivePage() {
               borderRadius: "8px",
             }}
           >
-            Pause Event
+            {eventData?.status === "Paused" ? "Resume Event" : "Pause Event"}
           </Button>
           <Button
             variant="contained"
@@ -304,7 +349,9 @@ export default function EventLivePage() {
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <Typography>{getFullLanguageName(eventData.sourceLanguage)}</Typography>
+            <Typography>
+              {getLanguageName(getBaseLangCode(eventData.sourceLanguage))}
+            </Typography>
             <Chip label="Source" color="primary" size="small" />
           </Box>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -335,17 +382,17 @@ export default function EventLivePage() {
             }}
           >
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Typography>{getFullLanguageName(lang)}</Typography>
+              <Typography>{getLanguageName(getBaseLangCode(lang))}</Typography>
               <Chip label="Translation" color="info" size="small" />
             </Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Button
+              {/* <Button
                 size="small"
                 endIcon={<ArrowDropDownIcon />}
                 sx={{ textTransform: "none", fontSize: "14px" }}
               >
                 Change Input
-              </Button>
+              </Button> */}
               <IconButton size="small">
                 <MoreVertIcon />
               </IconButton>

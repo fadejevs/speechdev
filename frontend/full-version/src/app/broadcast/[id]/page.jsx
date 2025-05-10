@@ -17,6 +17,7 @@ import {
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import apiService from "@/services/apiService";
+import SelfieDoodle from "@/images/illustration/SelfieDoodle";
 
 
 // ISO‐code ↔ human name
@@ -37,6 +38,42 @@ const getLanguageCode     = (full = "") => {
   const entry = Object.entries(languageMap).find(([, name]) => name === full);
   return entry ? entry[0] : full;
 };
+const getBaseLangCode = (code) =>
+  code ? code.split(/[-_]/)[0].toLowerCase() : code;
+
+const voiceMap = {
+  'en': 'en-US-JennyNeural',
+  'en-us': 'en-US-JennyNeural',
+  'en-gb': 'en-GB-SoniaNeural',
+  'fr': 'fr-FR-DeniseNeural',
+  'es': 'es-ES-ElviraNeural',
+  'de': 'de-DE-KatjaNeural',
+  'it': 'it-IT-ElsaNeural',
+  'ja': 'ja-JP-NanamiNeural',
+  'ko': 'ko-KR-SunHiNeural',
+  'pt': 'pt-PT-RaquelNeural',
+  'ru': 'ru-RU-SvetlanaNeural',
+  'zh': 'zh-CN-XiaoxiaoNeural',
+  'nl': 'nl-NL-ColetteNeural',
+  'pl': 'pl-PL-AgnieszkaNeural',
+  'lv': 'lv-LV-EveritaNeural',
+  'lt': 'lt-LT-OnaNeural',
+  'bg': 'bg-BG-KalinaNeural',
+  'cs': 'cs-CZ-VlastaNeural',
+  'da': 'da-DK-ChristelNeural',
+  'el': 'el-GR-AthinaNeural',
+  'et': 'et-EE-AnuNeural',
+  'fi': 'fi-FI-NooraNeural',
+  'hu': 'hu-HU-NoemiNeural',
+  'id': 'id-ID-GadisNeural',
+  'nb': 'nb-NO-IselinNeural',
+  'ro': 'ro-RO-AlinaNeural',
+  'sk': 'sk-SK-ViktoriaNeural',
+  'sl': 'sl-SI-PetraNeural',
+  'sv': 'sv-SE-SofieNeural',
+  'tr': 'tr-TR-EmelNeural',
+  'uk': 'uk-UA-PolinaNeural'
+};
 
 export default function BroadcastPage() {
   const { id } = useParams();
@@ -53,6 +90,10 @@ export default function BroadcastPage() {
 
   const [transcriptionMenuAnchor, setTranscriptionMenuAnchor] = useState(null);
   const [translationMenuAnchor, setTranslationMenuAnchor]     = useState(null);
+
+  const [partialTranslation, setPartialTranslation] = useState({});
+  const partialTranslationTimer = useRef(null);
+  const lastPartialText = useRef("");
 
   useEffect(() => {
     const stored = localStorage.getItem("eventData");
@@ -75,10 +116,35 @@ export default function BroadcastPage() {
           setAvailableTargetLanguages(fullt);
           setTranslationLanguage(fullt[0]);
         }
+
+        if (ev.status === "Paused" || ev.status === "Completed") {
+          stopListening();
+        } else {
+          startListening();
+        }
       }
     }
     setLoading(false);
   }, [id]);
+
+  useEffect(() => {
+    if (!eventData) return;
+    if (eventData.status === "paused" || eventData.status === "completed") {
+      stopListening();
+      return;
+    }
+    // Request mic permission and start listening
+    const start = async () => {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        startListening();
+      } catch (err) {
+        alert("Microphone access is required to join this broadcast.");
+      }
+    };
+    start();
+    return () => stopListening();
+  }, [eventData]);
 
   // ── State: live transcript, translations, history ──────────────────────────
   const [liveTranscription, setLiveTranscription] = useState("");
@@ -193,8 +259,10 @@ export default function BroadcastPage() {
       process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
       process.env.NEXT_PUBLIC_AZURE_REGION
     );
-    // speechConfig.speechSynthesisLanguage = lang;
-    speechConfig.speechSynthesisVoiceName = "en-US-JennyNeural";
+    // Normalize and map the language to a voice
+    const normalizedLang = lang.toLowerCase();
+    const voiceName = voiceMap[normalizedLang] || "en-US-JennyNeural";
+    speechConfig.speechSynthesisVoiceName = voiceName;
 
     const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
     const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
@@ -243,10 +311,24 @@ export default function BroadcastPage() {
       audioConfig
     );
 
-    recognizer.recognizing = (_s, evt) => {
+    recognizer.recognizing = async (_s, evt) => {
       const txt = evt.result.text || "";
       setLiveTranscription(txt);
       setLiveTranscriptionLang(srcCode);
+
+      // Only translate if text changed and not empty
+      if (txt && txt !== lastPartialText.current) {
+        lastPartialText.current = txt;
+
+        // Throttle: only translate every 5 seconds
+        if (!partialTranslationTimer.current) {
+          partialTranslationTimer.current = setTimeout(async () => {
+            const plain = await fetchTranslations(txt);
+            setPartialTranslation(plain);
+            partialTranslationTimer.current = null;
+          }, 5000);
+        }
+      }
     };
 
     recognizer.recognized = async (_s, evt) => {
@@ -258,6 +340,14 @@ export default function BroadcastPage() {
       setLiveTranscription(txt);
       setLiveTranslations(plain);
       setHistory((h) => [...h, { text: txt, translations: plain }]);
+      setPartialTranslation({}); // Clear partial translation
+
+      // Clear any pending timer
+      if (partialTranslationTimer.current) {
+        clearTimeout(partialTranslationTimer.current);
+        partialTranslationTimer.current = null;
+      }
+      lastPartialText.current = "";
     };
 
     recognizer.sessionStopped = () => {
@@ -312,6 +402,10 @@ export default function BroadcastPage() {
     URL.revokeObjectURL(url);
   };
 
+  // Add this for debugging:
+  console.log("LiveTranslations keys:", Object.keys(liveTranslations));
+  console.log("PartialTranslation keys:", Object.keys(partialTranslation));
+
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -325,6 +419,74 @@ export default function BroadcastPage() {
       <Box sx={{ p:4, textAlign:"center" }}>
         <Typography variant="h5">Event not found</Typography>
         <Typography>The event you're looking for doesn't exist.</Typography>
+      </Box>
+    );
+  }
+
+  if (eventData && (eventData.status === "Paused" || eventData.status === "Completed")) {
+    return (
+      <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+        {/* Header */}
+        <Box component="header" sx={{
+          display: "flex", alignItems: "center", height: 64,
+          px: 2, borderBottom: "1px solid #f0f0f0",
+          backgroundColor: "background.default"
+        }}>
+          <Link href="/" style={{ textDecoration: "none" }}>
+            <Typography variant="h5" sx={{
+              fontWeight: 600, color: "#6366F1", letterSpacing: "-0.5px"
+            }}>
+              interpretd
+            </Typography>
+          </Link>
+        </Box>
+
+        {/* Main Content */}
+        <Box sx={{ flex: 1, maxWidth: "1200px", width: "100%", mx: "auto", p: { xs: 2, sm: 3 } }}>
+          {/* Event Header */}
+          <Box sx={{
+            mb: 3, p: { xs: 2, sm: 3 }, borderRadius: 2,
+            bgcolor: "white", boxShadow: "0px 1px 2px rgba(0,0,0,0.06)",
+            border: "1px solid #F2F3F5"
+          }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: "#212B36", mb: 1 }}>
+              {eventData.title}
+            </Typography>
+            <Typography variant="body2" sx={{ color: "#637381" }}>
+              {eventData.description}
+            </Typography>
+          </Box>
+
+          {/* Paused/Not Started Message */}
+          <Box sx={{
+            bgcolor: "white",
+            border: "1px solid #F2F3F5",
+            borderRadius: 2,
+            minHeight: 300,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            p: 6,
+          }}>
+            {/* Illustration (replace with your SVG or image if you want) */}
+            <Box sx={{ width: 180, height: 180, objectFit: "contain" }}>
+            <SelfieDoodle
+              sx={{
+                width: "100%",
+                height: "100%",
+                fontSize: 0,
+              }}
+            />
+            </Box>
+            <Typography variant="h6" sx={{ mb: 1, textAlign: "center" }}>
+              The event hasn't started yet or has been paused. It will resume shortly.
+            </Typography>
+            <Typography variant="body2" sx={{ color: "#888", textAlign: "center" }}>
+              If you have any questions, feel free to reach out to the event organiser.
+            </Typography>
+          </Box>
+        </Box>
       </Box>
     );
   }
@@ -362,84 +524,6 @@ export default function BroadcastPage() {
           </Typography>
         </Box>
 
-        {/* Language Pickers */}
-        {/* <Box sx={{ display:"flex", alignItems:"center", gap:2, mb:3, ml:{ xs:1, sm:2 } }}>
-          <Button variant="outlined" onClick={(e)=>setTranscriptionMenuAnchor(e.currentTarget)}>
-            {transcriptionLanguage}
-          </Button>
-          <Menu
-            anchorEl={transcriptionMenuAnchor}
-            open={Boolean(transcriptionMenuAnchor)}
-            onClose={()=>setTranscriptionMenuAnchor(null)}
-          >
-            {availableSourceLanguages.map((lang)=>(
-              <MenuItem key={lang} onClick={()=>{ setTranscriptionLanguage(lang); setTranscriptionMenuAnchor(null); }}>
-                {lang}
-              </MenuItem>
-            ))}
-          </Menu>
-
-          <Button variant="outlined" onClick={(e)=>setTranslationMenuAnchor(e.currentTarget)}>
-            {translationLanguage}
-          </Button>
-          <Menu
-            anchorEl={translationMenuAnchor}
-            open={Boolean(translationMenuAnchor)}
-            onClose={()=>setTranslationMenuAnchor(null)}
-          >
-            {availableTargetLanguages.map((lang)=>(
-              <MenuItem key={lang} onClick={()=>{ setTranslationLanguage(lang); setTranslationMenuAnchor(null); }}>
-                {lang}
-              </MenuItem>
-            ))}
-          </Menu>
-        </Box> */}
-
-        {/* Listen toggle (auto–start / stop) */}
-        <Box sx={{ display:"flex", alignItems:"center", mb:3, ml:{ xs:1, sm:2 } }}>
-          <Switch
-            checked={listening}
-            onChange={async (e) => {
-              if (e.target.checked) {
-                const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                if (AudioCtx) {
-                  const ctx = new AudioCtx();
-                  await ctx.resume();
-                }
-                startListening();
-              } else {
-                stopListening();
-              }
-            }}
-            sx={{ mr:1 }}
-          />
-          <Typography>Listen Audio Interpretation</Typography>
-
-          <Button
-            size="small"
-            endIcon={<ArrowDropDownIcon />}
-            onClick={handleAudioMenuOpen}
-            sx={{ ml:2, textTransform:"none", fontSize:"14px" }}
-          >
-            {audioInputs.find((i) => i.deviceId === selectedAudioInput)?.label ||
-              "Select Microphone"}
-          </Button>
-          <Menu
-            anchorEl={audioMenuAnchor}
-            open={Boolean(audioMenuAnchor)}
-            onClose={handleAudioMenuClose}
-          >
-            {audioInputs.map((input) => (
-              <MenuItem
-                key={input.deviceId}
-                onClick={() => handleAudioSelect(input.deviceId)}
-              >
-                {input.label || input.deviceId}
-              </MenuItem>
-            ))}
-          </Menu>
-        </Box>
-
         {/* Live Transcription */}
         <Box sx={{
           mb:3, borderRadius:2, bgcolor:"white",
@@ -472,9 +556,9 @@ export default function BroadcastPage() {
                   fontWeight: 500,
                 }}
               >
-                {getFullLanguageName(liveTranscriptionLang)}
+                {getFullLanguageName(getBaseLangCode(liveTranscriptionLang))}
               </Box>
-              <Button
+              {/* <Button
                 size="small"
                 endIcon={<ArrowDropDownIcon />}
                 onClick={(e) => setTranscriptionMenuAnchor(e.currentTarget)}
@@ -485,7 +569,7 @@ export default function BroadcastPage() {
                 }}
               >
                 Change Language
-              </Button>
+              </Button> */}
             </Box>
           </Box>
           <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
@@ -539,7 +623,7 @@ export default function BroadcastPage() {
                   fontWeight: 500,
                 }}
               >
-                {getFullLanguageName(translationLanguage)}
+                {getFullLanguageName(getBaseLangCode(translationLanguage))}
               </Box>
               <Button
                 size="small"
@@ -553,6 +637,28 @@ export default function BroadcastPage() {
               >
                 Change Language
               </Button>
+              <Menu
+                anchorEl={translationMenuAnchor}
+                open={Boolean(translationMenuAnchor)}
+                onClose={() => setTranslationMenuAnchor(null)}
+              >
+                {availableTargetLanguages.map((lang) => (
+                  <MenuItem
+                    key={lang}
+                    onClick={() => {
+                      setTranslationLanguage(lang);
+                      setTranslationMenuAnchor(null);
+                      // If listening, restart recognizer to apply new target language
+                      if (listening) {
+                        stopListening();
+                        setTimeout(startListening, 300);
+                      }
+                    }}
+                  >
+                    {getFullLanguageName(getBaseLangCode(lang))}
+                  </MenuItem>
+                ))}
+              </Menu>
             </Box>
           </Box>
           <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
@@ -562,17 +668,28 @@ export default function BroadcastPage() {
                   <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
-                        {getFullLanguageName(lang)}:
+                        {getFullLanguageName(getBaseLangCode(lang))}:
                       </Typography>
                       <Typography variant="body1">{txt}</Typography>
                     </Box>
                     <Button
                       onClick={() => speakText(txt, lang)}
                       sx={{ ml: 2, minWidth: 0 }}
-                      aria-label={`Listen to ${getFullLanguageName(lang)}`}
+                      aria-label={`Listen to ${getFullLanguageName(getBaseLangCode(lang))}`}
                     >
                       <VolumeUpIcon />
                     </Button>
+                  </Box>
+                ))
+              ) : Object.keys(partialTranslation).length > 0 ? (
+                Object.entries(partialTranslation).map(([lang, txt]) => (
+                  <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
+                        {getFullLanguageName(getBaseLangCode(lang))} (partial):
+                      </Typography>
+                      <Typography variant="body1">{txt}</Typography>
+                    </Box>
                   </Box>
                 ))
               ) : (

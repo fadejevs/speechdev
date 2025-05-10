@@ -65,6 +65,11 @@ const EVENT_STATUSES = [
   { value: 'Completed', label: 'Completed' }
 ];
 
+const getLanguageName = (code) => {
+  const found = LANGUAGES.find(l => l.value === code);
+  return found ? found.name : code;
+};
+
 const CreateEventModal = ({ 
   open, 
   handleClose, 
@@ -76,12 +81,11 @@ const CreateEventModal = ({
     name: '',
     description: '',
     location: '',
-    date: null,
+    date: dayjs(),
     sourceLanguages: [],
     targetLanguages: [],
     eventType: '',
     recordEvent: false,
-    status: 'Draft event'
   });
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,12 +112,11 @@ const CreateEventModal = ({
         name: '',
         description: '',
         location: '',
-        date: null,
+        date: dayjs(),
         sourceLanguages: [],
         targetLanguages: [],
         eventType: '',
         recordEvent: false,
-        status: 'Draft event'
       });
       setSearchTerm('');
     }
@@ -161,7 +164,7 @@ const CreateEventModal = ({
       sourceLanguages: eventData.sourceLanguages || [],
       targetLanguages: eventData.targetLanguages || [],
       recordEvent: eventData.recordEvent,
-      status: eventData.status || 'Draft event'
+      status: 'Draft event'
     };
     
     // Save to localStorage for persistence
@@ -297,7 +300,7 @@ const CreateEventModal = ({
               {eventData[field].map((lang, index) => (
                 <Chip
                   key={lang}
-                  label={lang}
+                  label={getLanguageName(lang)}
                   deleteIcon={<CloseIcon style={{ fontSize: '16px' }} />}
                   onDelete={() => handleDeleteLanguage(lang, field)}
                   size="small"
@@ -562,140 +565,13 @@ const CreateEventModal = ({
     );
   };
 
-  const renderStatusSelector = () => {
-    const [dropdownOpen, setDropdownOpen] = useState(false);
-    
+  const isFormValid = () => {
     return (
-      <Box sx={{ mb: 2, position: 'relative' }}>
-        <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>Event Status<span style={{ color: 'red' }}>*</span></Typography>
-        
-        <Box 
-          onClick={() => setDropdownOpen(!dropdownOpen)}
-          sx={{ 
-            border: '1px solid #e0e0e0',
-            borderRadius: '8px',
-            px: 1.5,
-            py: 0.75,
-            minHeight: '38px',
-            height: '38px',
-            cursor: 'pointer',
-            display: 'flex',
-            flexWrap: 'nowrap',
-            gap: 0.5,
-            alignItems: 'center',
-            overflow: 'hidden'
-          }}
-        >
-          {!eventData.status ? (
-            <Typography sx={{ color: '#637381', fontSize: '14px' }}>Select Status</Typography>
-          ) : (
-            <Box sx={{ 
-              display: 'flex', 
-              flexWrap: 'nowrap', 
-              gap: 0.5, 
-              alignItems: 'center',
-              maxWidth: 'calc(100% - 30px)',
-              overflow: 'hidden'
-            }}>
-              <Chip
-                label={EVENT_STATUSES.find(status => status.value === eventData.status)?.label}
-                deleteIcon={<CloseIcon style={{ fontSize: '16px' }} />}
-                onDelete={() => setEventData(prev => ({ ...prev, status: '' }))}
-                size="small"
-                sx={{
-                  borderRadius: '4px',
-                  height: '24px',
-                  bgcolor: 'transparent',
-                  border: '1px solid #e0e0e0',
-                  color: '#333',
-                  '& .MuiChip-label': {
-                    px: 1,
-                    py: 0.25,
-                    fontSize: '13px'
-                  },
-                  '& .MuiChip-deleteIcon': {
-                    color: '#666',
-                    marginRight: '4px',
-                    '&:hover': {
-                      color: '#333'
-                    }
-                  }
-                }}
-              />
-            </Box>
-          )}
-          <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
-            <IconButton 
-              size="small" 
-              onClick={(e) => {
-                e.stopPropagation();
-                setDropdownOpen(!dropdownOpen);
-              }}
-              sx={{ padding: 0 }}
-            >
-              {dropdownOpen ? 
-                <KeyboardArrowUpIcon fontSize="small" /> : 
-                <KeyboardArrowDownIcon fontSize="small" />
-              }
-            </IconButton>
-          </Box>
-        </Box>
-        
-        {dropdownOpen && (
-          <Box
-            sx={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              right: 0,
-              mt: 0.5,
-              bgcolor: 'white',
-              borderRadius: '8px',
-              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
-              zIndex: 1000,
-              maxHeight: '250px',
-              overflow: 'auto'
-            }}
-          >
-            {EVENT_STATUSES.map((status) => (
-              <Box
-                key={status.value}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEventData(prev => ({ ...prev, status: status.value }));
-                  setDropdownOpen(false);
-                }}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  px: 2,
-                  py: 1,
-                  cursor: 'pointer',
-                  bgcolor: eventData.status === status.value ? '#f5f5ff' : 'transparent',
-                  '&:hover': {
-                    bgcolor: '#f5f5f5'
-                  }
-                }}
-              >
-                <Checkbox
-                  checked={eventData.status === status.value}
-                  onChange={() => {}}
-                  onClick={(e) => e.stopPropagation()}
-                  sx={{ 
-                    color: '#4f46e5',
-                    '&.Mui-checked': {
-                      color: '#4f46e5'
-                    },
-                    padding: '4px',
-                    marginRight: '8px'
-                  }}
-                />
-                <Typography variant="body2">{status.label}</Typography>
-              </Box>
-            ))}
-          </Box>
-        )}
-      </Box>
+      eventData.name.trim() !== '' &&
+      eventData.date !== null &&
+      eventData.eventType !== '' &&
+      eventData.sourceLanguages.length > 0 &&
+      eventData.targetLanguages.length > 0
     );
   };
 
@@ -895,37 +771,7 @@ const CreateEventModal = ({
             </Typography>
             
             {renderEventTypeSelector()}
-            {renderStatusSelector()}
             
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Box>
-                <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
-                  Record Event
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#637381' }}>
-                  Enable recording for this event (Coming soon)
-                </Typography>
-              </Box>
-              <Switch 
-                checked={eventData.recordEvent}
-                onChange={(e) => setEventData(prev => ({ ...prev, recordEvent: e.target.checked }))}
-                disabled={true}
-                sx={{
-                  '& .MuiSwitch-switchBase.Mui-checked': {
-                    color: '#6366f1',
-                    '&:hover': {
-                      backgroundColor: 'rgba(99, 102, 241, 0.08)',
-                    },
-                  },
-                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                    backgroundColor: '#6366f1',
-                  },
-                  '& .Mui-disabled': {
-                    opacity: 0.5,
-                  }
-                }}
-              />
-            </Box>
           </Box>
         </DialogContent>
         
@@ -946,6 +792,7 @@ const CreateEventModal = ({
               borderRadius: '8px',
               textTransform: 'none'
             }}
+            disabled={!isFormValid()}
           >
             {isEditing ? 'Save Changes' : 'Create Event'}
           </Button>

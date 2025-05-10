@@ -70,6 +70,44 @@ const languages = [
   { code: 'uk-UA', name: 'Ukrainian' }
 ];
 
+const deepLCodesToNames = {
+  EN: 'English',
+  DE: 'German',
+  ES: 'Spanish',
+  FR: 'French',
+  IT: 'Italian',
+  JA: 'Japanese',
+  KO: 'Korean',
+  PT: 'Portuguese',
+  RU: 'Russian',
+  ZH: 'Chinese',
+  LV: 'Latvian',
+  LT: 'Lithuanian',
+  ET: 'Estonian',
+  PL: 'Polish',
+  NL: 'Dutch',
+  CS: 'Czech',
+  DA: 'Danish',
+  FI: 'Finnish',
+  HU: 'Hungarian',
+  NB: 'Norwegian',
+  RO: 'Romanian',
+  SK: 'Slovak',
+  SV: 'Swedish',
+  TR: 'Turkish',
+  UK: 'Ukrainian'
+};
+
+const getLanguageName = (code) => {
+  // Try to find in the main language list
+  const found = languages.find(l => l.code === code);
+  if (found) return found.name;
+  // Try DeepL code mapping
+  if (deepLCodesToNames[code]) return deepLCodesToNames[code];
+  // Fallback to code
+  return code;
+};
+
 const EditEventPage = () => {
   const { id } = useParams();
   const router = useRouter();
@@ -372,7 +410,7 @@ const EditEventPage = () => {
   }
 
   return (
-    <Box sx={{ bgcolor: '#F9FAFB', minHeight: '100vh' }}>
+    <Box sx={{ bgcolor: '#', minHeight: '100vh' }}>
       <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: '1200px', mx: 'auto' }}>
         {/* Header with back button and action buttons */}
         <Box sx={{ 
@@ -642,7 +680,7 @@ const EditEventPage = () => {
                     {eventData.sourceLanguages.map(lang => (
                       <Chip
                         key={lang}
-                        label={languages.find(l => l.code === lang)?.name || lang}
+                        label={getLanguageName(lang)}
                         onDelete={() => handleLanguageChange('sourceLanguages', lang, 'remove')}
                         deleteIcon={<CloseIcon style={{ fontSize: '16px' }} />}
                         size="small"
@@ -766,7 +804,7 @@ const EditEventPage = () => {
                     {eventData.targetLanguages.map(lang => (
                       <Chip
                         key={lang}
-                        label={languages.find(l => l.code === lang)?.name || lang}
+                        label={getLanguageName(lang)}
                         onDelete={() => handleLanguageChange('targetLanguages', lang, 'remove')}
                         deleteIcon={<CloseIcon style={{ fontSize: '16px' }} />}
                         size="small"
@@ -917,7 +955,7 @@ const EditEventPage = () => {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Box>
                   <Typography variant="subtitle1" sx={{ fontWeight: 500, color: '#212B36', mb: 0.5 }}>
-                    Record Event
+                    Record Event Transcripts
                   </Typography>
                   <Typography variant="body2" sx={{ color: '#637381' }}>
                     Enable recording for this event

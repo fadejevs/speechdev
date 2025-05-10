@@ -263,7 +263,7 @@ const AnalyticsDashboard = () => {
         sx={{ cursor: 'pointer' }}
       >
         <TableCell component="th" scope="row">
-          {renderCellValue(event.title, event.title === 'Not specified')}
+        {renderCellValue(event.title, event.title === 'Not specified')}
         </TableCell>
         <TableCell>
           {renderCellValue(event.timestamp, event.timestamp === 'Not specified')}

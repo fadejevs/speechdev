@@ -23,6 +23,8 @@ const languagesMap = {
 };
 const getFullLanguageName = (code) => languagesMap[code] || code;
 
+const getBaseLangCode = (code) => code?.split('-')[0]?.toLowerCase() || code;
+
 const EventCompletionPage = () => {
   const { id } = useParams();
   const router = useRouter();
@@ -275,7 +277,7 @@ const EventCompletionPage = () => {
               }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="subtitle1">
-                  {getFullLanguageName(lang)}
+                  {getFullLanguageName(getBaseLangCode(lang))}
                 </Typography>
                 <Box sx={{ 
                   bgcolor: '#EEF2FF', 
@@ -307,7 +309,7 @@ const EventCompletionPage = () => {
               }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="subtitle1">
-                  {getFullLanguageName(lang)}
+                  {getFullLanguageName(getBaseLangCode(lang))}
                 </Typography>
                 <Box sx={{ 
                   bgcolor: '#E5F7FF', 
