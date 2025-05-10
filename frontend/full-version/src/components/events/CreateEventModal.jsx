@@ -30,9 +30,10 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import { DemoContainer } from '@mui/x-date-pickers/internals/demo';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { DatePicker, TimePicker } from '@mui/x-date-pickers';
 import dayjs from 'dayjs';
 import { generateUniqueId } from '@/utils/idGenerator';
+import Autocomplete from '@mui/material/Autocomplete';
 
 const LANGUAGES = [
   { value: 'en-US', name: 'English (US)' },
@@ -65,6 +66,16 @@ const EVENT_STATUSES = [
   { value: 'Completed', label: 'Completed' }
 ];
 
+const LOCATIONS = [
+  { value: 'Riga', label: 'Riga' },
+  { value: 'Vilnius', label: 'Vilnius' },
+  { value: 'Tallinn', label: 'Tallinn' },
+  { value: 'Berlin', label: 'Berlin' },
+  { value: 'London', label: 'London' },
+  { value: 'Online', label: 'Online' },
+  // ...add more cities as needed...
+];
+
 const getLanguageName = (code) => {
   const found = LANGUAGES.find(l => l.value === code);
   return found ? found.name : code;
@@ -82,6 +93,8 @@ const CreateEventModal = ({
     description: '',
     location: '',
     date: dayjs(),
+    startTime: null,
+    endTime: null,
     sourceLanguages: [],
     targetLanguages: [],
     eventType: '',
@@ -101,6 +114,8 @@ const CreateEventModal = ({
         description: initialData.description || '',
         location: initialData.location || '',
         date: initialData.date ? dayjs(initialData.date) : null,
+        startTime: initialData.startTime ? dayjs(initialData.startTime, 'HH:mm') : null,
+        endTime: initialData.endTime ? dayjs(initialData.endTime, 'HH:mm') : null,
         sourceLanguages: initialData.sourceLanguages || [],
         targetLanguages: initialData.targetLanguages || [],
         eventType: initialData.eventType || '',
@@ -113,6 +128,8 @@ const CreateEventModal = ({
         description: '',
         location: '',
         date: dayjs(),
+        startTime: null,
+        endTime: null,
         sourceLanguages: [],
         targetLanguages: [],
         eventType: '',
@@ -152,7 +169,8 @@ const CreateEventModal = ({
     setEventData(prev => ({ ...prev, date: newDate }));
   }, []);
 
-  const handleSubmit = () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     // Create a properly formatted event object
     const newEvent = {
       id: initialData?.id || generateUniqueId(), // Use unique ID generator
@@ -164,7 +182,9 @@ const CreateEventModal = ({
       sourceLanguages: eventData.sourceLanguages || [],
       targetLanguages: eventData.targetLanguages || [],
       recordEvent: eventData.recordEvent,
-      status: 'Draft event'
+      status: "Scheduled", // Set status to "Scheduled" instead of "Draft event"
+      startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
+      endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
     };
     
     // Save to localStorage for persistence
@@ -569,6 +589,8 @@ const CreateEventModal = ({
     return (
       eventData.name.trim() !== '' &&
       eventData.date !== null &&
+      eventData.startTime !== null &&
+      eventData.endTime !== null &&
       eventData.eventType !== '' &&
       eventData.sourceLanguages.length > 0 &&
       eventData.targetLanguages.length > 0
@@ -701,59 +723,102 @@ const CreateEventModal = ({
           
           <Box sx={{ mb: 3 }}>
             <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>Event Location<span style={{ color: 'red' }}>*</span></Typography>
-              <TextField
-                fullWidth
-                name="location"
+              <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>
+                Event Location<span style={{ color: 'red' }}>*</span>
+              </Typography>
+              <Autocomplete
+                freeSolo
+                options={LOCATIONS.map(loc => loc.label)}
                 value={eventData.location}
-                onChange={handleInputChange}
-                placeholder="G. Zemgala gatve 78, Riga, LV-1039"
-                size="small"
-                variant="outlined"
-                sx={{ 
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: '8px',
-                    '& fieldset': {
-                      borderColor: '#e0e0e0'
-                    }
-                  }
+                onChange={(e, newValue) => {
+                  setEventData(prev => ({
+                    ...prev,
+                    location: newValue || ''
+                  }));
                 }}
+                onInputChange={(e, newInputValue) => {
+                  setEventData(prev => ({
+                    ...prev,
+                    location: newInputValue
+                  }));
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    name="location"
+                    placeholder="Start typing your location..."
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        borderRadius: '8px',
+                        '& fieldset': {
+                          borderColor: '#e0e0e0'
+                        }
+                      }
+                    }}
+                  />
+                )}
               />
             </Box>
             
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>Event Date<span style={{ color: 'red' }}>*</span></Typography>
-              <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <Box sx={{ mb: 2 }}>
                 <DatePicker
+                  label="Event Date"
                   value={eventData.date}
-                  onChange={handleDateChange}
-                  format="DD.MM.YYYY"
+                  onChange={(newDate) => setEventData(prev => ({ ...prev, date: newDate }))}
                   slotProps={{
                     textField: {
                       fullWidth: true,
                       size: "small",
-                      placeholder: "DD.MM.YYYY",
-                      sx: {
+                      sx: { 
                         '& .MuiOutlinedInput-root': {
                           borderRadius: '8px',
-                          '& fieldset': {
-                            borderColor: '#e0e0e0'
-                          }
+                          height: '40px'
                         }
                       }
                     }
                   }}
-                  sx={{
-                    '& .MuiPickersDay-root.Mui-selected': {
-                      backgroundColor: '#6366f1',
-                      '&:hover': {
-                        backgroundColor: '#4338ca'
-                      }
-                    }
-                  }}
                 />
-              </LocalizationProvider>
-            </Box>
+                <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                  <TimePicker
+                    label="Start Time"
+                    value={eventData.startTime}
+                    onChange={(newValue) => setEventData(prev => ({ ...prev, startTime: newValue }))}
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        size: "small",
+                        sx: {
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: '8px',
+                            height: '40px'
+                          }
+                        }
+                      }
+                    }}
+                  />
+                  <TimePicker
+                    label="End Time"
+                    value={eventData.endTime}
+                    onChange={(newValue) => setEventData(prev => ({ ...prev, endTime: newValue }))}
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        size: "small",
+                        sx: {
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: '8px',
+                            height: '40px'
+                          }
+                        }
+                      }
+                    }}
+                  />
+                </Box>
+              </Box>
+            </LocalizationProvider>
           </Box>
           
           <Box sx={{ mb: 3 }}>

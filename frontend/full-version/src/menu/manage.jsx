@@ -60,14 +60,14 @@ const manage = {
     //   url: '/blog',
     //   icon: 'IconBrandBlogger'
     // },
-    {
-      id: 'setting',
-      title: <FormattedMessage id="setting" />,
-      type: 'item',
-      url: '/setting',
-      icon: 'IconSettings',
-      roles: [AuthRole.SUPER_ADMIN, AuthRole.ADMIN]
-    }
+    // {
+    //   id: 'setting',
+    //   title: <FormattedMessage id="setting" />,
+    //   type: 'item',
+    //   url: '/setting',
+    //   icon: 'IconSettings',
+    //   roles: [AuthRole.SUPER_ADMIN, AuthRole.ADMIN]
+    // },
   ]
 };
 

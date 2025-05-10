@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 // @mui
 import { useTheme } from '@mui/material/styles';
@@ -56,6 +57,7 @@ export default function ProfileSection() {
   const theme = useTheme();
   const { onChangeThemeMode, onChangeThemeDirection } = useConfig();
   const { userData } = useCurrentUser();
+  const router = useRouter();
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [innerAnchorEl, setInnerAnchorEl] = useState(null);
@@ -200,7 +202,13 @@ export default function ProfileSection() {
                         )}
                       </Popper>
                     </ListItemButton>
-                    <ListItemButton href="#" sx={{ ...buttonStyle, my: 0.5 }}>
+                    <ListItemButton
+                      sx={{ ...buttonStyle, my: 0.5 }}
+                      onClick={() => {
+                        setAnchorEl(null);
+                        router.push('/setting/profile');
+                      }}
+                    >
                       <ListItemIcon>
                         <IconSettings size={16} />
                       </ListItemIcon>

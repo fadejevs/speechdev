@@ -48,6 +48,13 @@ const initialMockData = Array.from({ length: 10 }, (_, i) => ({
   status: i % 2 === 0 ? 'Scheduled' : 'Completed'
 }));
 
+const formatDate = (dateString) => {
+  if (!dateString || dateString === 'Not specified') return dateString;
+  const date = new Date(dateString);
+  if (isNaN(date)) return dateString;
+  return date.toLocaleDateString();
+};
+
 const AnalyticsDashboard = () => {
   const [transcripts, setTranscripts] = useState(initialMockData);
   const [loading, setLoading] = useState(false);
@@ -146,7 +153,7 @@ const AnalyticsDashboard = () => {
       type: eventData.eventType || 'Not specified',
       sourceLanguages: eventData.sourceLanguages || [],
       targetLanguages: eventData.targetLanguages || [],
-      status: eventData.status || 'Draft event',
+      status: "Scheduled",
       description: eventData.description || 'Not specified'
     };
     
@@ -263,10 +270,10 @@ const AnalyticsDashboard = () => {
         sx={{ cursor: 'pointer' }}
       >
         <TableCell component="th" scope="row">
-        {renderCellValue(event.title, event.title === 'Not specified')}
+          {renderCellValue(event.title, event.title === 'Not specified')}
         </TableCell>
         <TableCell>
-          {renderCellValue(event.timestamp, event.timestamp === 'Not specified')}
+          {renderCellValue(formatDate(event.timestamp), event.timestamp === 'Not specified')}
         </TableCell>
         <TableCell>
           {renderCellValue(event.location, event.location === 'Not specified')}
