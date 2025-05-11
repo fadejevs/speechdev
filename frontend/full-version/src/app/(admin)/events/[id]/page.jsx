@@ -41,6 +41,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { formatForSpeechRecognition, formatForTranslationTarget } from '@/utils/languageUtils';
+import ListItemButton from '@mui/material/ListItemButton';
 
 const languages = [
   { code: 'en-US', name: 'English' },
@@ -761,9 +762,8 @@ const EditEventPage = () => {
                       
                       <List sx={{ pt: 0 }}>
                         {filteredSourceLanguages.map((language) => (
-                          <ListItem 
-                            key={language.code} 
-                            button
+                          <ListItemButton
+                            key={language.code}
                             onClick={() => handleAddSourceLanguage(language.code)}
                             sx={{ 
                               py: 1,
@@ -780,7 +780,7 @@ const EditEventPage = () => {
                                 }
                               }}
                             />
-                          </ListItem>
+                          </ListItemButton>
                         ))}
                       </List>
                     </Box>
@@ -894,9 +894,8 @@ const EditEventPage = () => {
                           lang.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
                           !eventData.targetLanguages.includes(lang.code)
                         ).map((language) => (
-                          <ListItem 
-                            key={language.code} 
-                            button
+                          <ListItemButton
+                            key={language.code}
                             onClick={() => handleAddLanguage('targetLanguages', language.code)}
                             sx={{ 
                               py: 1,
@@ -913,7 +912,7 @@ const EditEventPage = () => {
                                 }
                               }}
                             />
-                          </ListItem>
+                          </ListItemButton>
                         ))}
                         {languages.filter(lang => 
                           lang.name.toLowerCase().includes(searchTerm.toLowerCase()) &&

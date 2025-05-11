@@ -171,14 +171,12 @@ const AnalyticsDashboard = () => {
           // Map the stored events to the format expected by the dashboard
           const formattedEvents = parsedEvents.map(event => ({
             id: event.id,
-            title: event.name || 'Not specified',
-            timestamp: event.date || 'Not specified',
-            location: event.location || 'Not specified',
-            type: event.type || 'Not specified',
-            sourceLanguages: event.sourceLanguages || [],
-            targetLanguages: event.targetLanguages || [],
-            status: event.status || 'Draft event',
-            description: event.description || 'Not specified'
+            title: event.name,
+            timestamp: event.date,
+            location: event.location,
+            type: event.type,
+            status: event.status,
+            description: event.description
           }));
           
           setTranscripts(formattedEvents);

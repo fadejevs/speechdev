@@ -33,7 +33,7 @@ import { logout } from '@/utils/api';
 // @types
 
 // @assets
-import { IconChevronRight, IconLanguage, IconLogout, IconSettings, IconSunMoon, IconTextDirectionLtr } from '@tabler/icons-react';
+import { IconChevronRight, IconLanguage, IconLogout, IconSettings, IconSunMoon, IconTextDirectionLtr, IconFileInvoice } from '@tabler/icons-react';
 
 /***************************  HEADER - PROFILE DATA  ***************************/
 
@@ -201,6 +201,19 @@ export default function ProfileSection() {
                           </Fade>
                         )}
                       </Popper>
+                    </ListItemButton>
+                    <ListItemButton
+                      sx={{ ...buttonStyle, my: 0.5 }}
+                      // TODO: Add billing route when available
+                      onClick={() => {
+                        setAnchorEl(null);
+                        // router.push('/billing'); // Uncomment and update when route is ready
+                      }}
+                    >
+                      <ListItemIcon>
+                        <IconFileInvoice size={16} />
+                      </ListItemIcon>
+                      <ListItemText primary="Billing" />
                     </ListItemButton>
                     <ListItemButton
                       sx={{ ...buttonStyle, my: 0.5 }}

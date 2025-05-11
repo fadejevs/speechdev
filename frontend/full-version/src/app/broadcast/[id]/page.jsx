@@ -362,15 +362,22 @@ export default function BroadcastPage() {
     recognizerRef.current = recognizer;
   };
 
-  const stopListening = () => {
+  const stopListening = (callback) => {
     const rec = recognizerRef.current;
-    if (!rec) return;
+    if (!rec) {
+      if (callback) callback();
+      return;
+    }
     rec.stopContinuousRecognitionAsync(
       () => {
         setListening(false);
         recognizerRef.current = null;
+        if (callback) callback();
       },
-      (err) => console.error("Azure stop error:", err)
+      (err) => {
+        console.error("Azure stop error:", err);
+        if (callback) callback();
+      }
     );
   };
 
@@ -648,10 +655,9 @@ export default function BroadcastPage() {
                     onClick={() => {
                       setTranslationLanguage(lang);
                       setTranslationMenuAnchor(null);
-                      // If listening, restart recognizer to apply new target language
+                      // If listening, stop first, then start after it's fully stopped
                       if (listening) {
-                        stopListening();
-                        setTimeout(startListening, 300);
+                        stopListening(() => setTimeout(startListening, 100));
                       }
                     }}
                   >
