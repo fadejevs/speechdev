@@ -14,5 +14,8 @@ export default function Dashboard() {
     router.replace('/dashboard/analytics');
   }, [router]);
 
+
+
+  
   return null;
 }
