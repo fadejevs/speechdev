@@ -217,8 +217,15 @@ def handle_audio_chunk(data):
             emit('error', {'message': 'Backend services not available.'}) # Emit to sender
             return
 
-        # Directly recognize speech from the audio bytes
-        recognized_text = speech_service.recognize_speech_from_bytes(audio_chunk_bytes, language=source_language)
+        # Save audio bytes to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio_file:
+            temp_audio_file.write(audio_chunk_bytes)
+            temp_audio_path = temp_audio_file.name
+
+        try:
+            recognized_text = speech_service.recognize_speech_from_file(temp_audio_path, language=source_language)
+        finally:
+            os.remove(temp_audio_path)
 
         if not recognized_text:
             logger.info(f"[{sid}] No speech recognized from chunk for room {room_id}.")
