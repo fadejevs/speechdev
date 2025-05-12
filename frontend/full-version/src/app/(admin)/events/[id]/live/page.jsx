@@ -102,6 +102,7 @@ export default function EventLivePage() {
         location: found.location || "",
         date: found.date || found.timestamp || "",
         type: found.type || "",
+        status: found.status || "",
         sourceLanguage:
           found.sourceLanguage ||
           (Array.isArray(found.sourceLanguages)

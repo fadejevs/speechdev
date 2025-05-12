@@ -191,10 +191,11 @@ export default function BroadcastPage() {
     }, {});
   };
 
-  // fallback via your /api/translate route
-  const fetchTranslations = async (text) => {
+  // Update fetchTranslations to always use the passed langOverride (never fallback to translationLanguage from closure)
+  const fetchTranslations = async (text, langOverride) => {
     const out = {};
-    const raw = getLanguageCode(translationLanguage);
+    // Always use langOverride, never fallback to translationLanguage from closure
+    const raw = getLanguageCode(langOverride);
     if (!raw) {
       console.warn("No target language set, skipping fallback");
       return out;
@@ -316,17 +317,21 @@ export default function BroadcastPage() {
       setLiveTranscription(txt);
       setLiveTranscriptionLang(srcCode);
 
+      // Clear liveTranslations so UI shows partialTranslation
+      setLiveTranslations({});
+
       // Only translate if text changed and not empty
       if (txt && txt !== lastPartialText.current) {
         lastPartialText.current = txt;
 
-        // Throttle: only translate every 5 seconds
+        // Throttle: only translate every 3 seconds
         if (!partialTranslationTimer.current) {
           partialTranslationTimer.current = setTimeout(async () => {
-            const plain = await fetchTranslations(txt);
+            // Always use the latest translationLanguage from state
+            const plain = await fetchTranslations(txt, translationLanguage);
             setPartialTranslation(plain);
             partialTranslationTimer.current = null;
-          }, 5000);
+          }, 3000);
         }
       }
     };
@@ -335,7 +340,7 @@ export default function BroadcastPage() {
       const txt = evt.result.text || "";
       let plain = toPlain(evt.result.translations);
       if (!Object.keys(plain).length && txt.trim()) {
-        plain = await fetchTranslations(txt);
+        plain = await fetchTranslations(txt, translationLanguage);
       }
       setLiveTranscription(txt);
       setLiveTranslations(plain);
@@ -412,6 +417,23 @@ export default function BroadcastPage() {
   // Add this for debugging:
   console.log("LiveTranslations keys:", Object.keys(liveTranslations));
   console.log("PartialTranslation keys:", Object.keys(partialTranslation));
+
+  // Update the useEffect to always use the latest translationLanguage
+  useEffect(() => {
+    if (liveTranscription && translationLanguage) {
+      // Clear any pending timer
+      if (partialTranslationTimer.current) {
+        clearTimeout(partialTranslationTimer.current);
+        partialTranslationTimer.current = null;
+      }
+      // Fetch translation for the new language immediately
+      (async () => {
+        const plain = await fetchTranslations(liveTranscription, translationLanguage);
+        setPartialTranslation(plain);
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [translationLanguage, liveTranscription]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
@@ -669,7 +691,18 @@ export default function BroadcastPage() {
           </Box>
           <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
             {availableTargetLanguages.length > 0 ? (
-              Object.keys(liveTranslations).length > 0 ? (
+              Object.keys(partialTranslation).length > 0 ? (
+                Object.entries(partialTranslation).map(([lang, txt]) => (
+                  <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
+                        {getFullLanguageName(getBaseLangCode(lang))} (partial):
+                      </Typography>
+                      <Typography variant="body1">{txt}</Typography>
+                    </Box>
+                  </Box>
+                ))
+              ) : Object.keys(liveTranslations).length > 0 ? (
                 Object.entries(liveTranslations).map(([lang, txt]) => (
                   <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
                     <Box sx={{ flex: 1 }}>
@@ -685,17 +718,6 @@ export default function BroadcastPage() {
                     >
                       <VolumeUpIcon />
                     </Button>
-                  </Box>
-                ))
-              ) : Object.keys(partialTranslation).length > 0 ? (
-                Object.entries(partialTranslation).map(([lang, txt]) => (
-                  <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
-                        {getFullLanguageName(getBaseLangCode(lang))} (partial):
-                      </Typography>
-                      <Typography variant="body1">{txt}</Typography>
-                    </Box>
                   </Box>
                 ))
               ) : (
