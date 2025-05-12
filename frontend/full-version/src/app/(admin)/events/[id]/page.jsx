@@ -164,6 +164,8 @@ const EditEventPage = () => {
     }
   }, [id]);
 
+  
+
   // Function to get audio devices after ensuring we have microphone permission
   const getAudioDevices = async () => {
     try {
