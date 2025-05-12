@@ -218,7 +218,7 @@ def handle_audio_chunk(data):
             return
 
         # Save audio bytes to a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio_file:
             temp_audio_file.write(audio_chunk_bytes)
             temp_audio_path = temp_audio_file.name
 
@@ -498,3 +498,11 @@ def handle_audio(data):
         'text': 'MOCK TRANSCRIPTION',
         'source_language': 'en'
     })
+
+@socketio.on('realtime_transcription')
+def handle_realtime_transcription(data):
+    room_id = data.get('room_id')
+    if not room_id:
+        logger.warning("No room_id in realtime_transcription event")
+        return
+    socketio.emit('realtime_transcription', data, room=room_id)

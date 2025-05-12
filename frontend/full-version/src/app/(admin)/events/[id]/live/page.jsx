@@ -24,6 +24,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import SelfieDoodle from "@/images/illustration/SelfieDoodle";
 
 import io from "socket.io-client";
+import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk";
 
 // language lookup
 const languages = [
@@ -92,6 +93,7 @@ export default function EventLivePage() {
   const [audioStream, setAudioStream] = useState(null);
 
   const socketRef = useRef(null);
+  const recognizerRef = useRef(null);
 
   useEffect(() => {
     setLoading(true);
@@ -136,51 +138,71 @@ export default function EventLivePage() {
 
     socket.on("connect", () => {
       console.log("Socket connected!");
-      // Get the selected deviceId from localStorage (or eventData)
-      const deviceId = localStorage.getItem('selectedAudioDeviceId');
-      const constraints = deviceId
-        ? { audio: { deviceId: { exact: deviceId } } }
-        : { audio: true };
 
-      navigator.mediaDevices.getUserMedia(constraints)
-        .then((stream) => {
-          setAudioStream(stream);
-          console.log("Microphone stream started", stream);
+      // Start Azure Speech SDK recognition in browser
+      if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+        alert("Azure Speech key/region not set");
+        return;
+      }
 
-          // Optional: visualize audio or show mic icon as active here
+      const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(
+        process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+        process.env.NEXT_PUBLIC_AZURE_REGION
+      );
+      speechConfig.speechRecognitionLanguage = eventData.sourceLanguage;
+      (eventData.targetLanguages || []).forEach(lang => {
+        speechConfig.addTargetLanguage(lang);
+      });
 
-          const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+      const recognizer = new SpeechSDK.TranslationRecognizer(speechConfig, audioConfig);
 
-          recorder.onstart = () => {
-            console.log("MediaRecorder started");
-          };
-          recorder.onerror = (e) => {
-            console.error("MediaRecorder error:", e);
-          };
-          recorder.ondataavailable = (event) => {
-            if (event.data.size > 0 && socketRef.current && socketRef.current.connected) {
-              event.data.arrayBuffer().then((buffer) => {
-                socketRef.current.emit('audio_chunk', {
-                  room_id: eventData.id,
-                  audio: new Uint8Array(buffer),
-                  language: eventData.sourceLanguage,
-                  target_languages: eventData.targetLanguages,
-                });
-              });
-            }
-          };
+      recognizerRef.current = recognizer;
 
-          recorder.start(500); // send every 500ms
-          setMediaRecorder(recorder);
-        })
-        .catch((err) => {
-          console.error("Error accessing microphone:", err);
-        });
+      recognizer.recognizing = (_s, evt) => {
+        const text = evt.result.text;
+        if (text && socketRef.current && socketRef.current.connected) {
+          socketRef.current.emit("realtime_transcription", {
+            text,
+            is_final: false,
+            source_language: eventData.sourceLanguage,
+            room_id: eventData.id,
+          });
+        }
+      };
+
+      recognizer.recognized = (_s, evt) => {
+        const text = evt.result.text;
+        const translations = evt.result.translations
+          ? Object.fromEntries(Object.entries(evt.result.translations))
+          : {};
+        if (text && socketRef.current && socketRef.current.connected) {
+          socketRef.current.emit("realtime_transcription", {
+            text,
+            is_final: true,
+            source_language: eventData.sourceLanguage,
+            room_id: eventData.id,
+            translations,
+          });
+        }
+      };
+
+      recognizer.startContinuousRecognitionAsync(
+        () => console.log("Recognition started"),
+        err => console.error("Recognition error:", err)
+      );
     });
 
     return () => {
-      if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
-      if (audioStream) audioStream.getTracks().forEach((track) => track.stop());
+      if (recognizerRef.current) {
+        recognizerRef.current.stopContinuousRecognitionAsync(
+          () => recognizerRef.current = null,
+          err => {
+            console.error("Stop recognition error:", err);
+            recognizerRef.current = null;
+          }
+        );
+      }
       socket.close();
     };
     // eslint-disable-next-line
