@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import Box from "@mui/material/Box";
@@ -91,6 +91,8 @@ export default function EventLivePage() {
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [audioStream, setAudioStream] = useState(null);
 
+  const socketRef = useRef(null);
+
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -129,20 +131,29 @@ export default function EventLivePage() {
   useEffect(() => {
     if (!eventData || !eventData.sourceLanguage) return;
 
-    // --- 1. Open WebSocket connection to your backend ---
     const socket = io("https://speechdev.onrender.com", { transports: ["websocket"] });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("Socket connected!");
+      // You can now safely emit events
+    });
 
     socket.onopen = () => {
-      // --- 2. Start capturing audio from the mic ---
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+      // Get the selected deviceId from localStorage (or eventData)
+      const deviceId = localStorage.getItem('selectedAudioDeviceId');
+      const constraints = deviceId
+        ? { audio: { deviceId: { exact: deviceId } } }
+        : { audio: true };
+
+      navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
         setAudioStream(stream);
         const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
 
         recorder.ondataavailable = (event) => {
-          if (event.data.size > 0 && socket.readyState === 1) {
+          if (event.data.size > 0 && socket.connected) {
             event.data.arrayBuffer().then((buffer) => {
-              // --- 3. Send audio chunk to backend ---
-              socket.send(buffer);
+              socket.emit('audio', buffer);
             });
           }
         };
@@ -152,7 +163,6 @@ export default function EventLivePage() {
       });
     };
 
-    // --- 4. Cleanup on unmount ---
     return () => {
       if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
       if (audioStream) audioStream.getTracks().forEach((track) => track.stop());
@@ -198,6 +208,16 @@ export default function EventLivePage() {
       setEventData(prev => ({ ...prev, status: newStatus }));
     } catch (e) {
       console.error("Failed to update event status:", e);
+    }
+  };
+
+  // Add this function to send mock data
+  const sendMockData = () => {
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('audio', new Uint8Array([1,2,3,4,5]));
+      console.log("Mock data sent!");
+    } else {
+      console.log("Socket not connected yet!");
     }
   };
 
@@ -499,6 +519,10 @@ export default function EventLivePage() {
           </Button>
         </Box>
       </Dialog>
+
+      <Button variant="outlined" onClick={sendMockData} sx={{ mt: 2 }}>
+        Send Mock Audio Data
+      </Button>
     </Box>
   );
 }

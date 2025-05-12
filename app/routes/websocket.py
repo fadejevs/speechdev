@@ -535,3 +535,16 @@ def on_stop_realtime_recognition(data):
     except Exception as e:
         logger.error(f"[{sid}] Error stopping real-time recognition: {e}", exc_info=True)
         emit('error', {'message': f'Error stopping recognition: {str(e)}'})
+
+@socketio.on('audio')
+def handle_audio(data):
+    """Handle raw audio event from live page and emit a mock transcription for testing."""
+    sid = request.sid
+    logger.info(f"[{sid}] Received 'audio' event with {len(data) if data else 0} bytes")
+    # For testing, emit a fake transcription to all clients in the room
+    # You may want to get the room_id from the session or data if available
+    # For now, broadcast to all
+    socketio.emit('realtime_transcription', {
+        'text': 'MOCK TRANSCRIPTION',
+        'source_language': 'en'
+    }, broadcast=True)
