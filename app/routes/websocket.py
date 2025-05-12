@@ -207,8 +207,6 @@ def handle_audio_chunk(data):
 
     logger.info(f"[{sid}] Received audio chunk for room '{room_id}', lang: {source_language}, targets: {target_languages}")
 
-    temp_file_path = None
-    wav_path = None
     try:
         # Get services from app context
         speech_service = current_app.speech_service
@@ -219,46 +217,8 @@ def handle_audio_chunk(data):
             emit('error', {'message': 'Backend services not available.'}) # Emit to sender
             return
 
-        # --- 1. Speech Recognition ---
-        temp_dir = "temp_audio_chunks"
-        os.makedirs(temp_dir, exist_ok=True)
-
-        # Save the incoming .webm file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm", dir=temp_dir) as temp_file:
-            temp_file.write(audio_chunk_bytes)
-            temp_file_path = temp_file.name
-            logger.debug(f"[{sid}] Saved temporary audio chunk to {temp_file_path}")
-
-        # Validate the webm file before conversion
-        if os.path.getsize(temp_file_path) < 1024:  # 1KB minimum size, adjust as needed
-            logger.error(f"[{sid}] Audio chunk file {temp_file_path} too small or invalid, skipping conversion.")
-            emit('error', {'message': 'Audio chunk too small or invalid.', 'room_id': room_id})
-            os.remove(temp_file_path)
-            return
-
-        # Convert .webm to .wav before recognition
-        wav_path = temp_file_path.rsplit('.', 1)[0] + '.wav'
-        try:
-            convert_to_wav(temp_file_path, wav_path)
-            logger.debug(f"[{sid}] Converted {temp_file_path} to {wav_path}")
-        except Exception as e:
-            logger.error(f"[{sid}] Error converting {temp_file_path} to WAV: {e}", exc_info=True)
-            emit('error', {'message': f'Audio conversion failed: {e}', 'room_id': room_id})
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
-            return
-
-        # Call speech recognition on the .wav file
-        recognized_text = speech_service.recognize_speech_from_file(wav_path, language=source_language)
-
-        # Clean up temp files after recognition
-        for f in [temp_file_path, wav_path]:
-            if f and os.path.exists(f):
-                try:
-                    os.remove(f)
-                    logger.debug(f"[{sid}] Removed temporary file {f}")
-                except OSError as e:
-                    logger.error(f"[{sid}] Error removing temporary file {f}: {e}")
+        # Directly recognize speech from the audio bytes
+        recognized_text = speech_service.recognize_speech_from_bytes(audio_chunk_bytes, language=source_language)
 
         if not recognized_text:
             logger.info(f"[{sid}] No speech recognized from chunk for room {room_id}.")
@@ -299,34 +259,28 @@ def handle_audio_chunk(data):
                         }
                         socketio.emit('translation_result', result_data, room=room_id)
                     else:
-                        translations[target_lang] = "[Translation unavailable]"
-                        logger.warning(f"[{sid}] Translation to {target_lang} returned unavailable for room {room_id}")
+                        logger.error(f"[{sid}] Translation failed for {target_lang}")
                         emit('translation_error', {
-                            'message': f'Translation unavailable for target {target_lang}',
-                            'room_id': room_id, 'original': recognized_text, 'target_language': target_lang
+                            'original': recognized_text,
+                            'message': f'Translation failed for target {target_lang}',
+                            'room_id': room_id,
+                            'source_language': source_language,
+                            'target_language': target_lang,
                         })
+                        translations[target_lang] = "[Translation Error]"
                 except Exception as e:
-                    logger.error(f"[{sid}] Error translating to {target_lang} for room {room_id}: {e}", exc_info=True)
-                    translations[target_lang] = "[Translation Error]"
+                    logger.error(f"[{sid}] Error translating to {target_lang}: {e}", exc_info=True)
                     emit('translation_error', {
-                        'message': f'Translation error for target {target_lang}: {str(e)}',
-                        'room_id': room_id, 'original': recognized_text, 'target_language': target_lang
+                        'original': recognized_text,
+                        'message': f'Error translating to {target_lang}: {e}',
+                        'room_id': room_id,
+                        'source_language': source_language,
+                        'target_language': target_lang,
                     })
 
-            result_data = {
-                'original': recognized_text,
-                'translations': translations,
-                'source_language': source_language,
-                'room_id': room_id,
-                'is_manual': False,
-                'is_final': False
-            }
-            socketio.emit('translation_result', result_data, room=room_id)
-            logger.info(f"[{sid}] Broadcasted 'translation_result' to room '{room_id}'")
-
     except Exception as e:
-        logger.error(f"[{sid}] Error processing audio chunk for room {room_id}: {e}", exc_info=True)
-        emit('error', {'message': f'Error processing audio: {str(e)}', 'room_id': room_id})
+        logger.error(f"[{sid}] Audio chunk error: {e}", exc_info=True)
+        emit('error', {'message': f'Audio chunk processing error: {str(e)}'})
 
 @socketio.on('start_realtime_recognition')
 def on_start_realtime_recognition(data):
