@@ -18,6 +18,7 @@ import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import apiService from "@/services/apiService";
 import SelfieDoodle from "@/images/illustration/SelfieDoodle";
+import io from "socket.io-client";
 
 
 // ISO‐code ↔ human name
@@ -75,6 +76,8 @@ const voiceMap = {
   'uk': 'uk-UA-PolinaNeural'
 };
 
+const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || "https://speechdev.onrender.com";
+
 export default function BroadcastPage() {
   const { id } = useParams();
 
@@ -91,9 +94,11 @@ export default function BroadcastPage() {
   const [transcriptionMenuAnchor, setTranscriptionMenuAnchor] = useState(null);
   const [translationMenuAnchor, setTranslationMenuAnchor]     = useState(null);
 
-  const [partialTranslation, setPartialTranslation] = useState({});
-  const partialTranslationTimer = useRef(null);
-  const lastPartialText = useRef("");
+  // ── State: live transcript, translations, history ──────────────────────────
+  const [liveTranscription, setLiveTranscription] = useState("");
+  const [liveTranscriptionLang, setLiveTranscriptionLang] = useState("");
+  const [liveTranslations, setLiveTranslations]   = useState({});
+  const [history, setHistory]                     = useState([]);
 
   useEffect(() => {
     const stored = localStorage.getItem("eventData");
@@ -118,322 +123,52 @@ export default function BroadcastPage() {
         }
 
         if (ev.status === "Paused" || ev.status === "Completed") {
-          stopListening();
+          // stopListening();
         } else {
-          startListening();
+          // startListening();
         }
       }
     }
     setLoading(false);
   }, [id]);
 
+  // REMOVE ALL mic/device/recognizer state and effects:
+  // - partialTranslationTimer, lastPartialText, recognizerRef, listening, audioInputs, selectedAudioInput, audioMenuAnchor, audioUrl
+  // - useEffect for mic/device/recognizer
+  // - startListening, stopListening, and all Azure recognizer logic
+
+  // REMOVE useEffect that requests mic permission and starts listening
+  // REMOVE useEffect that enumerates devices
+
+  // REMOVE startListening and stopListening functions
+
+  // REMOVE all code related to recognizer, Azure, and device selection
+
+  // KEEP ONLY the WebSocket logic for receiving updates:
   useEffect(() => {
-    if (!eventData) return;
-    if (eventData.status === "paused" || eventData.status === "completed") {
-      stopListening();
-      return;
-    }
-    // Request mic permission and start listening
-    const start = async () => {
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        startListening();
-      } catch (err) {
-        alert("Microphone access is required to join this broadcast.");
-      }
-    };
-    start();
-    return () => stopListening();
-  }, [eventData]);
+    const socket = io(SOCKET_URL, { transports: ["websocket"] });
 
-  // ── State: live transcript, translations, history ──────────────────────────
-  const [liveTranscription, setLiveTranscription] = useState("");
-  const [liveTranscriptionLang, setLiveTranscriptionLang] = useState("");
-  const [liveTranslations, setLiveTranslations]   = useState({});
-  const [history, setHistory]                     = useState([]);
-
-  // ── Azure recognizer ref + listening flag ─────────────────────────────────
-  const recognizerRef = useRef(null);
-  const [listening, setListening] = useState(false);
-
-  // ── Audio‐input device selection ──────────────────────────────
-  const [audioInputs, setAudioInputs] = useState([]);
-  const [selectedAudioInput, setSelectedAudioInput] = useState("");
-  const [audioMenuAnchor, setAudioMenuAnchor] = useState(null);
-
-  // Add state for currently playing audio
-  const [audioUrl, setAudioUrl] = useState(null);
-
-  useEffect(() => {
-    navigator.mediaDevices
-      .enumerateDevices()
-      .then((devices) => {
-        const inputs = devices.filter((d) => d.kind === "audioinput");
-        setAudioInputs(inputs);
-        if (inputs[0]) setSelectedAudioInput(inputs[0].deviceId);
-      })
-      .catch((err) => console.error("enumerateDevices failed:", err));
-  }, []);
-
-  const handleAudioMenuOpen = (e) => setAudioMenuAnchor(e.currentTarget);
-  const handleAudioMenuClose = () => setAudioMenuAnchor(null);
-  const handleAudioSelect = (deviceId) => {
-    setSelectedAudioInput(deviceId);
-    handleAudioMenuClose();
-  };
-
-  // unpack Azure PropertyCollection → plain object
-  const toPlain = (raw) => {
-    if (!raw?.privKeys?.length) return {};
-    return raw.privKeys.reduce((acc, k, i) => {
-      acc[k] = raw.privValues[i];
-      return acc;
-    }, {});
-  };
-
-  // Update fetchTranslations to always use the passed langOverride (never fallback to translationLanguage from closure)
-  const fetchTranslations = async (text, langOverride) => {
-    const out = {};
-    // Always use langOverride, never fallback to translationLanguage from closure
-    const raw = getLanguageCode(langOverride);
-    if (!raw) {
-      console.warn("No target language set, skipping fallback");
-      return out;
-    }
-    const toCode = raw.split(/[-_]/)[0].toLowerCase();
-    try {
-      const res = await fetch("/api/translate", {
-        method: "POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ text, to: toCode }),
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        console.error("Translate API error:", err);
-        return out;
-      }
-      const { translation } = await res.json();
-      out[toCode] = translation;
-    } catch (e) {
-      console.error("fetchTranslations failed:", e);
-    }
-    return out;
-  };
-
-  // Handler to play TTS for a translation
-  const handlePlayTTS = async (text, lang) => {
-    try {
-      // Debug: log what is being sent
-      console.log("Requesting TTS for:", { text, lang });
-
-      const audioBlob = await apiService.synthesizeSpeech(text, lang);
-
-      // Debug: check the blob type
-      console.log("Received blob:", audioBlob);
-
-      // If the blob is not audio, try to read it as text (error from backend)
-      if (!audioBlob || audioBlob.type.indexOf("audio") === -1) {
-        const errorText = await audioBlob.text();
-        console.error("TTS backend error:", errorText);
-        alert("TTS failed: " + errorText);
-        return;
-      }
-
-      const url = URL.createObjectURL(audioBlob);
-      setAudioUrl(url);
-
-      // Play the audio
-      const audio = new Audio(url);
-      audio.play();
-    } catch (err) {
-      console.error("TTS failed:", err);
-      alert("TTS failed: " + err.message);
-    }
-  };
-
-  const speakText = (text, lang = "en-US") => {
-    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-      alert("Azure Speech key/region not set");
-      return;
-    }
-    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-      process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-      process.env.NEXT_PUBLIC_AZURE_REGION
-    );
-    // Normalize and map the language to a voice
-    const normalizedLang = lang.toLowerCase();
-    const voiceName = voiceMap[normalizedLang] || "en-US-JennyNeural";
-    speechConfig.speechSynthesisVoiceName = voiceName;
-
-    const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
-    const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
-
-    // Log the text to be sure
-    console.log("TTS input text:", text);
-
-    synthesizer.speakTextAsync(
-      text,
-      result => {
-        if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-          console.log("Speech synthesized for text: " + text);
-        } else {
-          console.error("Speech synthesis canceled, " + result.errorDetails);
-        }
-        synthesizer.close();
-      },
-      error => {
-        console.error(error);
-        synthesizer.close();
-      }
-    );
-  };
-
-  // ── Start / Stop handlers ──────────────────────────────────────────────────
-  const startListening = () => {
-    if (!eventData || !transcriptionLanguage || !translationLanguage) return;
-
-    const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(
-      process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-      process.env.NEXT_PUBLIC_AZURE_REGION
-    );
-    const srcCode = getLanguageCode(transcriptionLanguage);
-    speechConfig.speechRecognitionLanguage = srcCode;
-    setLiveTranscriptionLang(srcCode);
-
-    const tgtCode = getLanguageCode(translationLanguage);
-    speechConfig.addTargetLanguage(tgtCode);
-
-    const audioConfig =
-      selectedAudioInput
-        ? SpeechSDK.AudioConfig.fromMicrophoneInput(selectedAudioInput)
-        : SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-    const recognizer  = new SpeechSDK.TranslationRecognizer(
-      speechConfig,
-      audioConfig
-    );
-
-    recognizer.recognizing = async (_s, evt) => {
-      const txt = evt.result.text || "";
-      setLiveTranscription(txt);
-      setLiveTranscriptionLang(srcCode);
-
-      // Clear liveTranslations so UI shows partialTranslation
-      setLiveTranslations({});
-
-      // Only translate if text changed and not empty
-      if (txt && txt !== lastPartialText.current) {
-        lastPartialText.current = txt;
-
-        // Throttle: only translate every 3 seconds
-        if (!partialTranslationTimer.current) {
-          partialTranslationTimer.current = setTimeout(async () => {
-            // Always use the latest translationLanguage from state
-            const plain = await fetchTranslations(txt, translationLanguage);
-            setPartialTranslation(plain);
-            partialTranslationTimer.current = null;
-          }, 3000);
-        }
-      }
-    };
-
-    recognizer.recognized = async (_s, evt) => {
-      const txt = evt.result.text || "";
-      let plain = toPlain(evt.result.translations);
-      if (!Object.keys(plain).length && txt.trim()) {
-        plain = await fetchTranslations(txt, translationLanguage);
-      }
-      setLiveTranscription(txt);
-      setLiveTranslations(plain);
-      setHistory((h) => [...h, { text: txt, translations: plain }]);
-      setPartialTranslation({}); // Clear partial translation
-
-      // Clear any pending timer
-      if (partialTranslationTimer.current) {
-        clearTimeout(partialTranslationTimer.current);
-        partialTranslationTimer.current = null;
-      }
-      lastPartialText.current = "";
-    };
-
-    recognizer.sessionStopped = () => {
-      setListening(false);
-      recognizerRef.current = null;
-    };
-
-    recognizer.startContinuousRecognitionAsync(
-      () => setListening(true),
-      (err) => console.error("Azure start error:", err)
-    );
-    recognizerRef.current = recognizer;
-  };
-
-  const stopListening = (callback) => {
-    const rec = recognizerRef.current;
-    if (!rec) {
-      if (callback) callback();
-      return;
-    }
-    rec.stopContinuousRecognitionAsync(
-      () => {
-        setListening(false);
-        recognizerRef.current = null;
-        if (callback) callback();
-      },
-      (err) => {
-        console.error("Azure stop error:", err);
-        if (callback) callback();
-      }
-    );
-  };
-
-  // Add this download handler function inside your component:
-  const handleDownloadSession = () => {
-    if (!history.length) {
-      alert("No session history to download.");
-      return;
-    }
-    let content = "";
-    history.forEach((entry, i) => {
-      content += `Segment ${i + 1}:\n`;
-      content += `Original: ${entry.text}\n`;
-      Object.entries(entry.translations).forEach(([lang, txt]) => {
-        content += `  [${lang}]: ${txt}\n`;
-      });
-      content += "\n";
+    socket.on("connect", () => {
+      socket.emit("join_room", { room: id });
     });
 
-    const blob = new Blob([content], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
+    socket.on("translation_result", (data) => {
+      setLiveTranscription(data.original || "");
+      setLiveTranscriptionLang(data.source_language || "");
+      setLiveTranslations(data.translations || {});
+      setHistory((h) => [...h, { text: data.original, translations: data.translations }]);
+    });
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "session_transcript.txt";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+    socket.on("realtime_transcription", (data) => {
+      setLiveTranscription(data.text || "");
+      setLiveTranscriptionLang(data.source_language || "");
+    });
 
-  // Add this for debugging:
-  console.log("LiveTranslations keys:", Object.keys(liveTranslations));
-  console.log("PartialTranslation keys:", Object.keys(partialTranslation));
-
-  // Update the useEffect to always use the latest translationLanguage
-  useEffect(() => {
-    if (liveTranscription && translationLanguage) {
-      // Clear any pending timer
-      if (partialTranslationTimer.current) {
-        clearTimeout(partialTranslationTimer.current);
-        partialTranslationTimer.current = null;
-      }
-      // Fetch translation for the new language immediately
-      (async () => {
-        const plain = await fetchTranslations(liveTranscription, translationLanguage);
-        setPartialTranslation(plain);
-      })();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [translationLanguage, liveTranscription]);
+    return () => {
+      socket.emit("leave_room", { room: id });
+      socket.disconnect();
+    };
+  }, [id]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
@@ -678,9 +413,9 @@ export default function BroadcastPage() {
                       setTranslationLanguage(lang);
                       setTranslationMenuAnchor(null);
                       // If listening, stop first, then start after it's fully stopped
-                      if (listening) {
-                        stopListening(() => setTimeout(startListening, 100));
-                      }
+                      // if (listening) {
+                      //   stopListening(() => setTimeout(startListening, 100));
+                      // }
                     }}
                   >
                     {getFullLanguageName(getBaseLangCode(lang))}
@@ -691,18 +426,7 @@ export default function BroadcastPage() {
           </Box>
           <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
             {availableTargetLanguages.length > 0 ? (
-              Object.keys(partialTranslation).length > 0 ? (
-                Object.entries(partialTranslation).map(([lang, txt]) => (
-                  <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
-                        {getFullLanguageName(getBaseLangCode(lang))} (partial):
-                      </Typography>
-                      <Typography variant="body1">{txt}</Typography>
-                    </Box>
-                  </Box>
-                ))
-              ) : Object.keys(liveTranslations).length > 0 ? (
+              Object.keys(liveTranslations).length > 0 ? (
                 Object.entries(liveTranslations).map(([lang, txt]) => (
                   <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
                     <Box sx={{ flex: 1 }}>
@@ -712,7 +436,9 @@ export default function BroadcastPage() {
                       <Typography variant="body1">{txt}</Typography>
                     </Box>
                     <Button
-                      onClick={() => speakText(txt, lang)}
+                      onClick={() => {
+                        // speakText(txt, lang);
+                      }}
                       sx={{ ml: 2, minWidth: 0 }}
                       aria-label={`Listen to ${getFullLanguageName(getBaseLangCode(lang))}`}
                     >
@@ -735,7 +461,9 @@ export default function BroadcastPage() {
 
         {/* Add this button where you want users to download the session (e.g., above or below your main content): */}
         <Box sx={{ mb: 2 }}>
-          <Button variant="contained" onClick={handleDownloadSession}>
+          <Button variant="contained" onClick={() => {
+            // handleDownloadSession();
+          }}>
             Download Session Transcript
           </Button>
         </Box>

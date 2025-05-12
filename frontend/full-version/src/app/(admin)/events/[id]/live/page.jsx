@@ -23,6 +23,8 @@ import CheckIcon from "@mui/icons-material/Check";
 
 import SelfieDoodle from "@/images/illustration/SelfieDoodle";
 
+import io from "socket.io-client";
+
 // language lookup
 const languages = [
   { code: "en", name: "English" },
@@ -85,6 +87,10 @@ export default function EventLivePage() {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Add this state to track the media recorder and stream
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [audioStream, setAudioStream] = useState(null);
+
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -119,6 +125,41 @@ export default function EventLivePage() {
       setLoading(false);
     }
   }, [id]);
+
+  useEffect(() => {
+    if (!eventData || !eventData.sourceLanguage) return;
+
+    // --- 1. Open WebSocket connection to your backend ---
+    const socket = io("https://speechdev.onrender.com", { transports: ["websocket"] });
+
+    socket.onopen = () => {
+      // --- 2. Start capturing audio from the mic ---
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        setAudioStream(stream);
+        const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0 && socket.readyState === 1) {
+            event.data.arrayBuffer().then((buffer) => {
+              // --- 3. Send audio chunk to backend ---
+              socket.send(buffer);
+            });
+          }
+        };
+
+        recorder.start(500); // send every 500ms
+        setMediaRecorder(recorder);
+      });
+    };
+
+    // --- 4. Cleanup on unmount ---
+    return () => {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+      if (audioStream) audioStream.getTracks().forEach((track) => track.stop());
+      socket.close();
+    };
+    // eslint-disable-next-line
+  }, [eventData?.id, eventData?.sourceLanguage]);
 
   const handleBackToEvents = () => router.push("/dashboard/analytics");
   const handleOpenShareDialog = () => setShareDialogOpen(true);
