@@ -136,32 +136,47 @@ export default function EventLivePage() {
 
     socket.on("connect", () => {
       console.log("Socket connected!");
-      // You can now safely emit events
-    });
-
-    socket.onopen = () => {
       // Get the selected deviceId from localStorage (or eventData)
       const deviceId = localStorage.getItem('selectedAudioDeviceId');
       const constraints = deviceId
         ? { audio: { deviceId: { exact: deviceId } } }
         : { audio: true };
 
-      navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
-        setAudioStream(stream);
-        const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      navigator.mediaDevices.getUserMedia(constraints)
+        .then((stream) => {
+          setAudioStream(stream);
+          console.log("Microphone stream started", stream);
 
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0 && socket.connected) {
-            event.data.arrayBuffer().then((buffer) => {
-              socket.emit('audio', buffer);
-            });
-          }
-        };
+          // Optional: visualize audio or show mic icon as active here
 
-        recorder.start(500); // send every 500ms
-        setMediaRecorder(recorder);
-      });
-    };
+          const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+
+          recorder.onstart = () => {
+            console.log("MediaRecorder started");
+          };
+          recorder.onerror = (e) => {
+            console.error("MediaRecorder error:", e);
+          };
+          recorder.ondataavailable = (event) => {
+            if (event.data.size > 0 && socketRef.current && socketRef.current.connected) {
+              event.data.arrayBuffer().then((buffer) => {
+                socketRef.current.emit('audio_chunk', {
+                  room_id: eventData.id,
+                  audio: new Uint8Array(buffer),
+                  language: eventData.sourceLanguage,
+                  target_languages: eventData.targetLanguages,
+                });
+              });
+            }
+          };
+
+          recorder.start(500); // send every 500ms
+          setMediaRecorder(recorder);
+        })
+        .catch((err) => {
+          console.error("Error accessing microphone:", err);
+        });
+    });
 
     return () => {
       if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();

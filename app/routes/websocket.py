@@ -226,7 +226,7 @@ def handle_audio_chunk(data):
 
         # Call the CORRECT method WITHOUT the language argument
         # Assuming SpeechService uses config or internal logic for language
-        recognized_text = speech_service.recognize_speech(temp_file_path) # REMOVE source_language argument
+        recognized_text = speech_service.recognize_speech_from_file(temp_file_path, language=source_language)
 
         if not recognized_text:
             logger.info(f"[{sid}] No speech recognized from chunk for room {room_id}.")
