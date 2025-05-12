@@ -41,7 +41,7 @@ const LANGUAGES = [
   { value: 'lv-LV', name: 'Latvian' },
   { value: 'es-ES', name: 'Spanish (Spain)' },
   { value: 'es-MX', name: 'Spanish (Mexico)' },
-  { value: 'Latvian', name: 'Latvian' },
+  // { value: 'Latvian', name: 'Latvian' },
   { value: 'Lithuanian', name: 'Lithuanian' },
   { value: 'Estonian', name: 'Estonian' },
   { value: 'German', name: 'German' },
@@ -322,7 +322,10 @@ const CreateEventModal = ({
                   key={lang}
                   label={getLanguageName(lang)}
                   deleteIcon={<CloseIcon style={{ fontSize: '16px' }} />}
-                  onDelete={() => handleDeleteLanguage(lang, field)}
+                  onDelete={() => {
+                    const languageObj = LANGUAGES.find(l => l.value === lang);
+                    if (languageObj) handleDeleteLanguage(languageObj, field);
+                  }}
                   size="small"
                   sx={{
                     borderRadius: '4px',
@@ -413,6 +416,7 @@ const CreateEventModal = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     handleLanguageToggle(language, field);
+                    setDropdownOpen(false);
                   }}
                   sx={{
                     display: 'flex',
@@ -427,7 +431,11 @@ const CreateEventModal = ({
                 >
                   <Checkbox
                     checked={eventData[field].includes(language.value)}
-                    onChange={() => {}}
+                    onChange={(event) => {
+                      event.stopPropagation();
+                      handleLanguageToggle(language, field);
+                      setDropdownOpen(false);
+                    }}
                     onClick={(e) => e.stopPropagation()}
                     sx={{ 
                       color: '#4f46e5',
@@ -565,7 +573,10 @@ const CreateEventModal = ({
               >
                 <Checkbox
                   checked={eventData.eventType === type.value}
-                  onChange={() => {}}
+                  onChange={(event) => {
+                    event.stopPropagation();
+                    setEventData(prev => ({ ...prev, eventType: type.value }));
+                  }}
                   onClick={(e) => e.stopPropagation()}
                   sx={{ 
                     color: '#4f46e5',
