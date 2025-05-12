@@ -12,6 +12,7 @@ import uuid
 from pydub import AudioSegment
 from io import BytesIO
 from app.utils.audio import convert_to_wav
+import gevent.monkey
 
 from app import socketio
 from app.services.speech_service import SpeechService # Assuming SpeechService can handle bytes
@@ -28,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 # Add a dictionary to track active real-time sessions
 active_realtime_sessions = {}
+
+gevent.monkey.patch_all()
 
 @socketio.on('connect')
 def on_connect():
@@ -225,6 +228,13 @@ def handle_audio_chunk(data):
             temp_file.write(audio_chunk_bytes)
             temp_file_path = temp_file.name
             logger.debug(f"[{sid}] Saved temporary audio chunk to {temp_file_path}")
+
+        # Validate the webm file before conversion
+        if os.path.getsize(temp_file_path) < 1024:  # 1KB minimum size, adjust as needed
+            logger.error(f"[{sid}] Audio chunk file {temp_file_path} too small or invalid, skipping conversion.")
+            emit('error', {'message': 'Audio chunk too small or invalid.', 'room_id': room_id})
+            os.remove(temp_file_path)
+            return
 
         # Convert .webm to .wav before recognition
         wav_path = temp_file_path.rsplit('.', 1)[0] + '.wav'
