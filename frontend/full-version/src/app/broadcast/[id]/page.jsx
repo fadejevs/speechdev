@@ -100,6 +100,9 @@ export default function BroadcastPage() {
   const [liveTranslations, setLiveTranslations]   = useState({});
   const [history, setHistory]                     = useState([]);
 
+  // Add a ref for the socket
+  const socketRef = useRef(null);
+
   useEffect(() => {
     const stored = localStorage.getItem("eventData");
     if (stored) {
@@ -132,19 +135,70 @@ export default function BroadcastPage() {
     setLoading(false);
   }, [id]);
 
-  // REMOVE ALL mic/device/recognizer state and effects:
-  // - partialTranslationTimer, lastPartialText, recognizerRef, listening, audioInputs, selectedAudioInput, audioMenuAnchor, audioUrl
-  // - useEffect for mic/device/recognizer
-  // - startListening, stopListening, and all Azure recognizer logic
+  // Add this function for translation (using your API or Azure)
+  const fetchTranslations = async (text, langOverride) => {
+    const out = {};
+    // Always use langOverride, never fallback to translationLanguage from closure
+    const raw = getLanguageCode(langOverride);
+    if (!raw) {
+      console.warn("No target language set, skipping fallback");
+      return out;
+    }
+    const toCode = raw.split(/[-_]/)[0].toLowerCase();
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ text, to: toCode }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        console.error("Translate API error:", err);
+        return out;
+      }
+      const { translation } = await res.json();
+      out[toCode] = translation;
+    } catch (e) {
+      console.error("fetchTranslations failed:", e);
+    }
+    return out;
+  };
 
-  // REMOVE useEffect that requests mic permission and starts listening
-  // REMOVE useEffect that enumerates devices
+  // Add this function for TTS (using your API or Azure)
+  const speakText = (text, lang = "en-US") => {
+    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+      alert("Azure Speech key/region not set");
+      return;
+    }
+    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
+      process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+      process.env.NEXT_PUBLIC_AZURE_REGION
+    );
+    // Normalize and map the language to a voice
+    const normalizedLang = lang.toLowerCase();
+    const voiceName = voiceMap[normalizedLang] || "en-US-JennyNeural";
+    speechConfig.speechSynthesisVoiceName = voiceName;
 
-  // REMOVE startListening and stopListening functions
+    const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
+    const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
 
-  // REMOVE all code related to recognizer, Azure, and device selection
+    synthesizer.speakTextAsync(
+      text,
+      result => {
+        if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+          console.log("Speech synthesized for text: " + text);
+        } else {
+          console.error("Speech synthesis canceled, " + result.errorDetails);
+        }
+        synthesizer.close();
+      },
+      error => {
+        console.error(error);
+        synthesizer.close();
+      }
+    );
+  };
 
-  // KEEP ONLY the WebSocket logic for receiving updates:
   useEffect(() => {
     const socket = io(SOCKET_URL, { transports: ["websocket"] });
 
@@ -152,23 +206,40 @@ export default function BroadcastPage() {
       socket.emit("join_room", { room: id });
     });
 
-    socket.on("translation_result", (data) => {
-      setLiveTranscription(data.original || "");
-      setLiveTranscriptionLang(data.source_language || "");
-      setLiveTranslations(data.translations || {});
-      setHistory((h) => [...h, { text: data.original, translations: data.translations }]);
-    });
-
     socket.on("realtime_transcription", (data) => {
       setLiveTranscription(data.text || "");
       setLiveTranscriptionLang(data.source_language || "");
+
+      // Trigger translation in the browser
+      if (data.text && translationLanguage) {
+        fetchTranslations(data.text, translationLanguage).then((plain) => {
+          setLiveTranslations(plain);
+
+          // Optionally, trigger TTS for the translation
+          // For example, auto-play the translation in the selected language:
+          const langCode = getLanguageCode(translationLanguage);
+          if (plain[langCode]) {
+            speakText(plain[langCode], langCode);
+          }
+        });
+      }
+    });
+
+    // --- Add this listener for event status updates ---
+    socket.on("event_status_update", (data) => {
+      if (data.status === "Paused" || data.status === "Completed") {
+        setEventData((prev) => ({
+          ...prev,
+          status: data.status,
+        }));
+      }
     });
 
     return () => {
       socket.emit("leave_room", { room: id });
       socket.disconnect();
     };
-  }, [id]);
+  }, [id, translationLanguage]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
@@ -436,9 +507,7 @@ export default function BroadcastPage() {
                       <Typography variant="body1">{txt}</Typography>
                     </Box>
                     <Button
-                      onClick={() => {
-                        // speakText(txt, lang);
-                      }}
+                      onClick={() => speakText(txt, lang)}
                       sx={{ ml: 2, minWidth: 0 }}
                       aria-label={`Listen to ${getFullLanguageName(getBaseLangCode(lang))}`}
                     >

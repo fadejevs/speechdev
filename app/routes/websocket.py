@@ -506,3 +506,10 @@ def handle_realtime_transcription(data):
         logger.warning("No room_id in realtime_transcription event")
         return
     socketio.emit('realtime_transcription', data, room=room_id)
+
+@socketio.on('update_event_status')
+def handle_update_event_status(data):
+    room_id = data.get('room_id')
+    status = data.get('status')  # e.g., "Paused" or "Completed"
+    if room_id and status:
+        socketio.emit('event_status_update', {'status': status}, room=room_id)
