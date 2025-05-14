@@ -139,58 +139,68 @@ export default function EventLivePage() {
     socket.on("connect", () => {
       console.log("Socket connected!");
 
-      // Start Azure Speech SDK recognition in browser
-      if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-        alert("Azure Speech key/region not set");
-        return;
-      }
-
-      const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(
-        process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-        process.env.NEXT_PUBLIC_AZURE_REGION
-      );
-      speechConfig.speechRecognitionLanguage = eventData.sourceLanguage;
-      (eventData.targetLanguages || []).forEach(lang => {
-        speechConfig.addTargetLanguage(lang);
-      });
-
-      const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-      const recognizer = new SpeechSDK.TranslationRecognizer(speechConfig, audioConfig);
-
-      recognizerRef.current = recognizer;
-
-      recognizer.recognizing = (_s, evt) => {
-        const text = evt.result.text;
-        if (text && socketRef.current && socketRef.current.connected) {
-          socketRef.current.emit("realtime_transcription", {
-            text,
-            is_final: false,
-            source_language: eventData.sourceLanguage,
-            room_id: eventData.id,
-          });
+      const startRecognizer = () => {
+        if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+          alert("Azure Speech key/region not set");
+          return;
         }
-      };
 
-      recognizer.recognized = (_s, evt) => {
-        const text = evt.result.text;
-        const translations = evt.result.translations
-          ? Object.fromEntries(Object.entries(evt.result.translations))
-          : {};
-        if (text && socketRef.current && socketRef.current.connected) {
-          socketRef.current.emit("realtime_transcription", {
+        const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(
+          process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+          process.env.NEXT_PUBLIC_AZURE_REGION
+        );
+        speechConfig.speechRecognitionLanguage = eventData.sourceLanguage;
+        (eventData.targetLanguages || []).forEach(lang => {
+          speechConfig.addTargetLanguage(lang);
+        });
+
+        const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+        const recognizer = new SpeechSDK.TranslationRecognizer(speechConfig, audioConfig);
+
+        recognizerRef.current = recognizer;
+
+        recognizer.recognizing = (_s, evt) => {
+          const text = evt.result.text;
+          if (text && socketRef.current && socketRef.current.connected) {
+            socketRef.current.emit("realtime_transcription", {
+              text,
+              is_final: false,
+              source_language: eventData.sourceLanguage,
+              room_id: eventData.id,
+            });
+          }
+        };
+
+        recognizer.recognized = (_s, evt) => {
+          const text = evt.result.text;
+          const translations = evt.result.translations
+            ? Object.fromEntries(Object.entries(evt.result.translations))
+            : {};
+          if (text && socketRef.current && socketRef.current.connected) {
+            socketRef.current.emit("realtime_transcription", {
+              text,
+              is_final: true,
+              source_language: eventData.sourceLanguage,
+              room_id: eventData.id,
+              translations,
+            });
+          }
+          handleNewTranscription({
             text,
-            is_final: true,
             source_language: eventData.sourceLanguage,
-            room_id: eventData.id,
             translations,
           });
-        }
+        };
+
+        recognizer.startContinuousRecognitionAsync(
+          () => console.log("Recognition started"),
+          err => console.error("Recognition error:", err)
+        );
       };
 
-      recognizer.startContinuousRecognitionAsync(
-        () => console.log("Recognition started"),
-        err => console.error("Recognition error:", err)
-      );
+      if (eventData.status === "Live") {
+        startRecognizer();
+      }
     });
 
     return () => {
@@ -206,7 +216,7 @@ export default function EventLivePage() {
       socket.close();
     };
     // eslint-disable-next-line
-  }, [eventData?.id, eventData?.sourceLanguage]);
+  }, [eventData?.id, eventData?.sourceLanguage, eventData?.status]);
 
   const handleBackToEvents = () => router.push("/dashboard/analytics");
   const handleOpenShareDialog = () => setShareDialogOpen(true);
@@ -228,6 +238,12 @@ export default function EventLivePage() {
         e.id === eventData.id ? { ...e, status: "Completed" } : e
       );
       localStorage.setItem("eventData", JSON.stringify(updated));
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit("update_event_status", {
+          room_id: eventData.id,
+          status: "Completed",
+        });
+      }
     } catch (e) {
       console.error("Failed to update event status:", e);
     }
@@ -243,19 +259,50 @@ export default function EventLivePage() {
       );
       localStorage.setItem("eventData", JSON.stringify(updated));
       setEventData(prev => ({ ...prev, status: newStatus }));
+
+      if (newStatus === "Paused" && recognizerRef.current) {
+        recognizerRef.current.stopContinuousRecognitionAsync(
+          () => { recognizerRef.current = null; },
+          err => {
+            console.error("Stop recognition error:", err);
+            recognizerRef.current = null;
+          }
+        );
+      }
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit("update_event_status", {
+          room_id: eventData.id,
+          status: newStatus,
+        });
+      }
     } catch (e) {
       console.error("Failed to update event status:", e);
     }
   };
 
-  // Add this function to send mock data
-  const sendMockData = () => {
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit('audio', new Uint8Array([1,2,3,4,5]));
-      console.log("Mock data sent!");
-    } else {
-      console.log("Socket not connected yet!");
+
+  const handleNewTranscription = (data) => {
+    // Only record if enabled
+    if (eventData.recordEvent) {
+      const key = `transcripts_${String(eventData.id)}`;
+      const transcripts = JSON.parse(localStorage.getItem(key) || '{}');
+      // Save source transcription
+      if (data.text && data.source_language) {
+        const lang = data.source_language.split('-')[0].toLowerCase();
+        transcripts[lang] = transcripts[lang] || [];
+        transcripts[lang].push(data.text);
+      }
+      // Save translations
+      if (data.translations) {
+        Object.entries(data.translations).forEach(([lang, txt]) => {
+          const baseLang = lang.split('-')[0].toLowerCase();
+          transcripts[baseLang] = transcripts[baseLang] || [];
+          transcripts[baseLang].push(txt);
+        });
+      }
+      localStorage.setItem(key, JSON.stringify(transcripts));
     }
+    // ... your existing UI update logic ...
   };
 
   if (loading) {
@@ -556,10 +603,6 @@ export default function EventLivePage() {
           </Button>
         </Box>
       </Dialog>
-
-      <Button variant="outlined" onClick={sendMockData} sx={{ mt: 2 }}>
-        Send Mock Audio Data
-      </Button>
     </Box>
   );
 }

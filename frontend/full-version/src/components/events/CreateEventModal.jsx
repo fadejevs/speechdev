@@ -321,17 +321,21 @@ const CreateEventModal = ({
                 <Chip
                   key={lang}
                   label={getLanguageName(lang)}
-                  deleteIcon={<CloseIcon style={{ fontSize: '16px' }} />}
-                  onDelete={() => {
-                    const languageObj = LANGUAGES.find(l => l.value === lang);
-                    if (languageObj) handleDeleteLanguage(languageObj, field);
-                  }}
+                  {...(field === 'targetLanguages'
+                    ? {
+                        deleteIcon: <CloseIcon style={{ fontSize: '16px' }} />,
+                        onDelete: () => {
+                          const languageObj = LANGUAGES.find(l => l.value === lang);
+                          if (languageObj) handleDeleteLanguage(languageObj, field);
+                        }
+                      }
+                    : {})}
                   size="small"
                   sx={{
                     borderRadius: '4px',
                     height: '24px',
                     bgcolor: 'transparent',
-                    border: '1px solid #e0e0e0',
+                    border: field === 'sourceLanguages' ? 'none' : '1px solid #e0e0e0',
                     color: '#333',
                     '& .MuiChip-label': {
                       px: 1,

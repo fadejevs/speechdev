@@ -29,13 +29,14 @@ const EventCompletionPage = () => {
   const { id } = useParams();
   const router = useRouter();
   const [eventData, setEventData] = useState(null);
+  const [transcripts, setTranscripts] = useState({});
 
   useEffect(() => {
     // Get event data from localStorage
     const storedEvents = localStorage.getItem('eventData');
     if (storedEvents) {
       const parsedEvents = JSON.parse(storedEvents);
-      const event = parsedEvents.find(event => event.id === id);
+      const event = parsedEvents.find(event => String(event.id) === String(id));
       if (event) {
         // unify shape so we always have arrays to iterate
         const srcArr =
@@ -53,6 +54,15 @@ const EventCompletionPage = () => {
       }
     }
   }, [id]);
+
+  useEffect(() => {
+    if (eventData && eventData.recordEvent) {
+      const key = `transcripts_${String(eventData.id)}`;
+      const stored = localStorage.getItem(key);
+      console.log('Looking for transcripts with key:', key, 'Found:', stored);
+      if (stored) setTranscripts(JSON.parse(stored));
+    }
+  }, [eventData]);
 
   const handleBackToEvents = () => {
     router.push('/dashboard/analytics');
@@ -297,36 +307,76 @@ const EventCompletionPage = () => {
           ))}
 
           {/* Target languages */}
-          {eventData.targetLanguages.map((lang, i) => (
-            <Box
-              key={`tgt-${lang}-${i}`}
-              sx={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                py: 2,
-                borderBottom: '1px solid #F2F3F5'
-              }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="subtitle1">
-                  {getFullLanguageName(getBaseLangCode(lang))}
-                </Typography>
-                <Box sx={{ 
-                  bgcolor: '#E5F7FF', 
-                  color: '#0EA5E9', 
-                  px: 1, 
-                  py: 0.5, 
-                  borderRadius: 1,
-                  fontSize: '12px'
+          {eventData.targetLanguages.map((lang, i) => {
+            const baseLang = getBaseLangCode(lang).toUpperCase(); // privKeys are uppercase
+            // Extract all translations for this language from privmap
+            const translationLines = (transcripts.privmap || [])
+              .map(item => {
+                const idx = item.privKeys.indexOf(baseLang);
+                return idx !== -1 ? item.privValues[idx] : null;
+              })
+              .filter(Boolean);
+
+            return (
+              <Box
+                key={`tgt-${lang}-${i}`}
+                sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  py: 2,
+                  borderBottom: '1px solid #F2F3F5'
                 }}>
-                  Translation
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="subtitle1">
+                    {getFullLanguageName(getBaseLangCode(lang))}
+                  </Typography>
+                  <Box sx={{ 
+                    bgcolor: '#E5F7FF', 
+                    color: '#0EA5E9', 
+                    px: 1, 
+                    py: 0.5, 
+                    borderRadius: 1,
+                    fontSize: '12px'
+                  }}>
+                    Translation
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Button
+                    variant="contained"
+                    disabled={translationLines.length === 0}
+                    onClick={() => {
+                      const blob = new Blob([translationLines.join('\n')], { type: 'text/plain' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `${getFullLanguageName(baseLang)}_translation.txt`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    sx={{
+                      bgcolor: '#6366f1',
+                      color: 'white',
+                      borderRadius: '8px',
+                      textTransform: 'none',
+                      fontWeight: 500,
+                      px: 2,
+                      py: 0.5,
+                      fontSize: '13px',
+                      minWidth: 'auto',
+                      '&:hover': { bgcolor: '#4338ca' }
+                    }}
+                  >
+                    Download
+                  </Button>
+                  <IconButton size="small">
+                    <MoreVertIcon />
+                  </IconButton>
                 </Box>
               </Box>
-              <IconButton size="small">
-                <MoreVertIcon />
-              </IconButton>
-            </Box>
-          ))}
+            );
+          })}
         </Box>
       </Box>
     </Box>

@@ -56,7 +56,7 @@ const formatDate = (dateString) => {
 };
 
 const AnalyticsDashboard = () => {
-  const [transcripts, setTranscripts] = useState(initialMockData);
+  const [transcripts, setTranscripts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -167,9 +167,14 @@ const AnalyticsDashboard = () => {
         const storedEvents = localStorage.getItem('eventData');
         if (storedEvents) {
           const parsedEvents = JSON.parse(storedEvents);
-          
+
+          // Filter out mock/demo events (e.g., those with title starting with "Demo Event")
+          const realEvents = parsedEvents.filter(
+            event => !event.title?.toLowerCase().startsWith('demo event')
+          );
+
           // Map the stored events to the format expected by the dashboard
-          const formattedEvents = parsedEvents.map(event => ({
+          const formattedEvents = realEvents.map(event => ({
             id: event.id,
             title: event.name,
             timestamp: event.date,
@@ -178,11 +183,14 @@ const AnalyticsDashboard = () => {
             status: event.status,
             description: event.description
           }));
-          
+
           setTranscripts(formattedEvents);
+        } else {
+          setTranscripts([]); // No events found
         }
       } catch (error) {
         console.error('Error loading events from localStorage:', error);
+        setTranscripts([]);
       }
     };
     

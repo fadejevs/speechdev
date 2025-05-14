@@ -965,20 +965,18 @@ const EditEventPage = () => {
                 <Switch
                   checked={eventData.recordEvent}
                   onChange={(e) => setEventData(prev => ({ ...prev, recordEvent: e.target.checked }))}
-                  disabled={true}
                   sx={{
                     '& .MuiSwitch-switchBase.Mui-checked': {
-                      color: '#6366f1',
-                      '&:hover': {
-                        backgroundColor: 'rgba(99, 102, 241, 0.08)',
-                      },
+                      color: '#fff',
                     },
                     '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
                       backgroundColor: '#6366f1',
+                      opacity: 1,
                     },
-                    '& .Mui-disabled': {
-                      opacity: 0.5,
-                    }
+                    '& .MuiSwitch-track': {
+                      backgroundColor: '#E5E8EB',
+                      opacity: 1,
+                    },
                   }}
                 />
               </Box>

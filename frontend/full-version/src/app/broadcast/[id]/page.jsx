@@ -210,6 +210,38 @@ export default function BroadcastPage() {
       setLiveTranscription(data.text || "");
       setLiveTranscriptionLang(data.source_language || "");
 
+      // --- Only save if recordEvent is enabled for this event ---
+      const storedEvents = localStorage.getItem("eventData");
+      let shouldRecord = false;
+      if (storedEvents) {
+        const arr = JSON.parse(storedEvents);
+        const ev = arr.find((e) => String(e.id) === String(id));
+        if (ev && ev.recordEvent) {
+          shouldRecord = true;
+        }
+      }
+
+      if (shouldRecord) {
+        const key = `transcripts_${String(id)}`;
+        const transcripts = JSON.parse(localStorage.getItem(key) || '{}');
+
+        // Save source transcription
+        if (data.text && data.source_language) {
+          const lang = data.source_language.split('-')[0].toLowerCase();
+          transcripts[lang] = transcripts[lang] || [];
+          transcripts[lang].push(data.text);
+        }
+        // Save translations
+        if (data.translations) {
+          Object.entries(data.translations).forEach(([lang, txt]) => {
+            const baseLang = lang.split('-')[0].toLowerCase();
+            transcripts[baseLang] = transcripts[baseLang] || [];
+            transcripts[baseLang].push(txt);
+          });
+        }
+        localStorage.setItem(key, JSON.stringify(transcripts));
+      }
+
       // Trigger translation in the browser
       if (data.text && translationLanguage) {
         fetchTranslations(data.text, translationLanguage).then((plain) => {
@@ -227,7 +259,7 @@ export default function BroadcastPage() {
 
     // --- Add this listener for event status updates ---
     socket.on("event_status_update", (data) => {
-      if (data.status === "Paused" || data.status === "Completed") {
+      if (["Paused", "Completed", "Live"].includes(data.status)) {
         setEventData((prev) => ({
           ...prev,
           status: data.status,
@@ -528,14 +560,13 @@ export default function BroadcastPage() {
           </Box>
         </Box>
 
-        {/* Add this button where you want users to download the session (e.g., above or below your main content): */}
-        <Box sx={{ mb: 2 }}>
+        {/* <Box sx={{ mb: 2 }}>
           <Button variant="contained" onClick={() => {
             // handleDownloadSession();
           }}>
             Download Session Transcript
           </Button>
-        </Box>
+        </Box> */}
       </Box>
     </Box>
   );
