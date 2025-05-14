@@ -58,7 +58,7 @@ export default function Notification() {
   const [anchorEl, setAnchorEl] = useState(null);
   const [innerAnchorEl, setInnerAnchorEl] = useState(null);
   const [allRead, setAllRead] = useState(false);
-  const [showEmpty, setShowEmpty] = useState(false);
+  const [showEmpty, setShowEmpty] = useState(true);
 
   const open = Boolean(anchorEl);
   const innerOpen = Boolean(innerAnchorEl);
@@ -68,81 +68,8 @@ export default function Notification() {
 
   const listcontent = ['All notification', 'Users', 'Account', 'Language', 'Role & Permission', 'Setting'];
 
-  const [notifications, setNotifications] = useState([
-    {
-      avatar: { alt: 'Travis Howard', src: '/assets/images/users/avatar-1.png' },
-      badge: <IconCode size={14} color={theme.palette.text.primary} />,
-      title: 'Developer · Add Build In Repo',
-      subTitle: 'Brenda Skiles',
-      dateTime: 'Jul 9'
-    },
-    {
-      avatar: <IconGitBranch />,
-      title: 'Modi occaecati illo iure quia porro et dolorem.',
-      subTitle: 'laboriosam',
-      dateTime: 'Jul 10',
-      isSeen: true
-    },
-    {
-      avatar: <IconGitBranch />,
-      title: 'Vitae officia aut atque dolor eaque ut delectus cumque quasi.',
-      subTitle: 'laboriosam',
-      dateTime: 'Jul 11'
-    },
-    {
-      avatar: { alt: 'Travis Howard', src: '/assets/images/users/avatar-4.png' },
-      badge: <IconNote size={14} color={theme.palette.text.primary} />,
-      title: 'Admin · Submit Document',
-      subTitle: 'Salvatore Bogan',
-      dateTime: 'Jul 15',
-      isSeen: true
-    },
-    {
-      avatar: <IconGps />,
-      title: 'Omnis reiciendis ut ullam qui.',
-      subTitle: 'laboriosam',
-      dateTime: 'Jul 24',
-      isSeen: true
-    }
-  ]);
-
-  const [notifications2, setNotifications2] = useState([
-    {
-      avatar: { alt: 'Travis Howard', src: '/assets/images/users/avatar-1.png' },
-      badge: <IconCode size={14} color={theme.palette.text.primary} />,
-      title: 'Developer · Add Build In Repo',
-      subTitle: 'Brenda Skiles',
-      dateTime: 'Jul 9'
-    },
-    {
-      avatar: <IconGps />,
-      title: 'Omnis reiciendis ut ullam qui.',
-      subTitle: 'laboriosam',
-      dateTime: 'Jul 24',
-      isSeen: true
-    },
-    {
-      avatar: { alt: 'Alice Smith', src: '/assets/images/users/avatar-5.png' },
-      badge: <IconNote size={14} color={theme.palette.text.primary} />,
-      title: 'Admin · Submit Document',
-      subTitle: 'Salvatore Bogan',
-      dateTime: 'Aug 12',
-      isSeen: true
-    },
-    {
-      avatar: { alt: 'Travis Howard', src: '/assets/images/users/avatar-1.png' },
-      badge: <IconCode size={14} color={theme.palette.text.primary} />,
-      title: 'Developer · Add Build In Repo',
-      subTitle: 'Brenda Skiles',
-      dateTime: 'Jul 9'
-    },
-    {
-      avatar: <IconGps />,
-      title: 'Omnis reiciendis ut ullam qui.',
-      subTitle: 'laboriosam',
-      dateTime: 'Jul 24'
-    }
-  ]);
+  const [notifications, setNotifications] = useState([]);
+  const [notifications2, setNotifications2] = useState([]);
 
   const handleActionClick = (event) => {
     setAnchorEl(anchorEl ? null : event.currentTarget);

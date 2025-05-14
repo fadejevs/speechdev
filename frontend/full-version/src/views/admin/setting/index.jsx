@@ -43,9 +43,9 @@ export default function Setting({ tab = 'profile' }) {
         <Tabs variant="scrollable" scrollButtons="auto" value={tab} onChange={handleChange} aria-label="setting tabs">
           <Tab label="Profile" value="profile" />
           <Tab label="General" value="general" />
-          <Tab label="Pricing" value="pricing" />
+          {/* <Tab label="Pricing" value="pricing" />
           <Tab label="Internationalization" value="internationalization" />
-          <Tab label="Authentication" value="authentication" />
+          <Tab label="Authentication" value="authentication" /> */}
         </Tabs>
         {tab === 'internationalization' && (
           <Stack
@@ -68,9 +68,9 @@ export default function Setting({ tab = 'profile' }) {
       <Box>
         {tab === 'profile' && <ProfileSetting />}
         {tab === 'general' && <GeneralSetting />}
-        {tab === 'pricing' && <PricingSetting />}
+        {/* {tab === 'pricing' && <PricingSetting />}
         {tab === 'internationalization' && <I18nSetting />}
-        {tab === 'authentication' && <AuthenticationSetting />}
+        {tab === 'authentication' && <AuthenticationSetting />} */}
       </Box>
     </Stack>
   );
