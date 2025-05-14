@@ -374,6 +374,8 @@ const EventCompletionPage = () => {
                     <MoreVertIcon />
                   </IconButton>
                 </Box>
+
+                
               </Box>
             );
           })}
