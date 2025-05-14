@@ -9,6 +9,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import IconButton from '@mui/material/IconButton';
 import SelfieDoodle from '@/images/illustration/SelfieDoodle';
+import TextField from '@mui/material/TextField';
 
 // ── 1) add this mapping under your imports ──────────────────────
 const languagesMap = {
@@ -24,6 +25,13 @@ const languagesMap = {
 const getFullLanguageName = (code) => languagesMap[code] || code;
 
 const getBaseLangCode = (code) => code?.split('-')[0]?.toLowerCase() || code;
+
+function formatDate(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  // Format as DD.MM.YYYY
+  return date.toLocaleDateString('en-GB');
+}
 
 const EventCompletionPage = () => {
   const { id } = useParams();
@@ -169,85 +177,157 @@ const EventCompletionPage = () => {
       </Box>
 
       {/* Event Details Section */}
-      <Box sx={{ display: 'flex', gap: 3 }}>
-        <Box sx={{ 
-          flex: '0 0 30%',
-          bgcolor: 'white',
+      <Box
+        sx={{
+          maxWidth: 1200,
+          margin: "40px auto",
+          bgcolor: "white",
           borderRadius: 2,
-          p: 3,
-          height: 'fit-content',
-          boxShadow: '0px 2px 4px rgba(145, 158, 171, 0.16)'
-        }}>
-          <Typography variant="h6" sx={{ 
-            fontWeight: 600,
-            color: '#212B36',
-            mb: 1
-          }}>
+          boxShadow: "0px 2px 4px rgba(145, 158, 171, 0.16)",
+          p: { xs: 2, sm: 4 },
+          display: "flex",
+          flexDirection: { xs: "column", md: "row" },
+          gap: 4,
+        }}
+      >
+        {/* Left column: Title and description */}
+        <Box sx={{ flex: 1, minWidth: 240 }}>
+          <Typography variant="h5" sx={{ fontWeight: 600, mb: 2 }}>
             Event Details
           </Typography>
-
-          <Typography variant="body2" sx={{ color: '#637381', mb: 3 }}>
+          <Typography variant="body2" sx={{ color: "#637381" }}>
             Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
           </Typography>
         </Box>
 
-        <Box sx={{ 
-          flex: '1',
-          bgcolor: 'white',
-          borderRadius: 2,
-          p: 3,
-          boxShadow: '0px 2px 4px rgba(145, 158, 171, 0.16)'
-        }}>
-          <Box sx={{ display: 'grid', gap: 3 }}>
-            {/* Event Name */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ color: '#212B36', mb: 1 }}>
-                Event Name
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#637381' }}>
-                {eventData?.name || 'Not specified'}
-              </Typography>
-            </Box>
-
-            {/* Event Description */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ color: '#212B36', mb: 1 }}>
-                Event Description
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#637381' }}>
-                {eventData?.description || 'Not specified'}
-              </Typography>
-            </Box>
-
-            {/* Event Location */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ color: '#212B36', mb: 1 }}>
-                Event Location
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#637381' }}>
-                {eventData?.location || 'Not specified'}
-              </Typography>
-            </Box>
-
-            {/* Event Date */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ color: '#212B36', mb: 1 }}>
-                Event Date
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#637381' }}>
-                {eventData?.date ? new Date(eventData.date).toLocaleDateString() : 'Not specified'}
-              </Typography>
-            </Box>
-
-            {/* Event Type */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ color: '#212B36', mb: 1 }}>
-                Event Type
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#637381' }}>
-                {eventData?.eventType || 'Not specified'}
-              </Typography>
-            </Box>
+        {/* Right column: Event fields */}
+        <Box sx={{ flex: 2 }}>
+          <Box sx={{ mb: 2 }}>
+            <Typography sx={{ fontWeight: 500 }}>Event Name</Typography>
+            <TextField
+              fullWidth
+              value={eventData.name}
+              InputProps={{ readOnly: true }}
+              sx={{
+                mt: 1,
+                '& .MuiInputBase-root': {
+                  pointerEvents: 'none',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#e0e0e0',
+                },
+                '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#e0e0e0',
+                  boxShadow: 'none',
+                },
+                '& .MuiInputBase-root.Mui-focused': {
+                  boxShadow: 'none',
+                  backgroundColor: 'inherit',
+                },
+              }}
+            />
+          </Box>
+          <Box sx={{ mb: 2 }}>
+            <Typography sx={{ fontWeight: 500 }}>Event Description</Typography>
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              value={eventData.description}
+              InputProps={{ readOnly: true }}
+              sx={{
+                mt: 1,
+                '& .MuiInputBase-root': {
+                  pointerEvents: 'none',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#e0e0e0',
+                },
+                '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#e0e0e0',
+                  boxShadow: 'none',
+                },
+                '& .MuiInputBase-root.Mui-focused': {
+                  boxShadow: 'none',
+                  backgroundColor: 'inherit',
+                },
+              }}
+            />
+          </Box>
+          <Box sx={{ mb: 2 }}>
+            <Typography sx={{ fontWeight: 500 }}>Event Location</Typography>
+            <TextField
+              fullWidth
+              value={eventData.location}
+              InputProps={{ readOnly: true }}
+              sx={{
+                mt: 1,
+                '& .MuiInputBase-root': {
+                  pointerEvents: 'none',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#e0e0e0',
+                },
+                '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#e0e0e0',
+                  boxShadow: 'none',
+                },
+                '& .MuiInputBase-root.Mui-focused': {
+                  boxShadow: 'none',
+                  backgroundColor: 'inherit',
+                },
+              }}
+            />
+          </Box>
+          <Box sx={{ mb: 2 }}>
+            <Typography sx={{ fontWeight: 500 }}>Event Date</Typography>
+            <TextField
+              fullWidth
+              value={formatDate(eventData.date)}
+              InputProps={{ readOnly: true }}
+              sx={{
+                mt: 1,
+                '& .MuiInputBase-root': {
+                  pointerEvents: 'none',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#e0e0e0',
+                },
+                '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#e0e0e0',
+                  boxShadow: 'none',
+                },
+                '& .MuiInputBase-root.Mui-focused': {
+                  boxShadow: 'none',
+                  backgroundColor: 'inherit',
+                },
+              }}
+            />
+          </Box>
+          <Box>
+            <Typography sx={{ fontWeight: 500 }}>Event Type</Typography>
+            <TextField
+              fullWidth
+              value={eventData.type}
+              InputProps={{ readOnly: true }}
+              sx={{
+                mt: 1,
+                '& .MuiInputBase-root': {
+                  pointerEvents: 'none',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#e0e0e0',
+                },
+                '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#e0e0e0',
+                  boxShadow: 'none',
+                },
+                '& .MuiInputBase-root.Mui-focused': {
+                  boxShadow: 'none',
+                  backgroundColor: 'inherit',
+                },
+              }}
+            />
           </Box>
         </Box>
       </Box>

@@ -20,6 +20,8 @@ import TextField from "@mui/material/TextField";
 import CloseIcon from "@mui/icons-material/Close";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckIcon from "@mui/icons-material/Check";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
 
 import SelfieDoodle from "@/images/illustration/SelfieDoodle";
 
@@ -94,6 +96,10 @@ export default function EventLivePage() {
 
   const socketRef = useRef(null);
   const recognizerRef = useRef(null);
+
+  const [audioInputDevices, setAudioInputDevices] = useState([]);
+  const [selectedAudioInput, setSelectedAudioInput] = useState('');
+  const [anchorEl, setAnchorEl] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -218,6 +224,24 @@ export default function EventLivePage() {
     // eslint-disable-next-line
   }, [eventData?.id, eventData?.sourceLanguage, eventData?.status]);
 
+  // Fetch audio input devices on mount
+  useEffect(() => {
+    async function getAudioDevices() {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(device => device.kind === 'audioinput');
+        setAudioInputDevices(audioInputs);
+        if (!selectedAudioInput && audioInputs.length > 0) {
+          setSelectedAudioInput(audioInputs[0].deviceId);
+        }
+      } catch (err) {
+        console.error('Error accessing audio devices:', err);
+      }
+    }
+    getAudioDevices();
+  }, []);
+
   const handleBackToEvents = () => router.push("/dashboard/analytics");
   const handleOpenShareDialog = () => setShareDialogOpen(true);
   const handleCloseShareDialog = () => {
@@ -280,7 +304,6 @@ export default function EventLivePage() {
     }
   };
 
-
   const handleNewTranscription = (data) => {
     // Only record if enabled
     if (eventData.recordEvent) {
@@ -303,6 +326,21 @@ export default function EventLivePage() {
       localStorage.setItem(key, JSON.stringify(transcripts));
     }
     // ... your existing UI update logic ...
+  };
+
+  // Handler for opening/closing the menu
+  const handleMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  // Handler for selecting a device
+  const handleSelectInput = (deviceId) => {
+    setSelectedAudioInput(deviceId);
+    handleMenuClose();
+    // TODO: If you want to re-initialize the recognizer with the new input, do it here
   };
 
   if (loading) {
@@ -505,9 +543,29 @@ export default function EventLivePage() {
               size="small"
               endIcon={<ArrowDropDownIcon />}
               sx={{ textTransform: "none", fontSize: "14px" }}
+              onClick={handleMenuOpen}
             >
               Change Input
             </Button>
+            <Menu
+              anchorEl={anchorEl}
+              open={Boolean(anchorEl)}
+              onClose={handleMenuClose}
+            >
+              {audioInputDevices.length === 0 ? (
+                <MenuItem disabled>No audio inputs found</MenuItem>
+              ) : (
+                audioInputDevices.map((device) => (
+                  <MenuItem
+                    key={device.deviceId}
+                    selected={device.deviceId === selectedAudioInput}
+                    onClick={() => handleSelectInput(device.deviceId)}
+                  >
+                    {device.label || `Microphone (${device.deviceId})`}
+                  </MenuItem>
+                ))
+              )}
+            </Menu>
             <IconButton size="small">
               <MoreVertIcon />
             </IconButton>

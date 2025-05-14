@@ -106,6 +106,7 @@ const CreateEventModal = ({
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const calendarRef = useRef(null);
+  const [openDropdown, setOpenDropdown] = useState(null);
 
   useEffect(() => {
     if (open && initialData) {
@@ -277,20 +278,24 @@ const CreateEventModal = ({
   };
   
   const handleSaveAsDraft = () => {
-    handleCreate({ ...eventData, status: 'Draft event' });
+    handleCreate({ 
+      ...eventData, 
+      id: eventData.id || generateUniqueId(),
+      status: 'Draft event' 
+    });
     setConfirmDialogOpen(false);
     handleClose();
   };
 
-  const renderLanguageSelector = (field, label) => {
-    const [dropdownOpen, setDropdownOpen] = useState(false);
+  const renderLanguageSelector = (field, label, dropdownKey) => {
+    const dropdownOpen = openDropdown === dropdownKey;
     
     return (
       <Box sx={{ mb: 2, position: 'relative' }}>
         <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>{label}<span style={{ color: 'red' }}>*</span></Typography>
         
         <Box 
-          onClick={() => setDropdownOpen(!dropdownOpen)}
+          onClick={() => setOpenDropdown(dropdownOpen ? null : dropdownKey)}
           sx={{ 
             border: '1px solid #e0e0e0',
             borderRadius: '8px',
@@ -359,7 +364,7 @@ const CreateEventModal = ({
               size="small" 
               onClick={(e) => {
                 e.stopPropagation();
-                setDropdownOpen(!dropdownOpen);
+                setOpenDropdown(dropdownOpen ? null : dropdownKey);
               }}
               sx={{ padding: 0 }}
             >
@@ -420,7 +425,7 @@ const CreateEventModal = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     handleLanguageToggle(language, field);
-                    setDropdownOpen(false);
+                    setOpenDropdown(false);
                   }}
                   sx={{
                     display: 'flex',
@@ -438,7 +443,7 @@ const CreateEventModal = ({
                     onChange={(event) => {
                       event.stopPropagation();
                       handleLanguageToggle(language, field);
-                      setDropdownOpen(false);
+                      setOpenDropdown(false);
                     }}
                     onClick={(e) => e.stopPropagation()}
                     sx={{ 
@@ -460,15 +465,15 @@ const CreateEventModal = ({
     );
   };
 
-  const renderEventTypeSelector = () => {
-    const [dropdownOpen, setDropdownOpen] = useState(false);
+  const renderEventTypeSelector = (dropdownKey) => {
+    const dropdownOpen = openDropdown === dropdownKey;
     
     return (
       <Box sx={{ mb: 2, position: 'relative' }}>
         <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>Select Event Type<span style={{ color: 'red' }}>*</span></Typography>
         
         <Box 
-          onClick={() => setDropdownOpen(!dropdownOpen)}
+          onClick={() => setOpenDropdown(dropdownOpen ? null : dropdownKey)}
           sx={{ 
             border: '1px solid #e0e0e0',
             borderRadius: '8px',
@@ -527,7 +532,7 @@ const CreateEventModal = ({
               size="small" 
               onClick={(e) => {
                 e.stopPropagation();
-                setDropdownOpen(!dropdownOpen);
+                setOpenDropdown(dropdownOpen ? null : dropdownKey);
               }}
               sx={{ padding: 0 }}
             >
@@ -561,7 +566,7 @@ const CreateEventModal = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   setEventData(prev => ({ ...prev, eventType: type.value }));
-                  setDropdownOpen(false);
+                  setOpenDropdown(false);
                 }}
                 sx={{
                   display: 'flex',
@@ -841,8 +846,8 @@ const CreateEventModal = ({
               Language Settings
             </Typography>
             
-            {renderLanguageSelector('sourceLanguages', 'Source Language')}
-            {renderLanguageSelector('targetLanguages', 'Target Language')}
+            {renderLanguageSelector('sourceLanguages', 'Source Language', 'sourceLanguages')}
+            {renderLanguageSelector('targetLanguages', 'Target Language', 'targetLanguages')}
           </Box>
           
           <Box>
@@ -850,7 +855,7 @@ const CreateEventModal = ({
               Event Settings
             </Typography>
             
-            {renderEventTypeSelector()}
+            {renderEventTypeSelector('eventType')}
             
           </Box>
         </DialogContent>

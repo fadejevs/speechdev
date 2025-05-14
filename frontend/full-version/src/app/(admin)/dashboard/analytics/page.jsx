@@ -90,13 +90,17 @@ const AnalyticsDashboard = () => {
   const handleDelete = () => {
     if (!selectedEventId) return;
 
-    // 1) Remove from state
-    setTranscripts(prev => prev.filter(t => t.id !== selectedEventId));
+    console.log('Trying to delete event with id:', selectedEventId);
 
-    // 2) ALSO remove from localStorage
+    setTranscripts(prev => {
+      console.log('Current event IDs:', prev.map(t => t.id));
+      return prev.filter(t => String(t.id) !== String(selectedEventId));
+    });
+
     try {
       const stored = JSON.parse(localStorage.getItem('eventData') || '[]');
-      const filtered = stored.filter(evt => evt.id !== selectedEventId);
+      console.log('Stored event IDs:', stored.map(evt => evt.id));
+      const filtered = stored.filter(evt => String(evt.id) !== String(selectedEventId));
       localStorage.setItem('eventData', JSON.stringify(filtered));
     } catch (e) {
       console.error('Error deleting from localStorage:', e);
@@ -145,24 +149,17 @@ const AnalyticsDashboard = () => {
   };
 
   const handleCreateEvent = (eventData) => {
-    const newEvent = {
-      id: generateUniqueId(),
-      title: eventData.name || 'Not specified',
-      timestamp: eventData.date ? eventData.date : 'Not specified',
-      location: eventData.location || 'Not specified',
-      type: eventData.eventType || 'Not specified',
-      sourceLanguages: eventData.sourceLanguages || [],
-      targetLanguages: eventData.targetLanguages || [],
-      status: eventData.status || "Scheduled",
-      description: eventData.description || 'Not specified'
-    };
-    
-    setTranscripts([newEvent, ...transcripts]);
+    setTranscripts(prev => {
+      if (prev.some(e => e.id === eventData.id)) return prev; // Prevent duplicate
+      return [eventData, ...prev];
+    });
 
     // Save to localStorage
     try {
       const stored = JSON.parse(localStorage.getItem('eventData') || '[]');
-      localStorage.setItem('eventData', JSON.stringify([newEvent, ...stored]));
+      if (!stored.some(e => e.id === eventData.id)) {
+        localStorage.setItem('eventData', JSON.stringify([eventData, ...stored]));
+      }
     } catch (e) {
       console.error('Error saving to localStorage:', e);
     }
@@ -278,7 +275,7 @@ const AnalyticsDashboard = () => {
   const renderEventRow = (event) => {
     return (
       <TableRow
-        key={event.id}
+        key={event.id || `${event.title}-${event.timestamp}`}
         hover
         onClick={() => handleRowClick(event.id)}
         sx={{ cursor: 'pointer' }}
