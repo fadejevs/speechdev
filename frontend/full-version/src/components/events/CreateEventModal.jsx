@@ -182,7 +182,7 @@ const CreateEventModal = ({
       sourceLanguages: eventData.sourceLanguages || [],
       targetLanguages: eventData.targetLanguages || [],
       recordEvent: eventData.recordEvent,
-      status: "Scheduled", // Set status to "Scheduled" instead of "Draft event"
+      status: eventData.status || "Scheduled", // Use the status from eventData, fallback to "Scheduled"
       startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
       endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
     };
@@ -277,7 +277,7 @@ const CreateEventModal = ({
   };
   
   const handleSaveAsDraft = () => {
-    handleCreate({...eventData, status: 'draft'});
+    handleCreate({ ...eventData, status: 'Draft event' });
     setConfirmDialogOpen(false);
     handleClose();
   };

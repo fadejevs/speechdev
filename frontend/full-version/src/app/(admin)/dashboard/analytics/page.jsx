@@ -153,11 +153,19 @@ const AnalyticsDashboard = () => {
       type: eventData.eventType || 'Not specified',
       sourceLanguages: eventData.sourceLanguages || [],
       targetLanguages: eventData.targetLanguages || [],
-      status: "Scheduled",
+      status: eventData.status || "Scheduled",
       description: eventData.description || 'Not specified'
     };
     
     setTranscripts([newEvent, ...transcripts]);
+
+    // Save to localStorage
+    try {
+      const stored = JSON.parse(localStorage.getItem('eventData') || '[]');
+      localStorage.setItem('eventData', JSON.stringify([newEvent, ...stored]));
+    } catch (e) {
+      console.error('Error saving to localStorage:', e);
+    }
   };
 
   // Add this useEffect to refresh event data from localStorage
@@ -176,8 +184,8 @@ const AnalyticsDashboard = () => {
           // Map the stored events to the format expected by the dashboard
           const formattedEvents = realEvents.map(event => ({
             id: event.id,
-            title: event.name,
-            timestamp: event.date,
+            title: event.title || event.name,
+            timestamp: event.timestamp || event.date,
             location: event.location,
             type: event.type,
             status: event.status,
