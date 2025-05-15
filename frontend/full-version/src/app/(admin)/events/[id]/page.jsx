@@ -42,6 +42,8 @@ import CheckIcon from '@mui/icons-material/Check';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { formatForSpeechRecognition, formatForTranslationTarget } from '@/utils/languageUtils';
 import ListItemButton from '@mui/material/ListItemButton';
+import Autocomplete from '@mui/material/Autocomplete';
+import CircularProgress from '@mui/material/CircularProgress';
 
 const languages = [
   { code: 'en-US', name: 'English' },
@@ -109,6 +111,8 @@ const getLanguageName = (code) => {
   return code;
 };
 
+const GEOAPIFY_API_KEY = "a108fe26f510452dae47978e1619c895"; // <-- Use your real Geoapify API key
+
 const EditEventPage = () => {
   const { id } = useParams();
   const router = useRouter();
@@ -136,6 +140,8 @@ const EditEventPage = () => {
   const [languageSearch, setLanguageSearch] = useState('');
   const [audioInputDevices, setAudioInputDevices] = useState([]);
   const [selectedAudioInput, setSelectedAudioInput] = useState('');
+  const [locationOptions, setLocationOptions] = useState([]);
+  const [locationLoading, setLocationLoading] = useState(false);
 
   useEffect(() => {
     // Fetch event data from localStorage
@@ -408,6 +414,30 @@ const EditEventPage = () => {
     }));
   };
 
+  // Fetch city/country suggestions from Geoapify
+  const fetchLocationSuggestions = async (input) => {
+    if (!input) {
+      setLocationOptions([]);
+      return;
+    }
+    setLocationLoading(true);
+    try {
+      const res = await fetch(
+        `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(input)}&limit=5&type=city&format=json&apiKey=${GEOAPIFY_API_KEY}`
+      );
+      const data = await res.json();
+      setLocationOptions(
+        (data.results || []).map((item) => ({
+          label: `${item.city || item.name}, ${item.country}`,
+          value: `${item.city || item.name}, ${item.country}`,
+        }))
+      );
+    } catch (e) {
+      setLocationOptions([]);
+    }
+    setLocationLoading(false);
+  };
+
   if (loading) {
     return <Box sx={{ p: 4 }}>Loading...</Box>;
   }
@@ -581,20 +611,46 @@ const EditEventPage = () => {
                   <Typography variant="subtitle2" sx={{ mb: 1, color: '#637381', fontWeight: 500 }}>
                     Event Location
                   </Typography>
-                  <TextField
-                    fullWidth
-                    name="location"
-                    value={eventData.location}
-                    onChange={handleChange}
-                    placeholder="G. Zemgala gatve 78, Riga, LV-1039"
-                    variant="outlined"
-                    size="small"
-                    sx={{ 
-                      '& .MuiOutlinedInput-root': {
-                        borderRadius: '8px',
-                        height: '40px'
-                      }
+                  <Autocomplete
+                    freeSolo
+                    filterOptions={(x) => x}
+                    options={locationOptions}
+                    loading={locationLoading}
+                    value={eventData.location || ""}
+                    onInputChange={(_, value) => {
+                      setEventData((prev) => ({ ...prev, location: value }));
+                      fetchLocationSuggestions(value);
                     }}
+                    onChange={(_, value) => {
+                      setEventData((prev) => ({
+                        ...prev,
+                        location: typeof value === "string" ? value : value?.value || "",
+                      }));
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        fullWidth
+                        placeholder="Start typing your city..."
+                        variant="outlined"
+                        size="small"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: '8px',
+                            height: '40px'
+                          }
+                        }}
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {locationLoading ? <CircularProgress color="inherit" size={16} /> : null}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                      />
+                    )}
                   />
                 </Box>
                 

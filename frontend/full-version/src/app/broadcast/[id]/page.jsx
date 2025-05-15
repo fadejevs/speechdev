@@ -20,7 +20,6 @@ import apiService from "@/services/apiService";
 import SelfieDoodle from "@/images/illustration/SelfieDoodle";
 import io from "socket.io-client";
 
-
 // ISO‐code ↔ human name
 const languageMap = {
   en: "English",    lv: "Latvian",    lt: "Lithuanian", ru: "Russian",
@@ -78,6 +77,15 @@ const voiceMap = {
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || "https://speechdev.onrender.com";
 
+const fetchEventById = async (id) => ({
+  id,
+  title: "Test Event",
+  description: "This is a test event.",
+  source_languages: ["en"],
+  target_languages: ["es"],
+  status: "Live"
+});
+
 export default function BroadcastPage() {
   const { id } = useParams();
 
@@ -100,39 +108,44 @@ export default function BroadcastPage() {
   const [liveTranslations, setLiveTranslations]   = useState({});
   const [history, setHistory]                     = useState([]);
 
+  // 1. Add state for auto-TTS language
+  const [autoSpeakLang, setAutoSpeakLang] = useState(null);
+
   // Add a ref for the socket
   const socketRef = useRef(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem("eventData");
-    if (stored) {
-      const arr = JSON.parse(stored);
-      const ev  = arr.find((e) => e.id === id);
-      if (ev) {
-        setEventData(ev);
+    setLoading(true);
+    fetchEventById(id)
+      .then(ev => {
+        if (ev) {
+          setEventData(ev);
 
-        if (ev.sourceLanguages?.length) {
-          const fulls = ev.sourceLanguages.map(getFullLanguageName);
-          setAvailableSourceLanguages(fulls);
-          setTranscriptionLanguage(fulls[0]);
-          // lang‐code for live label
-          setLiveTranscriptionLang(ev.sourceLanguages[0]);
-        }
+          if (ev.source_languages?.length) {
+            const fulls = ev.source_languages.map(getFullLanguageName);
+            setAvailableSourceLanguages(fulls);
+            setTranscriptionLanguage(fulls[0]);
+            setLiveTranscriptionLang(ev.source_languages[0]);
+          }
 
-        if (ev.targetLanguages?.length) {
-          const fullt = ev.targetLanguages.map(getFullLanguageName);
-          setAvailableTargetLanguages(fullt);
-          setTranslationLanguage(fullt[0]);
-        }
+          if (ev.target_languages?.length) {
+            const fullt = ev.target_languages.map(getFullLanguageName);
+            setAvailableTargetLanguages(fullt);
+            setTranslationLanguage(fullt[0]);
+          }
 
-        if (ev.status === "Paused" || ev.status === "Completed") {
-          // stopListening();
-        } else {
-          // startListening();
+          if (ev.status === "Paused" || ev.status === "Completed") {
+            // stopListening();
+          } else {
+            // startListening();
+          }
         }
-      }
-    }
-    setLoading(false);
+        setLoading(false);
+      })
+      .catch(() => {
+        setEventData(null);
+        setLoading(false);
+      });
   }, [id]);
 
   // Add this function for translation (using your API or Azure)
@@ -247,11 +260,9 @@ export default function BroadcastPage() {
         fetchTranslations(data.text, translationLanguage).then((plain) => {
           setLiveTranslations(plain);
 
-          // Optionally, trigger TTS for the translation
-          // For example, auto-play the translation in the selected language:
-          const langCode = getLanguageCode(translationLanguage);
-          if (plain[langCode]) {
-            speakText(plain[langCode], langCode);
+          // 2. Auto-TTS logic: play TTS for new translations if enabled
+          if (autoSpeakLang && plain[autoSpeakLang]) {
+            speakText(plain[autoSpeakLang], autoSpeakLang);
           }
         });
       }
@@ -271,7 +282,7 @@ export default function BroadcastPage() {
       socket.emit("leave_room", { room: id });
       socket.disconnect();
     };
-  }, [id, translationLanguage]);
+  }, [id, translationLanguage, autoSpeakLang]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
@@ -357,6 +368,9 @@ export default function BroadcastPage() {
       </Box>
     );
   }
+
+  console.log('SUPABASE URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+  console.log('SUPABASE KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
   return (
     <Box sx={{ display:"flex", flexDirection:"column", minHeight:"100vh" }}>
@@ -530,23 +544,37 @@ export default function BroadcastPage() {
           <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
             {availableTargetLanguages.length > 0 ? (
               Object.keys(liveTranslations).length > 0 ? (
-                Object.entries(liveTranslations).map(([lang, txt]) => (
-                  <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
-                        {getFullLanguageName(getBaseLangCode(lang))}:
-                      </Typography>
-                      <Typography variant="body1">{txt}</Typography>
-                    </Box>
+                <>
+                  {/* 3. Add Stop Auto-TTS button if enabled */}
+                  {autoSpeakLang && (
                     <Button
-                      onClick={() => speakText(txt, lang)}
-                      sx={{ ml: 2, minWidth: 0 }}
-                      aria-label={`Listen to ${getFullLanguageName(getBaseLangCode(lang))}`}
+                      onClick={() => setAutoSpeakLang(null)}
+                      color="secondary"
+                      size="small"
+                      sx={{ mb: 2 }}
                     >
-                      <VolumeUpIcon />
+                      Stop Auto-TTS
                     </Button>
-                  </Box>
-                ))
+                  )}
+                  {Object.entries(liveTranslations).map(([lang, txt]) => (
+                    <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
+                          {getFullLanguageName(getBaseLangCode(lang))}:
+                        </Typography>
+                        <Typography variant="body1">{txt}</Typography>
+                      </Box>
+                      {/* 4. TTS button: set auto-TTS for this language */}
+                      <Button
+                        onClick={() => setAutoSpeakLang(lang)}
+                        sx={{ ml: 2, minWidth: 0 }}
+                        aria-label={`Auto-play TTS for ${getFullLanguageName(getBaseLangCode(lang))}`}
+                      >
+                        <VolumeUpIcon color={autoSpeakLang === lang ? "primary" : "inherit"} />
+                      </Button>
+                    </Box>
+                  ))}
+                </>
               ) : (
                 <Typography variant="body1" sx={{ color:"text.secondary", fontStyle:"italic" }}>
                   Waiting for live translation...

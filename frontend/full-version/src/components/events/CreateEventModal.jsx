@@ -16,7 +16,8 @@ import {
   FormControl,
   Checkbox,
   ListItemText,
-  InputAdornment
+  InputAdornment,
+  CircularProgress
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SearchIcon from '@mui/icons-material/Search';
@@ -81,6 +82,8 @@ const getLanguageName = (code) => {
   return found ? found.name : code;
 };
 
+const GEOAPIFY_API_KEY = "a108fe26f510452dae47978e1619c895";
+
 const CreateEventModal = ({ 
   open, 
   handleClose, 
@@ -107,6 +110,8 @@ const CreateEventModal = ({
   const [showCalendar, setShowCalendar] = useState(false);
   const calendarRef = useRef(null);
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [locationOptions, setLocationOptions] = useState([]);
+  const [locationLoading, setLocationLoading] = useState(false);
 
   useEffect(() => {
     if (open && initialData) {
@@ -654,6 +659,30 @@ const CreateEventModal = ({
     setShowCalendar(false);
   };
 
+  // Fetch city/country suggestions from Geoapify
+  const fetchLocationSuggestions = useCallback(async (input) => {
+    if (!input) {
+      setLocationOptions([]);
+      return;
+    }
+    setLocationLoading(true);
+    try {
+      const res = await fetch(
+        `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(input)}&limit=5&type=city&format=json&apiKey=${GEOAPIFY_API_KEY}`
+      );
+      const data = await res.json();
+      setLocationOptions(
+        (data.results || []).map((item) => ({
+          label: `${item.city || item.name}, ${item.country}`,
+          value: `${item.city || item.name}, ${item.country}`,
+        }))
+      );
+    } catch (e) {
+      setLocationOptions([]);
+    }
+    setLocationLoading(false);
+  }, []);
+
   return (
     <>
       <Dialog 
@@ -748,25 +777,28 @@ const CreateEventModal = ({
               </Typography>
               <Autocomplete
                 freeSolo
-                options={LOCATIONS.map(loc => loc.label)}
+                filterOptions={(x) => x} // Don't filter client-side
+                options={locationOptions}
+                loading={locationLoading}
                 value={eventData.location}
-                onChange={(e, newValue) => {
-                  setEventData(prev => ({
-                    ...prev,
-                    location: newValue || ''
-                  }));
-                }}
-                onInputChange={(e, newInputValue) => {
-                  setEventData(prev => ({
+                onInputChange={(_, newInputValue) => {
+                  setEventData((prev) => ({
                     ...prev,
                     location: newInputValue
+                  }));
+                  fetchLocationSuggestions(newInputValue);
+                }}
+                onChange={(_, newValue) => {
+                  setEventData((prev) => ({
+                    ...prev,
+                    location: typeof newValue === "string" ? newValue : (newValue?.value || "")
                   }));
                 }}
                 renderInput={(params) => (
                   <TextField
                     {...params}
                     name="location"
-                    placeholder="Start typing your location..."
+                    placeholder="Start typing your city..."
                     size="small"
                     variant="outlined"
                     sx={{
@@ -776,6 +808,15 @@ const CreateEventModal = ({
                           borderColor: '#e0e0e0'
                         }
                       }
+                    }}
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {locationLoading ? <CircularProgress color="inherit" size={16} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
                     }}
                   />
                 )}

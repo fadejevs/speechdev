@@ -271,7 +271,7 @@ const AnalyticsDashboard = () => {
     }
     return <Typography variant="body2">{value}</Typography>;
   };
-
+  
   const renderEventRow = (event) => {
     return (
       <TableRow
