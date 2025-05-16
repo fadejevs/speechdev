@@ -28,10 +28,44 @@ const getBaseLangCode = (code) => code?.split('-')[0]?.toLowerCase() || code;
 
 function formatDate(dateString) {
   if (!dateString) return '';
-  const date = new Date(dateString);
+  // Handle DD.MM.YYYY format
+  const [day, month, year] = dateString.split('.');
+  if (!day || !month || !year) return dateString; // fallback if format is unexpected
+  const date = new Date(`${year}-${month}-${day}`);
   // Format as DD.MM.YYYY
   return date.toLocaleDateString('en-GB');
 }
+
+const fetchEventById = async (id) => {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`,
+    {
+      headers: {
+        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+      },
+    }
+  );
+  const data = await res.json();
+  return data && data.length > 0 ? data[0] : null;
+};
+
+const updateEventStatus = async (id, status) => {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status }),
+    }
+  );
+  const data = await res.json();
+  console.log("Update response:", res.status, data);
+};
 
 const EventCompletionPage = () => {
   const { id } = useParams();
@@ -40,18 +74,17 @@ const EventCompletionPage = () => {
   const [transcripts, setTranscripts] = useState({});
 
   useEffect(() => {
-    // Get event data from localStorage
-    const storedEvents = localStorage.getItem('eventData');
-    if (storedEvents) {
-      const parsedEvents = JSON.parse(storedEvents);
-      const event = parsedEvents.find(event => String(event.id) === String(id));
+    fetchEventById(id).then(event => {
+      console.log("Fetched event from Supabase:", event);
       if (event) {
         // unify shape so we always have arrays to iterate
         const srcArr =
           event.sourceLanguages ||
+          event.source_languages ||
           (event.sourceLanguage ? [event.sourceLanguage] : []);
         const tgtArr =
           event.targetLanguages ||
+          event.target_languages ||
           (event.targetLanguage ? [event.targetLanguage] : []);
 
         setEventData({
@@ -60,7 +93,7 @@ const EventCompletionPage = () => {
           targetLanguages: tgtArr,
         });
       }
-    }
+    });
   }, [id]);
 
   useEffect(() => {
@@ -74,6 +107,11 @@ const EventCompletionPage = () => {
 
   const handleBackToEvents = () => {
     router.push('/dashboard/analytics');
+  };
+
+  const handleMarkComplete = async () => {
+    await updateEventStatus(id, "Completed");
+    setEventData(prev => ({ ...prev, status: "Completed" }));
   };
 
   if (!eventData) {
@@ -206,7 +244,7 @@ const EventCompletionPage = () => {
             <Typography sx={{ fontWeight: 500 }}>Event Name</Typography>
             <TextField
               fullWidth
-              value={eventData.name}
+              value={eventData.title || ""}
               InputProps={{ readOnly: true }}
               sx={{
                 mt: 1,
@@ -283,7 +321,7 @@ const EventCompletionPage = () => {
             <Typography sx={{ fontWeight: 500 }}>Event Date</Typography>
             <TextField
               fullWidth
-              value={formatDate(eventData.date)}
+              value={formatDate(eventData.timestamp)}
               InputProps={{ readOnly: true }}
               sx={{
                 mt: 1,

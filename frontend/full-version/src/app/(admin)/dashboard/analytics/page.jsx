@@ -52,8 +52,12 @@ const AnalyticsDashboard = () => {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedTranscripts = transcripts.slice(startIndex, startIndex + itemsPerPage);
 
-  const handleRowClick = (eventId) => {
-    router.push(`/events/${eventId}`);
+  const handleRowClick = (event) => {
+    if (event.status === "Live" || event.status === "Paused") {
+      router.push(`/events/${event.id}/live`);
+    } else {
+      router.push(`/events/${event.id}`);
+    }
   };
 
   const handleMenuOpen = (event, eventId) => {
@@ -214,7 +218,7 @@ const AnalyticsDashboard = () => {
       <TableRow
         key={event.id || `${event.title}-${event.timestamp}`}
         hover
-        onClick={() => handleRowClick(event.id)}
+        onClick={() => handleRowClick(event)}
         sx={{ cursor: 'pointer' }}
       >
         <TableCell component="th" scope="row">

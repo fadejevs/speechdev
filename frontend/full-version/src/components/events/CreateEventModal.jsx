@@ -35,25 +35,14 @@ import { DatePicker, TimePicker } from '@mui/x-date-pickers';
 import dayjs from 'dayjs';
 import { generateUniqueId } from '@/utils/idGenerator';
 import Autocomplete from '@mui/material/Autocomplete';
+import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
 
-const LANGUAGES = [
-  { value: 'en-US', name: 'English (US)' },
-  { value: 'en-GB', name: 'English (UK)' },
-  { value: 'lv-LV', name: 'Latvian' },
-  { value: 'es-ES', name: 'Spanish (Spain)' },
-  { value: 'es-MX', name: 'Spanish (Mexico)' },
-  // { value: 'Latvian', name: 'Latvian' },
-  { value: 'Lithuanian', name: 'Lithuanian' },
-  { value: 'Estonian', name: 'Estonian' },
-  { value: 'German', name: 'German' },
-  { value: 'Spanish', name: 'Spanish' },
-  { value: 'English', name: 'English' },
-  { value: 'Russian', name: 'Russian' },
-  { value: 'French', name: 'French' },
-  { value: 'Italian', name: 'Italian' },
-  { value: 'Chinese', name: 'Chinese' },
-  { value: 'Japanese', name: 'Japanese' }
-];
+const LANGUAGES = DEEPL_LANGUAGES.map(l => ({
+  value: l.azure || l.deepl, // Use Azure code if available, fallback to DeepL code
+  name: l.name,
+  deepl: l.deepl,
+  azure: l.azure,
+}));
 
 const EVENT_TYPES = [
   { value: 'online', label: 'Online' },
@@ -78,7 +67,9 @@ const LOCATIONS = [
 ];
 
 const getLanguageName = (code) => {
-  const found = LANGUAGES.find(l => l.value === code);
+  const found = DEEPL_LANGUAGES.find(
+    l => l.azure === code || l.deepl === code || l.deepl === code?.toUpperCase()
+  );
   return found ? found.name : code;
 };
 
@@ -263,10 +254,20 @@ const CreateEventModal = ({
   };
   
   const handleSaveAsDraft = () => {
-    handleCreate({ 
-      ...eventData, 
-      status: 'Draft event' 
-    });
+    const draftEvent = {
+      title: eventData.name || '',
+      description: eventData.description || '',
+      location: eventData.location || '',
+      timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : '',
+      type: eventData.eventType || '',
+      sourceLanguages: eventData.sourceLanguages || [],
+      targetLanguages: eventData.targetLanguages || [],
+      recordEvent: eventData.recordEvent || false,
+      status: 'Draft event',
+      startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
+      endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
+    };
+    handleCreate(draftEvent);
     setConfirmDialogOpen(false);
     handleClose();
   };

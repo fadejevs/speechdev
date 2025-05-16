@@ -27,18 +27,15 @@ import SelfieDoodle from "@/images/illustration/SelfieDoodle";
 
 import io from "socket.io-client";
 import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk";
+import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
 
 // language lookup
-const languages = [
-  { code: "en", name: "English" },
-  { code: "lv", name: "Latvian" },
-  { code: "lt", name: "Lithuanian" },
-  { code: "et", name: "Estonian" },
-  { code: "ru", name: "Russian" },
-  { code: "fr", name: "French" },
-  { code: "de", name: "German" },
-  { code: "es", name: "Spanish" },
-];
+const languages = DEEPL_LANGUAGES.map(l => ({
+  code: l.azure || l.deepl,
+  name: l.name,
+  deepl: l.deepl,
+  azure: l.azure,
+}));
 
 const deepLCodesToNames = {
   EN: 'English',
@@ -69,13 +66,43 @@ const deepLCodesToNames = {
 };
 
 const getLanguageName = (code) => {
-  const found = languages.find(l => l.code === code);
+  if (!code) return "";
+  // Try full code first (case-insensitive)
+  let found = languages.find(l => l.code.toLowerCase() === code.toLowerCase());
   if (found) return found.name;
-  if (deepLCodesToNames[code]) return deepLCodesToNames[code];
+  // Try base code (e.g., "en" from "en-US")
+  const base = code.split(/[-_]/)[0].toLowerCase();
+  found = languages.find(l => l.code.toLowerCase() === base);
+  if (found) return found.name;
+  // Try DeepL mapping
+  if (deepLCodesToNames[code.toUpperCase()]) return deepLCodesToNames[code.toUpperCase()];
+  if (deepLCodesToNames[base.toUpperCase()]) return deepLCodesToNames[base.toUpperCase()];
   return code;
 };
 
 const getBaseLangCode = (code) => code?.split('-')[0]?.toLowerCase() || code;
+
+const updateEventStatus = async (id, status) => {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({ status }),
+    }
+  );
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(error);
+  }
+  const data = await res.json();
+  return data[0];
+};
 
 export default function EventLivePage() {
   const { id } = useParams();
@@ -257,34 +284,27 @@ export default function EventLivePage() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-  const handleCompleteEvent = () => {
+  const handleCompleteEvent = async () => {
     try {
-      const raw = localStorage.getItem("eventData") || "[]";
-      const all = JSON.parse(raw);
-      const updated = all.map((e) =>
-        e.id === eventData.id ? { ...e, status: "Completed" } : e
-      );
-      localStorage.setItem("eventData", JSON.stringify(updated));
+      await updateEventStatus(eventData.id, "Completed");
+      setEventData(prev => ({ ...prev, status: "Completed" }));
       if (socketRef.current && socketRef.current.connected) {
         socketRef.current.emit("update_event_status", {
           room_id: eventData.id,
           status: "Completed",
         });
       }
+      // Redirect to the complete page
+      router.push(`/events/${eventData.id}/complete`);
     } catch (e) {
-      console.error("Failed to update event status:", e);
+      console.error("Failed to complete event:", e);
     }
-    router.push(`/events/${id}/complete`);
   };
-  const handlePauseResumeEvent = () => {
+  const handlePauseResumeEvent = async () => {
     try {
-      const raw = localStorage.getItem("eventData") || "[]";
-      const all = JSON.parse(raw);
       const newStatus = eventData.status === "Paused" ? "Live" : "Paused";
-      const updated = all.map((e) =>
-        e.id === eventData.id ? { ...e, status: newStatus } : e
-      );
-      localStorage.setItem("eventData", JSON.stringify(updated));
+      // Update in Supabase
+      await updateEventStatus(eventData.id, newStatus);
       setEventData(prev => ({ ...prev, status: newStatus }));
 
       if (newStatus === "Paused" && recognizerRef.current) {
@@ -537,7 +557,7 @@ export default function EventLivePage() {
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Typography>
-              {getLanguageName(getBaseLangCode(eventData.sourceLanguage))}
+              {getLanguageName(eventData.sourceLanguage || (Array.isArray(eventData.sourceLanguages) ? eventData.sourceLanguages[0] : ""))}
             </Typography>
             <Chip label="Source" color="primary" size="small" />
           </Box>

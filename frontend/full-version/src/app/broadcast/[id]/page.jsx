@@ -33,7 +33,7 @@ const languageMap = {
   sk: "Slovak",     sl: "Slovenian",  sr: "Serbian",     hr: "Croatian",
   et: "Estonian",
 };
-const getFullLanguageName = (code = "") => languageMap[code] || code;
+const getFullLanguageName = (code = "") => languageMap[code.toLowerCase()] || code;
 const getLanguageCode     = (full = "") => {
   const entry = Object.entries(languageMap).find(([, name]) => name === full);
   return entry ? entry[0] : full;
@@ -77,14 +77,19 @@ const voiceMap = {
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || "https://speechdev.onrender.com";
 
-const fetchEventById = async (id) => ({
-  id,
-  title: "Test Event",
-  description: "This is a test event.",
-  source_languages: ["en"],
-  target_languages: ["es"],
-  status: "Live"
-});
+const fetchEventById = async (id) => {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`,
+    {
+      headers: {
+        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+      },
+    }
+  );
+  const data = await res.json();
+  return data && data.length > 0 ? data[0] : null;
+};
 
 export default function BroadcastPage() {
   const { id } = useParams();
@@ -121,17 +126,15 @@ export default function BroadcastPage() {
         if (ev) {
           setEventData(ev);
 
-          if (ev.source_languages?.length) {
-            const fulls = ev.source_languages.map(getFullLanguageName);
-            setAvailableSourceLanguages(fulls);
-            setTranscriptionLanguage(fulls[0]);
-            setLiveTranscriptionLang(ev.source_languages[0]);
+          if (ev.sourceLanguages?.length) {
+            setAvailableSourceLanguages(ev.sourceLanguages);
+            setTranscriptionLanguage(ev.sourceLanguages[0]);
+            setLiveTranscriptionLang(ev.sourceLanguages[0]);
           }
 
-          if (ev.target_languages?.length) {
-            const fullt = ev.target_languages.map(getFullLanguageName);
-            setAvailableTargetLanguages(fullt);
-            setTranslationLanguage(fullt[0]);
+          if (ev.targetLanguages?.length) {
+            setAvailableTargetLanguages(ev.targetLanguages);
+            setTranslationLanguage(ev.targetLanguages[0]);
           }
 
           if (ev.status === "Paused" || ev.status === "Completed") {
@@ -434,7 +437,9 @@ export default function BroadcastPage() {
                   fontWeight: 500,
                 }}
               >
-                {getFullLanguageName(getBaseLangCode(liveTranscriptionLang))}
+                {transcriptionLanguage
+                  ? getFullLanguageName(getBaseLangCode(transcriptionLanguage))
+                  : <span style={{ color: "#ccc" }}>[No language]</span>}
               </Box>
               {/* <Button
                 size="small"
@@ -501,7 +506,9 @@ export default function BroadcastPage() {
                   fontWeight: 500,
                 }}
               >
-                {getFullLanguageName(getBaseLangCode(translationLanguage))}
+                {translationLanguage
+                  ? getFullLanguageName(getBaseLangCode(translationLanguage))
+                  : <span style={{ color: "#ccc" }}>[No language]</span>}
               </Box>
               <Button
                 size="small"
@@ -526,10 +533,6 @@ export default function BroadcastPage() {
                     onClick={() => {
                       setTranslationLanguage(lang);
                       setTranslationMenuAnchor(null);
-                      // If listening, stop first, then start after it's fully stopped
-                      // if (listening) {
-                      //   stopListening(() => setTimeout(startListening, 100));
-                      // }
                     }}
                   >
                     {getFullLanguageName(getBaseLangCode(lang))}

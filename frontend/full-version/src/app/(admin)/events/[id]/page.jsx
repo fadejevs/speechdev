@@ -44,74 +44,45 @@ import { formatForSpeechRecognition, formatForTranslationTarget } from '@/utils/
 import ListItemButton from '@mui/material/ListItemButton';
 import Autocomplete from '@mui/material/Autocomplete';
 import CircularProgress from '@mui/material/CircularProgress';
+import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
 
-const languages = [
-  { code: 'en-US', name: 'English' },
-  { code: 'de-DE', name: 'German' },
-  { code: 'es-ES', name: 'Spanish' },
-  { code: 'fr-FR', name: 'French' },
-  { code: 'it-IT', name: 'Italian' },
-  { code: 'ja-JP', name: 'Japanese' },
-  { code: 'ko-KR', name: 'Korean' },
-  { code: 'pt-BR', name: 'Portuguese' },
-  { code: 'ru-RU', name: 'Russian' },
-  { code: 'zh-CN', name: 'Chinese' },
-  { code: 'lv-LV', name: 'Latvian' },
-  { code: 'lt-LT', name: 'Lithuanian' },
-  { code: 'et-EE', name: 'Estonian' },
-  { code: 'pl-PL', name: 'Polish' },
-  { code: 'nl-NL', name: 'Dutch' },
-  { code: 'cs-CZ', name: 'Czech' },
-  { code: 'da-DK', name: 'Danish' },
-  { code: 'fi-FI', name: 'Finnish' },
-  { code: 'hu-HU', name: 'Hungarian' },
-  { code: 'nb-NO', name: 'Norwegian' },
-  { code: 'ro-RO', name: 'Romanian' },
-  { code: 'sk-SK', name: 'Slovak' },
-  { code: 'sv-SE', name: 'Swedish' },
-  { code: 'tr-TR', name: 'Turkish' },
-  { code: 'uk-UA', name: 'Ukrainian' }
-];
-
-const deepLCodesToNames = {
-  EN: 'English',
-  DE: 'German',
-  ES: 'Spanish',
-  FR: 'French',
-  IT: 'Italian',
-  JA: 'Japanese',
-  KO: 'Korean',
-  PT: 'Portuguese',
-  RU: 'Russian',
-  ZH: 'Chinese',
-  LV: 'Latvian',
-  LT: 'Lithuanian',
-  ET: 'Estonian',
-  PL: 'Polish',
-  NL: 'Dutch',
-  CS: 'Czech',
-  DA: 'Danish',
-  FI: 'Finnish',
-  HU: 'Hungarian',
-  NB: 'Norwegian',
-  RO: 'Romanian',
-  SK: 'Slovak',
-  SV: 'Swedish',
-  TR: 'Turkish',
-  UK: 'Ukrainian'
-};
+const languages = DEEPL_LANGUAGES.map(l => ({
+  code: l.azure || l.deepl, // Prefer Azure code, fallback to DeepL code
+  name: l.name,
+  deepl: l.deepl,
+  azure: l.azure,
+}));
 
 const getLanguageName = (code) => {
-  // Try to find in the main language list
-  const found = languages.find(l => l.code === code);
-  if (found) return found.name;
-  // Try DeepL code mapping
-  if (deepLCodesToNames[code]) return deepLCodesToNames[code];
-  // Fallback to code
-  return code;
+  const found = languages.find(
+    l => l.code === code || l.deepl === code || l.azure === code
+  );
+  return found ? found.name : code;
 };
 
 const GEOAPIFY_API_KEY = "a108fe26f510452dae47978e1619c895"; // <-- Use your real Geoapify API key
+
+const updateEventStatus = async (id, status) => {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({ status }),
+    }
+  );
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(error);
+  }
+  const data = await res.json();
+  return data[0];
+};
 
 const EditEventPage = () => {
   const { id } = useParams();
@@ -160,12 +131,30 @@ const EditEventPage = () => {
         const data = await res.json();
         if (data && data.length > 0) {
           const event = data[0];
+
+          // --- Fix type mapping to match Select options ---
+          let type = event.type === 'Not specified' ? '' : event.type;
+          if (type) {
+            if (type.toLowerCase() === 'online') type = 'Online';
+            else if (type.toLowerCase() === 'in-person') type = 'In-person';
+            else if (type.toLowerCase() === 'hybrid') type = 'Hybrid';
+          }
+
+          // --- Fix date parsing for DatePicker ---
+          let date = null;
+          if (event.timestamp && event.timestamp !== 'Not specified') {
+            date = dayjs(event.timestamp);
+            if (!date.isValid()) {
+              date = dayjs(event.timestamp, 'DD.MM.YYYY');
+            }
+          }
+
           setEventData({
             name: event.title === 'Not specified' ? '' : event.title,
             description: event.description === 'Not specified' ? '' : event.description,
             location: event.location === 'Not specified' ? '' : event.location,
-            date: event.timestamp && event.timestamp !== 'Not specified' ? dayjs(event.timestamp, 'DD.MM.YYYY') : null,
-            type: event.type === 'Not specified' ? '' : event.type,
+            date,
+            type,
             sourceLanguages: event.source_languages || event.sourceLanguages || [],
             targetLanguages: event.target_languages || event.targetLanguages || [],
             recordEvent: event.recordEvent ?? false,
@@ -572,7 +561,7 @@ const EditEventPage = () => {
                   <TextField
                     fullWidth
                     name="name"
-                    value={eventData.name}
+                    value={eventData.name || ""}
                     onChange={handleChange}
                     placeholder="Demo Event"
                     variant="outlined"
@@ -593,7 +582,7 @@ const EditEventPage = () => {
                   <TextField
                     fullWidth
                     name="description"
-                    value={eventData.description}
+                    value={eventData.description || ""}
                     onChange={handleChange}
                     placeholder="My first Demo Event with Real time AI Speech to Speech Translation"
                     variant="outlined"
@@ -662,7 +651,7 @@ const EditEventPage = () => {
                   </Typography>
                   <LocalizationProvider dateAdapter={AdapterDayjs}>
                     <DatePicker
-                      value={eventData.date}
+                      value={eventData.date || ""}
                       onChange={(newDate) => setEventData(prev => ({ ...prev, date: newDate }))}
                       format="DD.MM.YYYY"
                       slotProps={{
@@ -1241,9 +1230,15 @@ const EditEventPage = () => {
         <Button
           fullWidth
           variant="contained"
-          onClick={() => {
-            handleCloseStartDialog();
-            router.push(`/events/${id}/live`);
+          onClick={async () => {
+            try {
+              await updateEventStatus(id, "Live");
+              handleCloseStartDialog();
+              router.push(`/events/${id}/live`);
+            } catch (e) {
+              alert("Failed to start event. Please try again.");
+              console.error(e);
+            }
           }}
           sx={{
             bgcolor: '#6366f1',
