@@ -25,34 +25,14 @@ import EditIcon from '@mui/icons-material/Edit';
 import CreateEventModal from '@/components/events/CreateEventModal';
 import { useRouter } from 'next/navigation';
 import { generateUniqueId } from '@/utils/idGenerator';
-
-// API service
-
-// const getTranscriptHistory = async () => {
-//   try {
-//     const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/transcripts`);
-//     return response.data;
-//   } catch (error) {
-//     console.error('Error fetching transcripts:', error);
-//     return [];
-//   }
-// };
-
-// Mock data
-const initialMockData = Array.from({ length: 10 }, (_, i) => ({
-  id: i + 1,
-  title: `Demo Event ${i + 1}`,
-  timestamp: new Date(2024, i % 12, (i + 1) * 2).toLocaleDateString(),
-  location: i % 2 === 0 ? 'Online' : 'Riga, Latvia',
-  type: i % 3 === 0 ? 'stt' : i % 3 === 1 ? 'translation' : 'tts',
-  status: i % 2 === 0 ? 'Scheduled' : 'Completed'
-}));
+import { supabase } from '@/utils/supabase/client';
 
 const formatDate = (dateString) => {
   if (!dateString || dateString === 'Not specified') return dateString;
   const date = new Date(dateString);
   if (isNaN(date)) return dateString;
-  return date.toLocaleDateString();
+  // Use ISO format for hydration consistency
+  return date.toISOString().split('T')[0];
 };
 
 const AnalyticsDashboard = () => {
@@ -87,25 +67,17 @@ const AnalyticsDashboard = () => {
     setSelectedEventId(null);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selectedEventId) return;
-
-    console.log('Trying to delete event with id:', selectedEventId);
-
-    setTranscripts(prev => {
-      console.log('Current event IDs:', prev.map(t => t.id));
-      return prev.filter(t => String(t.id) !== String(selectedEventId));
-    });
-
-    try {
-      const stored = JSON.parse(localStorage.getItem('eventData') || '[]');
-      console.log('Stored event IDs:', stored.map(evt => evt.id));
-      const filtered = stored.filter(evt => String(evt.id) !== String(selectedEventId));
-      localStorage.setItem('eventData', JSON.stringify(filtered));
-    } catch (e) {
-      console.error('Error deleting from localStorage:', e);
+    const { error } = await supabase
+      .from('events')
+      .delete()
+      .eq('id', selectedEventId);
+    if (error) {
+      console.error('Error deleting event:', error);
+      return;
     }
-
+    setTranscripts(prev => prev.filter(t => String(t.id) !== String(selectedEventId)));
     handleMenuClose();
   };
 
@@ -126,87 +98,52 @@ const AnalyticsDashboard = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleUpdateEvent = (updatedData) => {
-    const updatedEvent = {
-      ...editingEvent,
-      title: updatedData.name,
-      description: updatedData.description,
-      location: updatedData.location,
-      timestamp: updatedData.date,
-      sourceLanguages: updatedData.sourceLanguages,
-      targetLanguages: updatedData.targetLanguages,
-      type: updatedData.eventType,
-      recordEvent: updatedData.recordEvent,
-      status: updatedData.status || editingEvent.status
-    };
-    
+  const handleUpdateEvent = async (updatedData) => {
+    const { data, error } = await supabase
+      .from('events')
+      .update(updatedData)
+      .eq('id', editingEvent.id)
+      .select();
+    if (error) {
+      console.error('Error updating event:', error);
+      return;
+    }
     setTranscripts(transcripts.map(event => 
-      event.id === editingEvent.id ? updatedEvent : event
+      event.id === editingEvent.id ? data[0] : event
     ));
-    
     setIsEditModalOpen(false);
     setEditingEvent(null);
   };
 
-  const handleCreateEvent = (eventData) => {
-    setTranscripts(prev => {
-      if (prev.some(e => e.id === eventData.id)) return prev; // Prevent duplicate
-      return [eventData, ...prev];
-    });
-
-    // Save to localStorage
-    try {
-      const stored = JSON.parse(localStorage.getItem('eventData') || '[]');
-      if (!stored.some(e => e.id === eventData.id)) {
-        localStorage.setItem('eventData', JSON.stringify([eventData, ...stored]));
-      }
-    } catch (e) {
-      console.error('Error saving to localStorage:', e);
+  const handleCreateEvent = async (eventData) => {
+    const { data, error } = await supabase
+      .from('events')
+      .insert([eventData])
+      .select();
+    if (error) {
+      console.error('Error creating event:', error);
+      return;
     }
+    setTranscripts(prev => [data[0], ...prev]);
   };
 
-  // Add this useEffect to refresh event data from localStorage
+  // 1. Fetch events from Supabase
   useEffect(() => {
-    const loadEventsFromLocalStorage = () => {
-      try {
-        const storedEvents = localStorage.getItem('eventData');
-        if (storedEvents) {
-          const parsedEvents = JSON.parse(storedEvents);
-
-          // Filter out mock/demo events (e.g., those with title starting with "Demo Event")
-          const realEvents = parsedEvents.filter(
-            event => !event.title?.toLowerCase().startsWith('demo event')
-          );
-
-          // Map the stored events to the format expected by the dashboard
-          const formattedEvents = realEvents.map(event => ({
-            id: event.id,
-            title: event.title || event.name,
-            timestamp: event.timestamp || event.date,
-            location: event.location,
-            type: event.type,
-            status: event.status,
-            description: event.description
-          }));
-
-          setTranscripts(formattedEvents);
-        } else {
-          setTranscripts([]); // No events found
-        }
-      } catch (error) {
-        console.error('Error loading events from localStorage:', error);
+    const fetchEvents = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .order('timestamp', { ascending: false });
+      if (error) {
+        console.error('Error fetching events:', error);
         setTranscripts([]);
+      } else {
+        setTranscripts(data || []);
       }
+      setLoading(false);
     };
-    
-    // Load events when the component mounts
-    loadEventsFromLocalStorage();
-    
-    // Also set up an interval to refresh the data periodically
-    const intervalId = setInterval(loadEventsFromLocalStorage, 5000);
-    
-    // Clean up the interval when the component unmounts
-    return () => clearInterval(intervalId);
+    fetchEvents();
   }, []);
 
   const getStatusChip = (status) => {

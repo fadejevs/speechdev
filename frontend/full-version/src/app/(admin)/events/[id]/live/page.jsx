@@ -104,41 +104,41 @@ export default function EventLivePage() {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    try {
-      const raw = localStorage.getItem("eventData");
-      if (!raw) throw new Error("No event data in localStorage");
-      const allEvents = JSON.parse(raw);
-      const found = allEvents.find((e) => e.id.toString() === id.toString());
-      if (!found) throw new Error(`Event ${id} not found`);
 
-      const mapped = {
-        id: found.id,
-        name: found.title || found.name || `Event ${found.id}`,
-        description: found.description || "",
-        location: found.location || "",
-        date: found.date || found.timestamp || "",
-        type: found.type || "",
-        status: found.status || "",
-        sourceLanguage:
-          found.sourceLanguage ||
-          (Array.isArray(found.sourceLanguages)
-            ? found.sourceLanguages[0]
-            : ""),
-        targetLanguages: found.targetLanguages || [],
-      };
+    const fetchEvent = async () => {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`,
+          {
+            headers: {
+              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+            },
+          }
+        );
+        const data = await res.json();
+        if (!data || data.length === 0) throw new Error(`Event ${id} not found`);
+        setEventData(data[0]);
+      } catch (e) {
+        console.error(e);
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-      setEventData(mapped);
-    } catch (e) {
-      console.error(e);
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    fetchEvent();
   }, [id]);
 
   useEffect(() => {
-    if (!eventData || !eventData.sourceLanguage) return;
+    // Use the first source language if available
+    const sourceLanguage =
+      eventData?.sourceLanguage ||
+      (Array.isArray(eventData?.sourceLanguages) ? eventData.sourceLanguages[0] : undefined);
 
+    if (!eventData || !sourceLanguage) return;
+
+    console.log("Attempting to connect to socket server...");
     const socket = io("https://speechdev.onrender.com", { transports: ["websocket"] });
     socketRef.current = socket;
 
@@ -155,7 +155,7 @@ export default function EventLivePage() {
           process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
           process.env.NEXT_PUBLIC_AZURE_REGION
         );
-        speechConfig.speechRecognitionLanguage = eventData.sourceLanguage;
+        speechConfig.speechRecognitionLanguage = sourceLanguage;
         (eventData.targetLanguages || []).forEach(lang => {
           speechConfig.addTargetLanguage(lang);
         });
@@ -171,7 +171,7 @@ export default function EventLivePage() {
             socketRef.current.emit("realtime_transcription", {
               text,
               is_final: false,
-              source_language: eventData.sourceLanguage,
+              source_language: sourceLanguage,
               room_id: eventData.id,
             });
           }
@@ -186,14 +186,14 @@ export default function EventLivePage() {
             socketRef.current.emit("realtime_transcription", {
               text,
               is_final: true,
-              source_language: eventData.sourceLanguage,
+              source_language: sourceLanguage,
               room_id: eventData.id,
               translations,
             });
           }
           handleNewTranscription({
             text,
-            source_language: eventData.sourceLanguage,
+            source_language: sourceLanguage,
             translations,
           });
         };
@@ -212,7 +212,7 @@ export default function EventLivePage() {
     return () => {
       if (recognizerRef.current) {
         recognizerRef.current.stopContinuousRecognitionAsync(
-          () => recognizerRef.current = null,
+          () => (recognizerRef.current = null),
           err => {
             console.error("Stop recognition error:", err);
             recognizerRef.current = null;
@@ -221,8 +221,8 @@ export default function EventLivePage() {
       }
       socket.close();
     };
-    // eslint-disable-next-line
-  }, [eventData?.id, eventData?.sourceLanguage, eventData?.status]);
+    // Add sourceLanguages to dependencies
+  }, [eventData?.id, eventData?.sourceLanguage, eventData?.sourceLanguages, eventData?.status]);
 
   // Fetch audio input devices on mount
   useEffect(() => {

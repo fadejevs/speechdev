@@ -179,7 +179,6 @@ const CreateEventModal = ({
     e.preventDefault();
     // Create a properly formatted event object
     const newEvent = {
-      id: initialData?.id || generateUniqueId(), // Use unique ID generator
       title: eventData.name || 'Not specified',
       description: eventData.description || 'Not specified',
       location: eventData.location || 'Not specified',
@@ -192,27 +191,8 @@ const CreateEventModal = ({
       startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
       endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
     };
-    
-    // Save to localStorage for persistence
-    try {
-      const savedEvents = localStorage.getItem('eventData');
-      const events = savedEvents ? JSON.parse(savedEvents) : [];
-      
-      if (isEditing) {
-        // Update existing event
-        const updatedEvents = events.map(event => 
-          event.id === newEvent.id ? newEvent : event
-        );
-        localStorage.setItem('eventData', JSON.stringify(updatedEvents));
-      } else {
-        // Add new event
-        localStorage.setItem('eventData', JSON.stringify([newEvent, ...events]));
-      }
-    } catch (error) {
-      console.error('Error saving event data:', error);
-    }
-    
-    // Call the parent handler
+
+    // Call the parent handler (which will save to Supabase)
     handleCreate(newEvent);
     handleClose();
   };
@@ -285,7 +265,6 @@ const CreateEventModal = ({
   const handleSaveAsDraft = () => {
     handleCreate({ 
       ...eventData, 
-      id: eventData.id || generateUniqueId(),
       status: 'Draft event' 
     });
     setConfirmDialogOpen(false);

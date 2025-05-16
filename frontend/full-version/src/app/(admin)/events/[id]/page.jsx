@@ -144,33 +144,42 @@ const EditEventPage = () => {
   const [locationLoading, setLocationLoading] = useState(false);
 
   useEffect(() => {
-    // Fetch event data from localStorage
-    try {
-      const savedEvents = localStorage.getItem('eventData');
-      if (savedEvents) {
-        const events = JSON.parse(savedEvents);
-        const event = events.find(e => e.id.toString() === id);
-        if (event) {
+    // Fetch event data from Supabase
+    const fetchEvent = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`,
+          {
+            headers: {
+              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+            },
+          }
+        );
+        const data = await res.json();
+        if (data && data.length > 0) {
+          const event = data[0];
           setEventData({
             name: event.title === 'Not specified' ? '' : event.title,
             description: event.description === 'Not specified' ? '' : event.description,
             location: event.location === 'Not specified' ? '' : event.location,
             date: event.timestamp && event.timestamp !== 'Not specified' ? dayjs(event.timestamp, 'DD.MM.YYYY') : null,
             type: event.type === 'Not specified' ? '' : event.type,
-            sourceLanguages: event.sourceLanguages || [],
-            targetLanguages: event.targetLanguages || [],
-            recordEvent: event.recordEvent || false
+            sourceLanguages: event.source_languages || event.sourceLanguages || [],
+            targetLanguages: event.target_languages || event.targetLanguages || [],
+            recordEvent: event.recordEvent ?? false,
           });
         }
+      } catch (error) {
+        console.error('Error fetching event data:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching event data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+    };
 
-  
+    fetchEvent();
+  }, [id]);
 
   // Function to get audio devices after ensuring we have microphone permission
   const getAudioDevices = async () => {
@@ -241,57 +250,50 @@ const EditEventPage = () => {
 
   const handleSaveChanges = async () => {
     setIsSaving(true);
-    
+
     try {
-      // Format all source languages
-      const formattedSourceLanguages = eventData.sourceLanguages.map(lang => 
+      // Format all source and target languages as needed
+      const formattedSourceLanguages = eventData.sourceLanguages.map(lang =>
         formatForSpeechRecognition(lang)
       );
-      
-      // Format all target languages
-      const formattedTargetLanguages = eventData.targetLanguages.map(lang => 
+      const formattedTargetLanguages = eventData.targetLanguages.map(lang =>
         formatForTranslationTarget(lang)
       );
-      
-      console.log('Saving event with formatted languages:');
-      console.log('Source languages:', formattedSourceLanguages);
-      console.log('Target languages:', formattedTargetLanguages);
-      
-      // Create a new object with formatted languages
-      const formattedEventData = {
-        ...eventData,
+
+      // Prepare the update object with snake_case keys for Supabase
+      const updateData = {
+        title: eventData.name || 'Not specified',
+        description: eventData.description || 'Not specified',
+        location: eventData.location || 'Not specified',
+        timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : 'Not specified',
+        type: eventData.type || 'Not specified',
         sourceLanguages: formattedSourceLanguages,
-        targetLanguages: formattedTargetLanguages
+        targetLanguages: formattedTargetLanguages,
+        recordEvent: eventData.recordEvent ?? false,
       };
-      
-      // Get existing events from localStorage
-      const existingEvents = JSON.parse(localStorage.getItem('eventData') || '[]');
-      
-      // Update the event with the formatted data
-      const updatedEvents = existingEvents.map(event => {
-        if (event.id === id) {
-          return {
-            ...event,
-            name: formattedEventData.name || event.name,
-            description: formattedEventData.description || event.description,
-            location: formattedEventData.location || event.location,
-            date: formattedEventData.date || event.date,
-            type: formattedEventData.type || event.type,
-            sourceLanguages: formattedEventData.sourceLanguages,
-            targetLanguages: formattedEventData.targetLanguages,
-            recordEvent: formattedEventData.recordEvent
-          };
+
+      // Update the event in Supabase
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+            Prefer: 'return=representation',
+          },
+          body: JSON.stringify(updateData),
         }
-        return event;
-      });
-      
-      localStorage.setItem('eventData', JSON.stringify(updatedEvents));
+      );
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to update event');
+      }
+
       setSaveSuccess(true);
-      
-      // Reset success message after 2 seconds
-      setTimeout(() => {
-        setSaveSuccess(false);
-      }, 2000);
+      setTimeout(() => setSaveSuccess(false), 2000);
     } catch (error) {
       console.error('Error saving event data:', error);
     } finally {
