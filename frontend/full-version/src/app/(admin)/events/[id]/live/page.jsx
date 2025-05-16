@@ -151,6 +151,9 @@ export default function EventLivePage() {
           return;
         }
 
+
+        
+
         const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(
           process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
           process.env.NEXT_PUBLIC_AZURE_REGION
