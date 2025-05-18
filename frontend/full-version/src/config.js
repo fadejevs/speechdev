@@ -16,6 +16,7 @@ export const MINI_DRAWER_WIDTH = 76 + 1; // 1px - for right-side border
 
 export const AUTH_USER_KEY = 'auth-user';
 export const AUTH_PROVIDER = AuthType.MOCK;
+// export const AUTH_PROVIDER = 'supabase';
 
 /***************************  THEME ENUM  ***************************/
 

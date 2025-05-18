@@ -32,8 +32,8 @@ export default function PageLoader() {
           sx={{
             width: 65,
             height: 65,
-            bgcolor: 'primary.lighter',
-            '& .MuiBox-root': { height: 30, width: 30 },
+            bgcolor: 'white',
+            '& .MuiBox-root': { height: 48, width: 48 },
             '& svg': { width: 1, height: 1 }
           }}
         >
