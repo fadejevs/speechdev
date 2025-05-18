@@ -1,11 +1,12 @@
 {
-    "brandName": "SaasAble",
+    "brandName": "Everspeak",
     "company": {
-        "name": "Phoenixcoded",
-        "url": "https://phoenixcoded.authordesk.app/"
+        "name": "Everspeak",
+        "url": "https://everspeak.ai/"
     },
+    
     "logo": {
-        "main":"",
+        "main": "/main.svg",
         "logoIcon": ""
     }
 }

@@ -1,4 +1,5 @@
 import PropTypes from 'prop-types';
+import Head from "next/head";
 
 // @styles
 import './globals.css';
@@ -6,8 +7,6 @@ import './globals.css';
 // @project
 import branding from '@/branding.json';
 import ProviderWrapper from './ProviderWrapper';
-
-// @types
 
 // @utils
 import '@/utils/devPerformance';
@@ -20,8 +19,18 @@ export const viewport = {
 };
 
 export const metadata = {
-  title: `${branding.brandName} React MUI Dashboard Template`,
-  description: `${branding.brandName} React MUI Dashboard Template`
+  title: "Everspeak",
+  description: "Everspeak",
+  icons: {
+    icon: [
+      // { url: "/favicon.ico", type: "image/x-icon" },
+      { url: "/favicon.png", type: "image/png" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180" },
+    ],
+  },
 };
 
 /***************************  LAYOUT - ROOT  ***************************/
@@ -29,6 +38,12 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <Head>
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+      </Head>
       <body>
         <ProviderWrapper>{children}</ProviderWrapper>
       </body>
