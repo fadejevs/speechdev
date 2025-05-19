@@ -19,6 +19,7 @@ import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import apiService from "@/services/apiService";
 import SelfieDoodle from "@/images/illustration/SelfieDoodle";
 import io from "socket.io-client";
+import branding from '@/branding.json';
 
 // ISO‐code ↔ human name
 const languageMap = {
@@ -313,12 +314,12 @@ export default function BroadcastPage() {
           px: 2, borderBottom: "1px solid #f0f0f0",
           backgroundColor: "background.default"
         }}>
-          <Link href="/" style={{ textDecoration: "none" }}>
-            <Typography variant="h5" sx={{
-              fontWeight: 600, color: "#6366F1", letterSpacing: "-0.5px"
-            }}>
-              interpretd
-            </Typography>
+          <Link href="/" style={{ textDecoration: "none", display: "inline-block" }}>
+            <img
+              src={branding.logo.main}
+              alt="interpretd logo"
+              style={{ height: 40, display: "block" }}
+            />
           </Link>
         </Box>
 
@@ -380,12 +381,12 @@ export default function BroadcastPage() {
         px:2, borderBottom:"1px solid #f0f0f0",
         backgroundColor:"background.default"
       }}>
-        <Link href="/" style={{ textDecoration:"none" }}>
-          <Typography variant="h5" sx={{
-            fontWeight:600, color:"#6366F1", letterSpacing:"-0.5px"
-          }}>
-            interpretd
-          </Typography>
+        <Link href="/" style={{ textDecoration: "none", display: "inline-block" }}>
+          <img
+            src={branding.logo.main}
+            alt="interpretd logo"
+            style={{ height: 40, display: "block" }}
+          />
         </Link>
       </Box>
 

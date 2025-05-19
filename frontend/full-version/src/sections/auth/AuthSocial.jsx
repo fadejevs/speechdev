@@ -47,6 +47,18 @@ export default function AuthSocial({ type = SocialTypes.VERTICAL, buttonSx }) {
           color="secondary"
           sx={{ ...(type === SocialTypes.HORIZONTAL && { '.MuiButton-startIcon': { m: 0 } }), ...buttonSx }}
           startIcon={<CardMedia component="img" src={GetImagePath(item.icon)} sx={{ width: 16, height: 16 }} alt={item.label} />}
+          onClick={async () => {
+            // Only handle Google for now
+            if (item.label === 'Google') {
+              const { supabase } = await import('@/utils/supabase/client');
+              await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                  redirectTo: window.location.origin + '/auth/callback', // or your desired callback route
+                },
+              });
+            }
+          }}
         >
           {type === SocialTypes.VERTICAL && <Typography variant="caption1">{item.title}</Typography>}
         </Button>

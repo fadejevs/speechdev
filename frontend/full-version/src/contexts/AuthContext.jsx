@@ -1,8 +1,10 @@
 'use client';
 import { createContext, useContext, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/utils/supabase/client';
+import { AUTH_USER_KEY, APP_DEFAULT_PATH } from '@/config';
 
 // @project
-import { AUTH_USER_KEY } from '@/config';
 import axios from '@/utils/axios';
 
 /***************************  AUTH - CONTEXT & PROVIDER  ***************************/
@@ -12,6 +14,7 @@ const AuthContext = createContext(undefined);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isProcessing, setIsProcessing] = useState(true);
+  const router = useRouter();
 
   const fetchUser = async () => {
     axios
@@ -53,6 +56,27 @@ export const AuthProvider = ({ children }) => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const handleAuth = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (data?.session) {
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.session));
+        router.replace(APP_DEFAULT_PATH);
+      } else {
+        // fallback: try to refresh session
+        await supabase.auth.refreshSession();
+        const { data: refreshed } = await supabase.auth.getSession();
+        if (refreshed?.session) {
+          localStorage.setItem(AUTH_USER_KEY, JSON.stringify(refreshed.session));
+          router.replace(APP_DEFAULT_PATH);
+        } else {
+          router.replace('/login');
+        }
+      }
+    };
+    handleAuth();
+  }, [router]);
 
   return <AuthContext.Provider value={{ user, isProcessing }}>{children}</AuthContext.Provider>;
 };
