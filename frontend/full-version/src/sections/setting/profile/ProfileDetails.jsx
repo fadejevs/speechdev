@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // @mui
 import Button from '@mui/material/Button';
@@ -24,6 +24,7 @@ import DialogDelete from '@/components/dialog/DialogDelete';
 
 // @assets
 import { IconCheck } from '@tabler/icons-react';
+import { supabase } from '@/utils/supabase/client';
 
 /***************************   PROFILE - DETAILS  ***************************/
 
@@ -66,6 +67,56 @@ export default function SettingDetailsCard() {
     setOpenDeleteDialog(false);
   };
 
+  // --- Add state for user profile ---
+  const [profile, setProfile] = useState({ firstname: '', lastname: '', email: '' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // --- Fetch user profile on mount ---
+  useEffect(() => {
+    async function fetchUser() {
+      setLoading(true);
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (user) {
+        setProfile({
+          firstname: user.user_metadata?.firstname || '',
+          lastname: user.user_metadata?.lastname || '',
+          email: user.email || ''
+        });
+      }
+      setLoading(false);
+    }
+    fetchUser();
+  }, []);
+
+  // --- Handle input changes ---
+  const handleChange = (e) => {
+    setProfile({ ...profile, [e.target.name]: e.target.value });
+  };
+
+  // --- Handle save ---
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (!user) {
+      setError('You are not logged in. Please log in again.');
+      setSaving(false);
+      return;
+    }
+    const displayName = `${profile.firstname} ${profile.lastname}`.trim();
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        firstname: profile.firstname,
+        lastname: profile.lastname,
+        display_name: displayName
+      }
+    });
+    setSaving(false);
+    if (error) setError(error.message);
+  };
+
   return (
     <SettingCard title="Details" caption="Manage your personal details and preferences.">
       <List disablePadding>
@@ -77,32 +128,52 @@ export default function SettingDetailsCard() {
             <Grid size={{ xs: 12, sm: 6 }}>
               <InputLabel>First Name</InputLabel>
               <OutlinedInput
-                defaultValue="Erika"
+                name="firstname"
+                value={profile.firstname}
+                onChange={handleChange}
                 fullWidth
                 aria-describedby="outlined-name"
                 inputProps={{ 'aria-label': 'name' }}
-                placeholder="ex. Jone"
+                placeholder="ex. John"
+                disabled={loading}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <InputLabel>Last Name</InputLabel>
               <OutlinedInput
-                defaultValue="Collins"
+                name="lastname"
+                value={profile.lastname}
+                onChange={handleChange}
                 fullWidth
                 aria-describedby="outlined-name"
                 inputProps={{ 'aria-label': 'name' }}
                 placeholder="ex. Doe"
+                disabled={loading}
               />
             </Grid>
             <Grid size={12}>
-              <FormHelperText sx={{ mt: 0 }}>Use your first and last name as they appear on your government-issued ID.</FormHelperText>
+              <FormHelperText sx={{ mt: 0 }}>
+                Use your first and last name as they appear on your government-issued ID.
+              </FormHelperText>
+            </Grid>
+            <Grid size={12}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleSave}
+                disabled={loading || saving}
+                sx={{ mt: 2 }}
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+              {error && <FormHelperText error>{error}</FormHelperText>}
             </Grid>
           </Grid>
         </ListItem>
         <ListItem sx={listStyle} divider>
           <ListItemText
             primary="Email Address"
-            secondary="junius12@saasable.io"
+            secondary={profile.email}
             {...{ primaryTypographyProps, secondaryTypographyProps }}
           />
           <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, ml: 'auto' }}>
@@ -159,5 +230,55 @@ export default function SettingDetailsCard() {
         </ListItem>
       </List>
     </SettingCard>
+  );
+}
+
+function AvatarUpload({ user, profile, onAvatarChange }) {
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+
+    // 1. Upload to Supabase Storage
+    const fileExt = file.name.split('.').pop();
+    const filePath = `avatars/${user.id}.${fileExt}`;
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+      alert('Upload failed!');
+      setUploading(false);
+      return;
+    }
+
+    // 2. Get public URL
+    const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+    const publicUrl = data.publicUrl;
+
+    // 3. Update profile in Supabase
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ avatar_url: publicUrl })
+      .eq('id', user.id);
+
+    if (updateError) {
+      alert('Profile update failed!');
+      setUploading(false);
+      return;
+    }
+
+    setUploading(false);
+    if (onAvatarChange) onAvatarChange(publicUrl);
+  };
+
+  return (
+    <div>
+      <input type="file" accept="image/*" onChange={handleFileChange} disabled={uploading} />
+      {uploading && <p>Uploading...</p>}
+    </div>
   );
 }

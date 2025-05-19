@@ -27,6 +27,7 @@ import { useRouter } from 'next/navigation';
 import { generateUniqueId } from '@/utils/idGenerator';
 import { supabase } from '@/utils/supabase/client';
 
+
 const formatDate = (dateString) => {
   if (!dateString || dateString === 'Not specified') return dateString;
   const date = new Date(dateString);
@@ -135,9 +136,18 @@ const AnalyticsDashboard = () => {
   useEffect(() => {
     const fetchEvents = async () => {
       setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setTranscripts([]);
+        setLoading(false);
+        console.log("No user logged in!");
+        return;
+      }
+      // Fetch only events created by this user
       const { data, error } = await supabase
         .from('events')
         .select('*')
+        .eq('created_by', user.id)
         .order('timestamp', { ascending: false });
       if (error) {
         console.error('Error fetching events:', error);

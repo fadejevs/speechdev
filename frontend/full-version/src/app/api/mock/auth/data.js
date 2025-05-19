@@ -7,7 +7,7 @@ const mockUsers = [
   {
     id: '1',
     // email: 'super_admin@saasable.io',
-    email: 'admin@interpretd.com',
+    email: 'admin@everspeak.ai',
     role: AuthRole.SUPER_ADMIN,
     contact: '123456789',
     dialcode: '+1',

@@ -178,7 +178,7 @@ const CreateEventModal = ({
       sourceLanguages: eventData.sourceLanguages || [],
       targetLanguages: eventData.targetLanguages || [],
       recordEvent: eventData.recordEvent,
-      status: eventData.status || "Scheduled", // Use the status from eventData, fallback to "Scheduled"
+      status: eventData.status || "Scheduled",
       startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
       endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
     };

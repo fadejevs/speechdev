@@ -114,6 +114,8 @@ const EditEventPage = () => {
   const [locationOptions, setLocationOptions] = useState([]);
   const [locationLoading, setLocationLoading] = useState(false);
 
+  console.log('Event id:', id);
+
   useEffect(() => {
     // Fetch event data from Supabase
     const fetchEvent = async () => {
@@ -129,8 +131,10 @@ const EditEventPage = () => {
           }
         );
         const data = await res.json();
+        console.log('Fetched event data:', data);
         if (data && data.length > 0) {
           const event = data[0];
+          console.log('Event object:', event);
 
           // --- Fix type mapping to match Select options ---
           let type = event.type === 'Not specified' ? '' : event.type;
@@ -155,10 +159,15 @@ const EditEventPage = () => {
             location: event.location === 'Not specified' ? '' : event.location,
             date,
             type,
-            sourceLanguages: event.source_languages || event.sourceLanguages || [],
-            targetLanguages: event.target_languages || event.targetLanguages || [],
+            sourceLanguages: event.sourceLanguages || [],
+            targetLanguages: event.targetLanguages || [],
             recordEvent: event.recordEvent ?? false,
+            startTime: event.startTime ? dayjs(event.startTime, 'HH:mm') : null,
+            endTime: event.endTime ? dayjs(event.endTime, 'HH:mm') : null,
+            status: event.status || 'Draft event'
           });
+
+          console.log('Fetched event:', event);
         }
       } catch (error) {
         console.error('Error fetching event data:', error);
@@ -249,6 +258,16 @@ const EditEventPage = () => {
         formatForTranslationTarget(lang)
       );
 
+      // --- Fix: Validate startTime and endTime before formatting ---
+      const validStartTime =
+        eventData.startTime && dayjs(eventData.startTime).isValid()
+          ? dayjs(eventData.startTime).format('HH:mm')
+          : null;
+      const validEndTime =
+        eventData.endTime && dayjs(eventData.endTime).isValid()
+          ? dayjs(eventData.endTime).format('HH:mm')
+          : null;
+
       // Prepare the update object with snake_case keys for Supabase
       const updateData = {
         title: eventData.name || 'Not specified',
@@ -259,6 +278,9 @@ const EditEventPage = () => {
         sourceLanguages: formattedSourceLanguages,
         targetLanguages: formattedTargetLanguages,
         recordEvent: eventData.recordEvent ?? false,
+        startTime: validStartTime,
+        endTime: validEndTime,
+        status: eventData.status || 'Draft event'
       };
 
       // Update the event in Supabase
@@ -651,7 +673,11 @@ const EditEventPage = () => {
                   </Typography>
                   <LocalizationProvider dateAdapter={AdapterDayjs}>
                     <DatePicker
-                      value={eventData.date || ""}
+                      value={
+                        eventData.date && eventData.date !== 'Not specified' && dayjs(eventData.date).isValid()
+                          ? dayjs(eventData.date)
+                          : null
+                      }
                       onChange={(newDate) => setEventData(prev => ({ ...prev, date: newDate }))}
                       format="DD.MM.YYYY"
                       slotProps={{
