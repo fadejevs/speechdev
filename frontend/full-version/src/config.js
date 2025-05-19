@@ -2,7 +2,7 @@
 import { Archivo, Figtree, Roboto } from 'next/font/google';
 
 // @project
-import { AuthType } from '@/enum';
+// import { AuthType } from '@/enum';
 
 /***************************  THEME CONSTANT  ***************************/
 
