@@ -36,7 +36,10 @@ export async function login(request) {
 
 export async function getUser(token) {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    const {
+      data: { user },
+      error
+    } = await supabase.auth.getUser(token);
     if (error || !user) {
       return NextResponse.json({ error: error?.message || 'Invalid token or user not found' }, { status: 401 });
     }
@@ -54,6 +57,7 @@ export async function getUser(token) {
       { status: 200 }
     );
   } catch (e) {
+    console.error("Error in Supabase getUser:", e);
     return NextResponse.json({ error: 'Server error in getUser' }, { status: 500 });
   }
 }
