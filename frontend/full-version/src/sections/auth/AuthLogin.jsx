@@ -27,6 +27,7 @@ import { useForm } from 'react-hook-form';
 import { APP_DEFAULT_PATH, AUTH_USER_KEY } from '@/config';
 import axios from '@/utils/axios';
 import { emailSchema, passwordSchema } from '@/utils/validationSchema';
+import { supabase } from '@/utils/supabase/client';
 
 // @icons
 import { IconEye, IconEyeOff } from '@tabler/icons-react';
@@ -66,9 +67,30 @@ export default function AuthLogin({ inputSx }) {
 
     axios
       .post('/api/auth/login', formData)
-      .then((response) => {
+      .then(async (response) => {
         setIsProcessing(false);
         localStorage.setItem(AUTH_USER_KEY, JSON.stringify(response.data));
+
+        // Set session for the client-side Supabase instance
+        if (response.data.access_token && response.data.refresh_token) {
+          try {
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: response.data.access_token,
+              refresh_token: response.data.refresh_token
+            });
+            if (sessionError) {
+              console.error('Error setting Supabase client session:', sessionError.message);
+              // Optionally handle this error, though the app might still work via token-based API calls
+            } else {
+              console.log('Supabase client session set successfully.');
+            }
+          } catch (e) {
+            console.error('Exception setting Supabase client session:', e);
+          }
+        } else {
+          console.warn('Access token or refresh token missing in login response, cannot set Supabase client session.');
+        }
+
         router.push(APP_DEFAULT_PATH);
         // router.push('/events');
       })

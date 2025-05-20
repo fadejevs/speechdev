@@ -24,7 +24,8 @@ export async function login(request) {
         dialcode: data.user?.user_metadata?.dialcode,
         firstname: data.user?.user_metadata?.firstname,
         lastname: data.user?.user_metadata?.lastname,
-        access_token: data.session?.access_token
+        access_token: data.session?.access_token,
+        refresh_token: data.session?.refresh_token
       },
       { status: 200 }
     );
@@ -35,25 +36,25 @@ export async function login(request) {
 
 export async function getUser(token) {
   try {
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      return NextResponse.json({ error: error?.message || 'Invalid token or user not found' }, { status: 401 });
     }
 
     return NextResponse.json(
       {
-        id: data.user.id,
-        email: data.user.email || '',
-        role: data.user.user_metadata.role,
-        contact: data.user.user_metadata.contact,
-        dialcode: data.user.user_metadata.dialcode,
-        firstname: data.user.user_metadata.firstname,
-        lastname: data.user.user_metadata.lastname
+        id: user.id,
+        email: user.email || '',
+        role: user.user_metadata?.role || user.role || 'user',
+        contact: user.user_metadata?.contact,
+        dialcode: user.user_metadata?.dialcode,
+        firstname: user.user_metadata?.firstname,
+        lastname: user.user_metadata?.lastname
       },
       { status: 200 }
     );
-  } catch {
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: 'Server error in getUser' }, { status: 500 });
   }
 }
 
