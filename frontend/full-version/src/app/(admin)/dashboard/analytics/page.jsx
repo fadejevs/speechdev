@@ -56,6 +56,8 @@ const AnalyticsDashboard = () => {
   const handleRowClick = (event) => {
     if (event.status === "Live" || event.status === "Paused") {
       router.push(`/events/${event.id}/live`);
+    } else if (event.status === "Completed") {
+      router.push(`/events/${event.id}/complete`);
     } else {
       router.push(`/events/${event.id}`);
     }
