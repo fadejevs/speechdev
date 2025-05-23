@@ -20,6 +20,7 @@ export const AuthProvider = ({ children }) => {
     axios
       .get('/api/auth/getUser')
       .then((response) => {
+        console.log('API user response:', response.data);
         setUser(response.data || {});
         setIsProcessing(false);
       })
@@ -28,6 +29,10 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem(AUTH_USER_KEY);
         setUser(null);
       });
+  };
+
+  const refreshUser = async () => {
+    await fetchUser();
   };
 
   const manageUserData = (localStorageData) => {
@@ -57,6 +62,32 @@ export const AuthProvider = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    async function syncSession() {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session) {
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.session));
+      }
+    }
+    syncSession();
+  }, []);
+
+  useEffect(() => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(session));
+        await fetchUser();
+      } else {
+        localStorage.removeItem(AUTH_USER_KEY);
+        setUser(null);
+      }
+    });
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // useEffect(() => {
   //   const handleAuth = async () => {
   //     const { data, error } = await supabase.auth.getSession();
@@ -78,7 +109,7 @@ export const AuthProvider = ({ children }) => {
   //   handleAuth();
   // }, [router]);
 
-  return <AuthContext.Provider value={{ user, isProcessing }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, isProcessing, refreshUser }}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

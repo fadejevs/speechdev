@@ -26,6 +26,7 @@ import CreateEventModal from '@/components/events/CreateEventModal';
 import { useRouter } from 'next/navigation';
 import { generateUniqueId } from '@/utils/idGenerator';
 import { supabase } from '@/utils/supabase/client';
+import { syncGoogleProfile, ensureFirstLastName } from '@/utils/syncGoogleProfile';
 
 
 const formatDate = (dateString) => {
@@ -160,6 +161,11 @@ const AnalyticsDashboard = () => {
       setLoading(false);
     };
     fetchEvents();
+  }, []);
+
+  useEffect(() => {
+    // syncGoogleProfile();
+    ensureFirstLastName();
   }, []);
 
   const getStatusChip = (status) => {

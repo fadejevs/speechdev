@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/utils/supabase/client';
 
 // @mui
 import { useTheme } from '@mui/material/styles';
@@ -37,12 +38,6 @@ import { IconChevronRight, IconLanguage, IconLogout, IconSettings, IconSunMoon, 
 
 /***************************  HEADER - PROFILE DATA  ***************************/
 
-const profileData = {
-  avatar: { src: '/assets/images/users/avatar-1.png', size: AvatarSize.XS },
-  title: 'Erika Collins',
-  caption: 'Super Admin'
-};
-
 const languageList = ['English', 'Spanish', 'France'];
 
 const RoleTitles = {
@@ -61,6 +56,7 @@ export default function ProfileSection() {
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [innerAnchorEl, setInnerAnchorEl] = useState(null);
+  const [displayName, setDisplayName] = useState('User');
 
   const open = Boolean(anchorEl);
   const innerOpen = Boolean(innerAnchorEl);
@@ -68,11 +64,20 @@ export default function ProfileSection() {
   const innerId = innerOpen ? 'profile-inner-popper' : undefined;
   const buttonStyle = { borderRadius: 2, p: 1 };
 
-  if (userData && Object.keys(userData).length > 0) {
-    const name = `${userData?.firstname ?? ''} ${userData?.lastname ?? ''}`.trim();
-    profileData.caption = userData?.role ? RoleTitles[userData.role] : undefined;
-    profileData.title = name;
-  }
+  const getDisplayName = (user) =>
+    user?.display_name ||
+    user?.full_name ||
+    (user?.firstname && user?.lastname ? `${user.firstname} ${user.lastname}` : null) ||
+    user?.email ||
+    'User';
+
+  const name = getDisplayName(userData);
+
+  const profileData = {
+    avatar: { src: userData?.avatar_url || '/assets/images/users/avatar-1.png', size: AvatarSize.XS },
+    title: name,
+    caption: userData?.role ? RoleTitles[userData.role] : undefined
+  };
 
   const handleActionClick = (event) => {
     setAnchorEl(anchorEl ? null : event.currentTarget);
@@ -86,6 +91,24 @@ export default function ProfileSection() {
     setAnchorEl(null);
     logout();
   };
+
+  useEffect(() => {
+    async function fetchDisplayName() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setDisplayName(
+          user.user_metadata?.display_name ||
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          user.email ||
+          'User'
+        );
+      }
+    }
+    fetchDisplayName();
+  }, []);
+
+  console.log('userData:', userData);
 
   return (
     <>

@@ -25,6 +25,7 @@ import DialogDelete from '@/components/dialog/DialogDelete';
 // @assets
 import { IconCheck } from '@tabler/icons-react';
 import { supabase } from '@/utils/supabase/client';
+import useCurrentUser from '@/hooks/useCurrentUser';
 
 /***************************   PROFILE - DETAILS  ***************************/
 
@@ -73,6 +74,8 @@ export default function SettingDetailsCard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const { refreshUser } = useCurrentUser();
+
   // --- Fetch user profile on mount ---
   useEffect(() => {
     async function fetchUser() {
@@ -113,6 +116,9 @@ export default function SettingDetailsCard() {
         display_name: displayName
       }
     });
+
+    await refreshUser();
+
     setSaving(false);
     if (error) setError(error.message);
   };
@@ -237,19 +243,29 @@ function AvatarUpload({ user, profile, onAvatarChange }) {
   const [uploading, setUploading] = useState(false);
 
   const handleFileChange = async (e) => {
+    console.log('handleFileChange called');
     const file = e.target.files[0];
-    if (!file) return;
+    if (!file) {
+      console.log('No file selected');
+      return;
+    }
+    console.log('Selected file:', file);
 
     setUploading(true);
 
-    // 1. Upload to Supabase Storage
     const fileExt = file.name.split('.').pop();
-    const filePath = `avatars/${user.id}.${fileExt}`;
-    const { error: uploadError } = await supabase.storage
+    const filePath = `${user.id}/${user.id}.${fileExt}`;
+    console.log('Upload path:', filePath);
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from('avatars')
       .upload(filePath, file, { upsert: true });
 
+    console.log('Upload data:', uploadData);
+    console.log('Upload error:', uploadError);
+
     if (uploadError) {
+      console.error('Upload error:', uploadError);
       alert('Upload failed!');
       setUploading(false);
       return;

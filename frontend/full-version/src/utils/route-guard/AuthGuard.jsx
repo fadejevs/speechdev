@@ -4,11 +4,11 @@ import PropTypes from 'prop-types';
 // @next
 import { usePathname, useRouter } from 'next/navigation';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 // @project
 import PageLoader from '@/components/PageLoader';
-import useCurrentUser from '@/hooks/useCurrentUser';
+import { supabase } from '@/utils/supabase/client';
 
 /***************************  AUTH GUARD  ***************************/
 
@@ -30,3 +30,28 @@ export default function AuthGuard({ children }) {
 }
 
 AuthGuard.propTypes = { children: PropTypes.node };
+
+export function useCurrentUser() {
+  const [userData, setUserData] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(true);
+
+  useEffect(() => {
+    const getSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      setUserData(data?.session?.user || null);
+      setIsProcessing(false);
+    };
+    getSession();
+
+    // Listen for auth changes
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      getSession();
+    });
+
+    return () => {
+      listener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  return { userData, isProcessing };
+}

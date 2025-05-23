@@ -6,6 +6,6 @@ import { useAuth } from '@/contexts/AuthContext';
 /***************************  HOOKS - CONFIG  ***************************/
 
 export default function useCurrentUser() {
-  const { user, isProcessing } = useAuth();
-  return { userData: user, isProcessing };
+  const { user, isProcessing, refreshUser } = useAuth();
+  return { userData: user, isProcessing, refreshUser };
 }

@@ -51,6 +51,8 @@ export async function getUser(token) {
         role: user.user_metadata?.role || user.role || 'user',
         contact: user.user_metadata?.contact,
         dialcode: user.user_metadata?.dialcode,
+        display_name: user.user_metadata?.display_name,
+        full_name: user.user_metadata?.full_name,
         firstname: user.user_metadata?.firstname,
         lastname: user.user_metadata?.lastname
       },
