@@ -25,6 +25,8 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value: [
+              // Combine all image sources into one img-src directive
+              "img-src 'self' data: blob: https://*.googleusercontent.com https://lh3.googleusercontent.com https://jpydgtzmbcwbyufpvupp.supabase.co",
               // default
               "default-src 'self'",
               // Must allow blob: + data: for the SDK's inline workers
@@ -41,8 +43,7 @@ const nextConfig = {
               "media-src 'self' blob:",
               // the rest of your assets
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data:",
-              "font-src 'self'",
+              "font-src 'self'"
             ].join("; "),
           },
         ],
@@ -60,4 +61,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;

@@ -4,13 +4,13 @@ const cspHeader = `
     default-src 'self';
     script-src 'self' 'unsafe-eval' 'unsafe-inline';
     style-src 'self' 'unsafe-inline';
-    img-src 'self' blob: data: https://flagcdn.com;
+    img-src 'self' blob: data: https://*.googleusercontent.com https://lh3.googleusercontent.com https://jpydgtzmbcwbyufpvupp.supabase.co;
     font-src 'self';
     object-src 'self';
     base-uri 'self';
     form-action 'self';
     frame-ancestors 'self';
-    connect-src 'self' https://cdn.jsdelivr.net;
+    connect-src 'self' https://cdn.jsdelivr.net https://jpydgtzmbcwbyufpvupp.supabase.co;
 `;
 
 const nextConfig = {

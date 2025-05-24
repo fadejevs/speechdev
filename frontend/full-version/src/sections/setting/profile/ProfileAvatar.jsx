@@ -26,25 +26,44 @@ import { IconTrash, IconUpload } from '@tabler/icons-react';
 
 export default function ProfileAvatar() {
   const { userData, refreshUser } = useCurrentUser();
-  // Check for Google avatar first, then fall back to Supabase avatar
-  const [avatar, setAvatar] = useState(
-    userData?.app_metadata?.provider === 'google' 
-      ? userData?.user_metadata?.avatar_url 
-      : userData?.user_metadata?.avatar_url || ''
-  );
+  const [avatar, setAvatar] = useState('');
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    // Update avatar when userData changes, prioritizing Google avatar
-    if (userData?.app_metadata?.provider === 'google') {
-      setAvatar(userData?.user_metadata?.avatar_url);
-    } else {
-      setAvatar(userData?.user_metadata?.avatar_url || '');
+    async function getAvatar() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        // First check for custom uploaded avatar
+        if (user?.user_metadata?.avatar_url) {
+          setAvatar(user.user_metadata.avatar_url);
+        }
+        // Then check for Google avatar
+        else if (user?.identities?.[0]?.identity_data?.avatar_url) {
+          setAvatar(user.identities[0].identity_data.avatar_url);
+        }
+        // Finally check for avatar in userData
+        else if (userData?.avatar_url) {
+          setAvatar(userData.avatar_url);
+        } else {
+          setAvatar('');
+        }
+      } catch (error) {
+        console.error('Error fetching avatar:', error);
+        setAvatar('');
+      }
     }
+
+    getAvatar();
   }, [userData]);
 
-  // Only show upload/remove buttons if NOT using Google auth
-  const showAvatarControls = userData?.app_metadata?.provider !== 'google';
+  const getDisplayName = (user) => {
+    if (!user) return '';
+    return user.display_name || user.full_name || user.email || 'User';
+  };
+
+  // Always show upload/remove buttons
+  const showAvatarControls = true;
 
   // Handle file drop/upload
   const onDrop = async (acceptedFiles) => {
@@ -67,16 +86,34 @@ export default function ProfileAvatar() {
       const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
       const publicUrl = data.publicUrl;
 
-      // 3. Update user profile (user_metadata)
+      // 3. Update user metadata
       const { error: updateError } = await supabase.auth.updateUser({
-        data: { avatar_url: publicUrl }
+        data: { 
+          avatar_url: publicUrl,
+          // Preserve other metadata
+          ...userData.user_metadata,
+        }
       });
 
       if (updateError) throw updateError;
 
-      await refreshUser();
+      // 4. Update profiles table if it exists
+      try {
+        await supabase
+          .from('profiles')
+          .update({ avatar_url: publicUrl })
+          .eq('id', userData.id);
+      } catch (err) {
+        console.log('Profile table update failed:', err);
+        // Don't throw error as this is optional
+      }
+
+      // 5. Update local state and refresh user data
       setAvatar(publicUrl);
+      await refreshUser();
+
     } catch (err) {
+      console.error('Avatar upload error:', err);
       alert('Avatar upload failed: ' + err.message);
     } finally {
       setUploading(false);
@@ -107,27 +144,21 @@ export default function ProfileAvatar() {
     disabled: uploading
   });
 
-  const getDisplayName = (user) => {
-    if (!user) return '';
-    return (
-      user.user_metadata?.display_name ||
-      user.user_metadata?.full_name ||
-      user.user_metadata?.name ||
-      user.email
-    );
-  };
-
   return (
     <>
       <ListItemAvatar sx={{ mr: 2 }}>
-        <Avatar src={avatar || undefined} alt="Profile Avatar" size={AvatarSize.XL}>
-          {getDisplayName(userData)[0]}
+        <Avatar 
+          src={avatar || undefined} 
+          alt="Profile Avatar" 
+          size={AvatarSize.XL}
+        >
+          {getDisplayName(userData)?.[0]}
         </Avatar>
       </ListItemAvatar>
       <Stack direction="row" sx={{ gap: 1, alignItems: 'center' }}>
         <ListItemText
           primary={getDisplayName(userData)}
-          secondary="User"
+          secondary={userData?.role || "User"}
         />
         {showAvatarControls && (
           <>
@@ -145,7 +176,13 @@ export default function ProfileAvatar() {
             </ListItemText>
             {avatar && avatar !== '/assets/images/users/avatar-1.png' && (
               <Tooltip title="Remove Avatar">
-                <IconButton color="error" onClick={handleRemoveAvatar} size="small" aria-label="delete" disabled={uploading}>
+                <IconButton 
+                  color="error" 
+                  onClick={handleRemoveAvatar} 
+                  size="small" 
+                  aria-label="delete" 
+                  disabled={uploading}
+                >
                   <IconTrash size={16} stroke={1.5} />
                 </IconButton>
               </Tooltip>

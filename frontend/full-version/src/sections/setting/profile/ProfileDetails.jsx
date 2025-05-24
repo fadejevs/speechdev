@@ -289,6 +289,11 @@ function AvatarUpload({ user, profile, onAvatarChange }) {
 
     setUploading(false);
     if (onAvatarChange) onAvatarChange(publicUrl);
+
+    // After getting the publicUrl in ProfileDetails.jsx
+    await supabase.auth.updateUser({
+      data: { avatar_url: publicUrl }
+    });
   };
 
   return (

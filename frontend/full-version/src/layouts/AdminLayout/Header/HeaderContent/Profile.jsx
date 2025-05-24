@@ -57,6 +57,7 @@ export default function ProfileSection() {
   const [anchorEl, setAnchorEl] = useState(null);
   const [innerAnchorEl, setInnerAnchorEl] = useState(null);
   const [displayName, setDisplayName] = useState('User');
+  const [avatarUrl, setAvatarUrl] = useState('/assets/images/users/avatar-1.png');
 
   const open = Boolean(anchorEl);
   const innerOpen = Boolean(innerAnchorEl);
@@ -73,8 +74,28 @@ export default function ProfileSection() {
 
   const name = getDisplayName(userData);
 
+  const getAvatarUrl = async (user) => {
+    if (!user) return '/assets/images/users/avatar-1.png';
+    
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      // First check for custom uploaded avatar
+      if (authUser?.user_metadata?.avatar_url) {
+        return authUser.user_metadata.avatar_url;
+      }
+      // Then check for Google avatar
+      if (authUser?.identities?.[0]?.identity_data?.avatar_url) {
+        return authUser.identities[0].identity_data.avatar_url;
+      }
+      return '/assets/images/users/avatar-1.png';
+    } catch (error) {
+      console.error('Error fetching avatar:', error);
+      return '/assets/images/users/avatar-1.png';
+    }
+  };
+
   const profileData = {
-    avatar: { src: userData?.avatar_url || '/assets/images/users/avatar-1.png', size: AvatarSize.XS },
+    avatar: { src: avatarUrl, size: AvatarSize.XS },
     title: name,
     caption: userData?.role ? RoleTitles[userData.role] : undefined
   };
@@ -107,6 +128,17 @@ export default function ProfileSection() {
     }
     fetchDisplayName();
   }, []);
+
+  useEffect(() => {
+    const updateAvatar = async () => {
+      if (userData) {
+        const url = await getAvatarUrl(userData);
+        console.log('Setting avatar URL:', url); // Debug log
+        setAvatarUrl(url);
+      }
+    };
+    updateAvatar();
+  }, [userData]); // Add dependency on userData
 
   console.log('userData:', userData);
 
