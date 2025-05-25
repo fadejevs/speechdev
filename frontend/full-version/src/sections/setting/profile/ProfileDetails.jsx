@@ -303,3 +303,6 @@ function AvatarUpload({ user, profile, onAvatarChange }) {
     </div>
   );
 }
+
+
+
