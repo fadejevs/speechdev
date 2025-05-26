@@ -55,10 +55,7 @@ export default function AuthLogin({ inputSx }) {
     handleSubmit,
     reset,
     formState: { errors }
-  } = useForm({ defaultValues:
-    // { email: 'super_admin@saasable.io', password: 'Super@123' }
-    { email: 'admin@everspeak.ai', password: 'Super@123' }
-  });
+  } = useForm({ defaultValues: { email: '', password: '' } });
 
   // Handle form submission
   const onSubmit = (formData) => {
@@ -123,7 +120,7 @@ export default function AuthLogin({ inputSx }) {
             <InputLabel>Email</InputLabel>
             <OutlinedInput
               {...register('email', emailSchema)}
-              placeholder="example@saasable.io"
+              placeholder="example@email.com"
               fullWidth
               error={Boolean(errors.email)}
               sx={inputSx}

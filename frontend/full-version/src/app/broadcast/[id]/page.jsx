@@ -305,7 +305,12 @@ export default function BroadcastPage() {
     );
   }
 
-  if (eventData && (eventData.status === "Paused" || eventData.status === "Completed")) {
+  if (
+    eventData &&
+    (eventData.status === "Paused" ||
+     eventData.status === "Completed" ||
+     eventData.status === "Scheduled")
+  ) {
     return (
       <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
         {/* Header */}

@@ -21,7 +21,7 @@ export default function InputWithHelperText() {
         <Box>
           <InputLabel>Email</InputLabel>
           <OutlinedInput
-            placeholder="example@saasable.io"
+            placeholder="example@email.com"
             startAdornment={
               <InputAdornment position="start">
                 <IconMail />
@@ -51,7 +51,7 @@ export default function InputWithHelperText() {
         <Box>
           <InputLabel required>Email</InputLabel>
           <OutlinedInput
-            placeholder="example@saasable.io"
+            placeholder="example@email.com"
             startAdornment={
               <InputAdornment position="start">
                 <IconMail />

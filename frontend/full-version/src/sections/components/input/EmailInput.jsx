@@ -21,7 +21,7 @@ export default function EmailInput() {
         <Box>
           <InputLabel>Default</InputLabel>
           <OutlinedInput
-            placeholder="example@saasable.io"
+            placeholder="example@email.com"
             fullWidth
             startAdornment={
               <InputAdornment position="start">
@@ -40,8 +40,8 @@ export default function EmailInput() {
         <Box>
           <InputLabel>Filled</InputLabel>
           <OutlinedInput
-            placeholder="example@saasable.io"
-            value="example@saasable.io"
+            placeholder="example@email.com"
+            value="example@email.com"
             fullWidth
             startAdornment={
               <InputAdornment position="start">
@@ -60,8 +60,8 @@ export default function EmailInput() {
         <Box>
           <InputLabel>Disabled</InputLabel>
           <OutlinedInput
-            placeholder="example@saasable.io"
-            value="example@saasable.io"
+            placeholder="example@email.com"
+            value="example@email.com"
             fullWidth
             disabled
             startAdornment={

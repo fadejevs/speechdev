@@ -158,7 +158,7 @@ export default function AddNewAccount({ open, onClose, formData }) {
                     <Grid size={{ xs: 12, sm: 6 }}>
                       <InputLabel>Email</InputLabel>
                       <OutlinedInput
-                        placeholder="example@saasable.io"
+                        placeholder="example@email.com"
                         fullWidth
                         error={errors.email && Boolean(errors.email)}
                         {...register('email', emailSchema)}

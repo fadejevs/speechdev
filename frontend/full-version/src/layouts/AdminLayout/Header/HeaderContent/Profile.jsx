@@ -75,22 +75,19 @@ export default function ProfileSection() {
   const name = getDisplayName(userData);
 
   const getAvatarUrl = async (user) => {
-    if (!user) return '/assets/images/users/avatar-1.png';
-    
+    if (!user) return '';
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
-      // First check for custom uploaded avatar
       if (authUser?.user_metadata?.avatar_url) {
         return authUser.user_metadata.avatar_url;
       }
-      // Then check for Google avatar
       if (authUser?.identities?.[0]?.identity_data?.avatar_url) {
         return authUser.identities[0].identity_data.avatar_url;
       }
-      return '/assets/images/users/avatar-1.png';
+      return '';
     } catch (error) {
       console.error('Error fetching avatar:', error);
-      return '/assets/images/users/avatar-1.png';
+      return '';
     }
   };
 
@@ -192,23 +189,7 @@ export default function ProfileSection() {
                       </ListItemIcon>
                       <ListItemText primary="Dark Theme" />
                     </ListItem>
-                    {/* <ListItem
-                      secondaryAction={
-                        <Switch
-                          size="small"
-                          checked={theme.direction === ThemeDirection.RTL}
-                          onChange={() =>
-                            onChangeThemeDirection(theme.direction === ThemeDirection.RTL ? ThemeDirection.LTR : ThemeDirection.RTL)
-                          }
-                        />
-                      }
-                      sx={{ py: 1, pl: 1, '& .MuiListItemSecondaryAction-root': { right: 8 } }}
-                    >
-                      <ListItemIcon>
-                        <IconTextDirectionLtr size={16} />
-                      </ListItemIcon>
-                      <ListItemText primary="RTL" />
-                    </ListItem> */}
+              
                     <ListItemButton sx={buttonStyle} onClick={handleInnerActionClick}>
                       <ListItemIcon>
                         <IconLanguage size={16} />
@@ -246,8 +227,24 @@ export default function ProfileSection() {
                               <ClickAwayListener onClickAway={() => setInnerAnchorEl(null)}>
                                 <List disablePadding>
                                   {languageList.map((item, index) => (
-                                    <ListItemButton key={index} sx={buttonStyle} onClick={handleInnerActionClick}>
-                                      <ListItemText>{item}</ListItemText>
+                                    <ListItemButton
+                                      key={index}
+                                      sx={{
+                                        ...buttonStyle,
+                                        color: '#bdbdbd',
+                                        cursor: 'not-allowed',
+                                        pointerEvents: 'auto',
+                                        '&:hover': {
+                                          backgroundColor: 'inherit',
+                                        },
+                                      }}
+                                      onClick={e => e.preventDefault()}
+                                      tabIndex={-1}
+                                    >
+                                      <ListItemText
+                                        primary={item}
+                                        primaryTypographyProps={{ sx: { color: '#bdbdbd' } }}
+                                      />
                                     </ListItemButton>
                                   ))}
                                 </List>
