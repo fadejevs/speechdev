@@ -53,10 +53,19 @@ export default function Contact({
   const theme = useTheme();
 
   const [anchorEl, setAnchorEl] = useState(null);
-  const [selectedCountry, setSelectedCountry] = useState(countries[0]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState(
+    countries.find((item) => item.dialCode === (dialCode || '+1')) || countries[0]
+  );
 
   const open = Boolean(anchorEl);
   const id = open ? 'dialcode-popper' : undefined;
+
+  const filteredCountries = countries.filter((country) =>
+    country.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleSearchChange = (e) => setSearchTerm(e.target.value);
 
   const handleClick = (event) => {
     setAnchorEl(anchorEl ? null : event.currentTarget);
@@ -70,10 +79,10 @@ export default function Contact({
   }, [dialCode]);
 
   const countryChange = (country) => {
-    if (onCountryChange) {
-      onCountryChange(country);
-    }
+    setSelectedCountry(country);
     setAnchorEl(null);
+    setSearchTerm('');
+    if (onCountryChange) onCountryChange(country);
   };
 
   return (
@@ -122,7 +131,12 @@ export default function Contact({
                   type="button"
                   onClick={handleClick}
                 >
-                  {selectedCountry.countyCode}
+                  <img
+                    src={`https://flagcdn.com/w20/${selectedCountry.countryCode.toLowerCase()}.png`}
+                    alt={selectedCountry.name}
+                    style={{ width: 21, marginRight: 6, verticalAlign: 'middle' }}
+                  />
+                  {selectedCountry.dialCode}
                 </Button>
                 <Divider orientation="vertical" flexItem />
               </Stack>
@@ -139,19 +153,27 @@ export default function Contact({
                   <Fade in={open} {...TransitionProps}>
                     <Card elevation={0} sx={{ border: '1px solid', borderColor: theme.palette.divider, borderRadius: 2 }}>
                       <ClickAwayListener onClickAway={() => setAnchorEl(null)}>
-                        <Box sx={{ p: 0.5 }}>
+                        <Box sx={{ p: 1 }}>
+                          <OutlinedInput
+                            placeholder="Search country"
+                            value={searchTerm}
+                            onChange={handleSearchChange}
+                            size="small"
+                            fullWidth
+                            sx={{ mb: 1 }}
+                          />
                           <List disablePadding>
                             <Box style={{ maxHeight: 320, width: 280, overflow: 'auto' }}>
-                              {countries.map((country, index) => (
+                              {filteredCountries.map((country, index) => (
                                 <ListItemButton
                                   key={index}
                                   sx={{ borderRadius: 2, mb: 0.25 }}
-                                  selected={country.dialCode === dialCode}
+                                  selected={country.dialCode === selectedCountry.dialCode}
                                   onClick={() => countryChange(country)}
                                 >
                                   <ListItemAvatar sx={{ minWidth: 32 }}>
                                     <CardMedia
-                                      image={`https://flagcdn.com/w20/${country.countyCode.toLowerCase()}.png`}
+                                      image={`https://flagcdn.com/w20/${country.countryCode.toLowerCase()}.png`}
                                       component="img"
                                       sx={{ height: 'fit-content', width: 21 }}
                                     />

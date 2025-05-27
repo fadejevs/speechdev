@@ -5,7 +5,7 @@ export const DEEPL_LANGUAGES = [
   { deepl: "DA", name: "Danish", azure: "da-DK" },
   { deepl: "DE", name: "German", azure: "de-DE" },
   { deepl: "EL", name: "Greek", azure: "el-GR" },
-  { deepl: "EN", name: "English", azure: "en-US" }, // Use en-GB or en-US as needed
+  // { deepl: "EN", name: "English", azure: "en-US" },
   { deepl: "EN-GB", name: "English (British)", azure: "en-GB" },
   { deepl: "EN-US", name: "English (American)", azure: "en-US" },
   { deepl: "ES", name: "Spanish", azure: "es-ES" },

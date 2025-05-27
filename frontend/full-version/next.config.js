@@ -26,7 +26,7 @@ const nextConfig = {
             key: "Content-Security-Policy",
             value: [
               // Combine all image sources into one img-src directive
-              "img-src 'self' data: blob: https://*.googleusercontent.com https://lh3.googleusercontent.com https://jpydgtzmbcwbyufpvupp.supabase.co",
+              "img-src 'self' data: blob: https://*.googleusercontent.com https://lh3.googleusercontent.com https://jpydgtzmbcwbyufpvupp.supabase.co https://flagcdn.com",
               // default
               "default-src 'self'",
               // Must allow blob: + data: for the SDK's inline workers

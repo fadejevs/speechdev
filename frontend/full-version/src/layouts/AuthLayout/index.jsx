@@ -33,7 +33,7 @@ export default function AuthLayout({ children }) {
           <Stack sx={{ alignItems: 'center', gap: 2 }}>
             <LogoMain />
             <Typography variant="body2" color="text.secondary" align="center" sx={{ maxWidth: 400 }}>
-            AI-powered real-time simultaneous interpretation and captions for online and on-site events
+            Good to See You Back. <br /> Let’s Create Another Flawless Multilingual Experience
             </Typography>
           </Stack>
           <Box sx={{ pt: 6, pl: 6, height: 'calc(100% - 114px)' }}>

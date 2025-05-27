@@ -78,7 +78,9 @@ export async function signUp(request) {
           dialcode: body.dialcode,
           contact: body.contact,
           role: AuthRole.USER
-        }
+        },
+        emailRedirectTo: body.emailRedirectTo,
+        authFlowType: 'email'
       }
     });
 

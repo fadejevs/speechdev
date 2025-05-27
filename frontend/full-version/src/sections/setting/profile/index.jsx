@@ -6,6 +6,7 @@ import ProfileDetails from './ProfileDetails';
 import ProfileLoginService from './ProfileLoginService';
 import ProfilePreferredLanguage from './ProfilePreferredLanguage';
 import ProfileTimezone from './ProfileTimezone';
+import GeneralResource from '../general/GeneralResource';
 
 /***************************  SETTING - PROFILE  ***************************/
 
@@ -23,6 +24,9 @@ export default function ProfileSetting() {
       </Grid>
       <Grid size={12}>
         <ProfileTimezone />
+      </Grid>
+      <Grid size={12}>
+        <GeneralResource />
       </Grid>
     </Grid>
   );

@@ -42,7 +42,7 @@ export default function Setting({ tab = 'profile' }) {
       <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 3, justifyContent: 'space-between' }}>
         <Tabs variant="scrollable" scrollButtons="auto" value={tab} onChange={handleChange} aria-label="setting tabs">
           <Tab label="Profile" value="profile" />
-          <Tab label="General" value="general" />
+          {/* <Tab label="General" value="general" /> */}
           {/* <Tab label="Pricing" value="pricing" />
           <Tab label="Internationalization" value="internationalization" />
           <Tab label="Authentication" value="authentication" /> */}
@@ -67,7 +67,7 @@ export default function Setting({ tab = 'profile' }) {
 
       <Box>
         {tab === 'profile' && <ProfileSetting />}
-        {tab === 'general' && <GeneralSetting />}
+        {/* {tab === 'general' && <GeneralSetting />} */}
         {/* {tab === 'pricing' && <PricingSetting />}
         {tab === 'internationalization' && <I18nSetting />}
         {tab === 'authentication' && <AuthenticationSetting />} */}
