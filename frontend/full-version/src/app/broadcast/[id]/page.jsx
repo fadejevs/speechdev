@@ -120,6 +120,10 @@ export default function BroadcastPage() {
   // Add a ref for the socket
   const socketRef = useRef(null);
 
+  // Add these at the top of your component
+  const ttsQueue = useRef([]);
+  const ttsBusy = useRef(false);
+
   useEffect(() => {
     setLoading(true);
     fetchEventById(id)
@@ -181,17 +185,40 @@ export default function BroadcastPage() {
     return out;
   };
 
-  // Add this function for TTS (using your API or Azure)
-  const speakText = (text, lang = "en-US") => {
+  // Helper to process the queue
+  const processTTSQueue = () => {
+    if (ttsBusy.current || ttsQueue.current.length === 0) return;
+    ttsBusy.current = true;
+    const { text, lang } = ttsQueue.current.shift();
+    speakText(text, lang, () => {
+      ttsBusy.current = false;
+      processTTSQueue();
+    });
+  };
+
+  // Update your TTS trigger logic:
+  useEffect(() => {
+    if (autoSpeakLang && liveTranslations[autoSpeakLang]) {
+      ttsQueue.current.push({
+        text: liveTranslations[autoSpeakLang],
+        lang: autoSpeakLang,
+      });
+      processTTSQueue();
+    }
+    // eslint-disable-next-line
+  }, [liveTranslations, autoSpeakLang]);
+
+  // Update your speakText to accept a callback:
+  const speakText = (text, lang = "en-US", onDone) => {
     if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
       alert("Azure Speech key/region not set");
+      if (onDone) onDone();
       return;
     }
     const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
       process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
       process.env.NEXT_PUBLIC_AZURE_REGION
     );
-    // Normalize and map the language to a voice
     const normalizedLang = lang.toLowerCase();
     const voiceName = voiceMap[normalizedLang] || "en-US-JennyNeural";
     speechConfig.speechSynthesisVoiceName = voiceName;
@@ -199,21 +226,16 @@ export default function BroadcastPage() {
     const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
     const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
 
-    synthesizer.speakTextAsync(
-      text,
-      result => {
-        if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-          console.log("Speech synthesized for text: " + text);
-        } else {
-          console.error("Speech synthesis canceled, " + result.errorDetails);
-        }
-        synthesizer.close();
-      },
-      error => {
-        console.error(error);
-        synthesizer.close();
-      }
-    );
+    const utterance = new window.SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    utterance.onend = () => {
+      if (onDone) onDone();
+    };
+    utterance.onerror = () => {
+      if (onDone) onDone();
+    };
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
   };
 
   useEffect(() => {

@@ -16,10 +16,13 @@ import { AvatarSize } from '@/enum';
 
 // @assets
 import { IconExternalLink } from '@tabler/icons-react';
+import useCurrentUser from '@/hooks/useCurrentUser';
 
 /***************************   PROFILE - LOGIN SERIVCE  ***************************/
 
 export default function SettingServiceCard() {
+  const { userData } = useCurrentUser();
+
   return (
     <SettingCard title="Login Service" caption="Connect an external login service to quickly and securely access your account.">
       <List disablePadding>
@@ -35,7 +38,7 @@ export default function SettingServiceCard() {
               <Stack direction="row" sx={{ gap: 0.25, alignItems: 'center' }}>
                 <Typography>Connected to </Typography>
                 <Typography sx={{ color: 'primary.main', '& svg': { verticalAlign: 'middle', ml: 0.25 } }}>
-                  junius12@saasable.io
+                  {userData?.email || 'your@email.com'}
                   <Link href="#" aria-label="external link">
                     <IconExternalLink size={16} />
                   </Link>

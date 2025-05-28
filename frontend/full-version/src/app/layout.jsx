@@ -27,7 +27,7 @@ export const metadata = {
   openGraph: {
     type: "website",
     url: "https://app.everspeak.ai/",
-    title: "Event Dashboard — Create & Manage Your Next Multilingual Event",
+    title: "Everspeak — Create & Manage Your Next Multilingual Event",
     description: "Easily create, schedule, and manage your next multilingual event with Everspeak. Designed for individuals, teams, and event organizers.",
     images: [
       {
@@ -41,7 +41,7 @@ export const metadata = {
   twitter: {
     card: "summary_large_image",
     url: "https://app.everspeak.ai/",
-    title: "Event Dashboard — Create & Manage Your Next Multilingual Event",
+    title: "Everspeak — Create & Manage Your Next Multilingual Event",
     description: "Easily create, schedule, and manage your next multilingual event with Everspeak. Designed for individuals, teams, and event organizers.",
     images: [
       "https://app.everspeak.ai/assets/OG%20Image%20Dashboard.png"

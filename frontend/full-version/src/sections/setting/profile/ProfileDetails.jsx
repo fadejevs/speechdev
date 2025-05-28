@@ -74,7 +74,7 @@ export default function SettingDetailsCard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const { refreshUser } = useCurrentUser();
+  const { refreshUser, userData } = useCurrentUser();
 
   // --- Fetch user profile on mount ---
   useEffect(() => {
@@ -189,11 +189,10 @@ export default function SettingDetailsCard() {
         </ListItem>
         <ListItem sx={listStyle} divider>
           <ListItemText
-            primary="Phone Number (optional)"
-            secondary="No phone number"
+            primary="Phone Number"
+            secondary={userData?.contact || 'No phone number set'}
             {...{ primaryTypographyProps, secondaryTypographyProps }}
           />
-          <ModalPhoneNumber />
         </ListItem>
         <ListItem sx={listStyle} divider>
           <ListItemText
