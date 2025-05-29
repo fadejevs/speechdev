@@ -15,9 +15,8 @@ import GetImagePath from '@/utils/GetImagePath';
 // @types
 
 const dashBoardImage = {
-  // light: '/assets/images/graphics/hosting/dashboard-light.svg',
-  light: '/assets/images/graphics/hosting/dashboard2-light.svg',
-  dark: '/assets/images/graphics/hosting/dashboard-dark.svg'
+  light: '/assets/images/graphics/hosting/onboarding.svg',
+  dark: '/assets/images/graphics/hosting/onboarding.svg'
 };
 
 /***************************  AUTH LAYOUT  ***************************/
@@ -33,21 +32,24 @@ export default function AuthLayout({ children }) {
           <Stack sx={{ alignItems: 'center', gap: 2 }}>
             <LogoMain />
             <Typography variant="body2" color="text.secondary" align="center" sx={{ maxWidth: 400 }}>
-            Good to See You Back. <br /> Let’s Create Another Flawless Multilingual Experience
+            The Smarter Alternative To Human Interpretation
             </Typography>
           </Stack>
-          <Box sx={{ pt: 6, pl: 6, height: 'calc(100% - 114px)' }}>
+          <Box sx={{ pt: 0, pl: 6, height: 'calc(100% - 114px)' }}>
             <CardMedia
+              component="img"
               image={GetImagePath(dashBoardImage)}
+              alt="Onboarding"
               sx={{
-                height: 1,
-                border: '4px solid',
-                borderColor: 'grey.300',
-                borderBottom: 'none',
-                borderRight: 'none',
-                backgroundPositionX: 'left',
-                backgroundPositionY: 'top',
-                borderTopLeftRadius: 24
+                display: 'block',
+                maxWidth: '440px',
+                maxHeight: '70vh',
+                width: '100%',
+                height: 'auto',
+                objectFit: 'contain',
+                margin: '0 auto',
+                background: 'none',
+                boxShadow: 'none',
               }}
             />
           </Box>
