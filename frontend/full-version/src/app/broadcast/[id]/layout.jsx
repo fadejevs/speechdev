@@ -12,7 +12,7 @@ export const metadata = {
     description: "Join the event in your language with real-time interpretation and live captions. No setup needed. Just listen, follow, and enjoy. Try Everspeak for your next event.",
     images: [
       {
-        url: "https://app.everspeak.ai/assets/OG%20Image%20Participant.png",
+        url: "https://app.everspeak.ai/assets/OG-Participant.png",
         width: 1200,
         height: 630,
         alt: "Get Live Speech Translation & Captions On Any Device",
@@ -25,7 +25,7 @@ export const metadata = {
     title: "Listen Live — Get Live Speech Translation & Multilingual Captions",
     description: "Join the event in your language with real-time interpretation and live captions. No setup needed. Just listen, follow, and enjoy. Try Everspeak for your next event.",
     images: [
-      "https://app.everspeak.ai/assets/OG%20Image%20Participant.png"
+      "https://app.everspeak.ai/assets/OG-Participant.png"
     ],
   },
 };

@@ -13,7 +13,7 @@ export const metadata = {
     description: "Easily create, schedule, and manage your next multilingual event with Everspeak. Designed for individuals, teams, and event organizers.",
     images: [
       {
-        url: "https://app.everspeak.ai/assets/OG%20Image%20Dashboard.png",
+        url: "https://app.everspeak.ai/assets/OG-Dashboard.png",
         width: 1200,
         height: 630,
         alt: "Everspeak Event Dashboard",
@@ -26,7 +26,7 @@ export const metadata = {
     title: "Event Dashboard — Create & Manage Your Next Multilingual Event",
     description: "Easily create, schedule, and manage your next multilingual event with Everspeak. Designed for individuals, teams, and event organizers.",
     images: [
-      "https://app.everspeak.ai/assets/OG%20Image%20Dashboard.png"
+      "https://app.everspeak.ai/assets/OG-Dashboard.png"
     ],
   },
 };
