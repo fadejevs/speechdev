@@ -11,7 +11,7 @@ export default function Setting() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/setting/profile');
+    router.replace('/setting/general');
   }, [router]);
 
   return null;

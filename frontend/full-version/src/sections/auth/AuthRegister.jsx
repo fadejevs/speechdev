@@ -4,7 +4,7 @@ import PropTypes from 'prop-types';
 // @next
 import { useRouter } from 'next/navigation';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 // @mui
 import { useTheme } from '@mui/material/styles';
@@ -24,6 +24,7 @@ import { useForm } from 'react-hook-form';
 import Contact from '@/components/Contact';
 import axios from '@/utils/axios';
 import { emailSchema, passwordSchema, firstNameSchema, lastNameSchema } from '@/utils/validationSchema';
+import countries from '@/data/countries';
 
 // @icons
 import { IconEye, IconEyeOff } from '@tabler/icons-react';
@@ -51,6 +52,25 @@ export default function AuthRegister({ inputSx }) {
 
   const password = useRef({});
   password.current = watch('password', '');
+
+  // Add this useEffect to fetch and set the local dial code
+  useEffect(() => {
+    fetch('https://api.geoapify.com/v1/ipinfo?&apiKey=a108fe26f510452dae47978e1619c895')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.country && data.country.iso_code) {
+          const country = countries.find(
+            c => c.countryCode.toUpperCase() === data.country.iso_code.toUpperCase()
+          );
+          if (country) {
+            setValue('dialcode', country.dialCode);
+          }
+        }
+      })
+      .catch(() => {
+        // fallback: do nothing, keep default
+      });
+  }, [setValue]);
 
   // Handle form submission
   const onSubmit = (formData) => {

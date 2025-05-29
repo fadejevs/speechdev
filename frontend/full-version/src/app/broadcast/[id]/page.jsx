@@ -486,14 +486,14 @@ export default function BroadcastPage() {
           <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
             <Paper elevation={0} sx={{
               p:2, minHeight:"150px", maxHeight:"300px",
-              overflowY:"auto", bgcolor:"#F9FAFB",
+              overflowY:"auto",
               borderRadius:"0 0 8px 8px"
             }}>
               <Box sx={{ p:3 }}>
                 {liveTranscription ? (
                   <Typography variant="body1">{liveTranscription}</Typography>
                 ) : (
-                  <Typography variant="body1" sx={{ color:"text.secondary", fontStyle:"italic" }}>
+                  <Typography variant="body1" sx={{ color:"text.secondary" }}>
                     Waiting for live transcription...
                   </Typography>
                 )}
@@ -518,7 +518,7 @@ export default function BroadcastPage() {
               borderBottom: "1px solid #F2F3F5",
             }}
           >
-            <Typography variant="h6" sx={{ fontWeight: 600, color: "#212B36" }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: "#212B36"}}>
               Live Translation
             </Typography>
 
@@ -604,7 +604,7 @@ export default function BroadcastPage() {
                   ))}
                 </>
               ) : (
-                <Typography variant="body1" sx={{ color:"text.secondary", fontStyle:"italic" }}>
+                <Typography variant="body1" sx={{ color:"text.secondary", p:4 }}>
                   Waiting for live translation...
                 </Typography>
               )
@@ -615,14 +615,6 @@ export default function BroadcastPage() {
             )}
           </Box>
         </Box>
-
-        {/* <Box sx={{ mb: 2 }}>
-          <Button variant="contained" onClick={() => {
-            // handleDownloadSession();
-          }}>
-            Download Session Transcript
-          </Button>
-        </Box> */}
       </Box>
     </Box>
   );
