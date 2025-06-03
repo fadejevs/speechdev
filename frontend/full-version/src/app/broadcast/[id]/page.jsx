@@ -209,33 +209,58 @@ export default function BroadcastPage() {
   }, [liveTranslations, autoSpeakLang]);
 
   // Update your speakText to accept a callback:
-  const speakText = (text, lang = "en-US", onDone) => {
+  const speakText = (text, lang, onDone) => {
     if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-      alert("Azure Speech key/region not set");
+      alert("Azure Speech key/region not set. Please configure environment variables.");
       if (onDone) onDone();
       return;
     }
+
     const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
       process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
       process.env.NEXT_PUBLIC_AZURE_REGION
     );
-    const normalizedLang = lang.toLowerCase();
-    const voiceName = voiceMap[normalizedLang] || "en-US-JennyNeural";
-    speechConfig.speechSynthesisVoiceName = voiceName;
+
+    const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
+    speechConfig.speechSynthesisVoiceName = voice;
+
+    console.log(`[TTS] Attempting to speak: "${text.substring(0,30)}..." in language "${lang}" using voice "${voice}"`);
 
     const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
     const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
 
-    const utterance = new window.SpeechSynthesisUtterance(text);
-    utterance.lang = lang;
-    utterance.onend = () => {
-      if (onDone) onDone();
-    };
-    utterance.onerror = () => {
-      if (onDone) onDone();
-    };
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+    synthesizer.speakTextAsync(
+      text,
+      (result) => {
+        if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+          console.log(`[TTS] Synthesis completed for "${text.substring(0,30)}..."`);
+        } else if (result.reason === SpeechSDK.ResultReason.Canceled) {
+          const cancellation = SpeechSDK.SpeechSynthesisCancellationDetails.fromResult(result);
+          console.warn(`[TTS] CANCELED: Reason=${cancellation.reason}`);
+          if (cancellation.reason === SpeechSDK.CancellationReason.Error) {
+            console.error(`[TTS] CANCELED: ErrorCode=${cancellation.ErrorCode}, ErrorDetails=[${cancellation.errorDetails}]`);
+            if (cancellation.errorDetails && cancellation.errorDetails.includes("voice")) {
+              console.warn(`[TTS] CANCELED: Problem with voice "${voice}" for lang "${lang}". Check voiceMap and Azure supported voices.`);
+            }
+          }
+        }
+        try {
+          synthesizer.close();
+        } catch (closeError) {
+          console.error("[TTS] Error closing synthesizer:", closeError);
+        }
+        if (onDone) onDone();
+      },
+      (error) => {
+        console.error(`[TTS] Error for text "${text.substring(0,30)}...", lang "${lang}": `, error);
+        try {
+          synthesizer.close();
+        } catch (closeError) {
+          console.error("[TTS] Error closing synthesizer on error:", closeError);
+        }
+        if (onDone) onDone();
+      }
+    );
   };
 
   useEffect(() => {
@@ -285,11 +310,6 @@ export default function BroadcastPage() {
       if (data.text && translationLanguage) {
         fetchTranslations(data.text, translationLanguage).then((plain) => {
           setLiveTranslations(plain);
-
-          // 2. Auto-TTS logic: play TTS for new translations if enabled
-          if (autoSpeakLang && plain[autoSpeakLang]) {
-            speakText(plain[autoSpeakLang], autoSpeakLang);
-          }
         });
       }
     });
