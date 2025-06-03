@@ -4,31 +4,24 @@ import { NextResponse } from 'next/server';
 // @project
 import { AuthRole } from '@/enum';
 import { createSupabaseClient } from '@/utils/supabase/server';
+import { supabase } from '@/utils/supabase/client';
 
-const supabase = createSupabaseClient();
+const supabaseServer = createSupabaseClient();
 
 export async function login(request) {
   try {
     const body = await request.json();
-    const payload = { email: body.email, password: body.password };
-    const { data, error } = await supabase.auth.signInWithPassword(payload);
+    const { email } = body;
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: 'http://localhost:3000/auth/callback' // or your deployed URL
+      }
+    });
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-
-    return NextResponse.json(
-      {
-        id: data.user?.id,
-        email: data.user?.email || '',
-        contact: data.user?.user_metadata?.contact,
-        dialcode: data.user?.user_metadata?.dialcode,
-        firstname: data.user?.user_metadata?.firstname,
-        lastname: data.user?.user_metadata?.lastname,
-        access_token: data.session?.access_token,
-        refresh_token: data.session?.refresh_token
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({ status: 200 });
   } catch {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
@@ -67,28 +60,14 @@ export async function getUser(token) {
 export async function signUp(request) {
   try {
     const body = await request.json();
-
+    const { email, ...user_metadata } = body;
     const { error } = await supabase.auth.signUp({
-      email: body.email,
-      password: body.password,
-      options: {
-        data: {
-          firstname: body.firstname,
-          lastname: body.lastname,
-          dialcode: body.dialcode,
-          contact: body.contact,
-          role: AuthRole.USER
-        },
-        emailRedirectTo: body.emailRedirectTo,
-        authFlowType: 'email'
-      }
+      email,
+      options: { data: user_metadata }
     });
-
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-
-    // Success
     return NextResponse.json({ status: 200 });
   } catch {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

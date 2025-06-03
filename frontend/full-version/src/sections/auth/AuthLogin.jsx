@@ -2,7 +2,6 @@
 import PropTypes from 'prop-types';
 
 // @next
-import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { useState } from 'react';
@@ -13,9 +12,7 @@ import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import FormHelperText from '@mui/material/FormHelperText';
-import InputAdornment from '@mui/material/InputAdornment';
 import InputLabel from '@mui/material/InputLabel';
-import Link from '@mui/material/Link';
 import OutlinedInput from '@mui/material/OutlinedInput';
 import Stack from '@mui/material/Stack';
 import Box from '@mui/material/Box';
@@ -24,28 +21,13 @@ import Box from '@mui/material/Box';
 import { useForm } from 'react-hook-form';
 
 // @project
-import { APP_DEFAULT_PATH, AUTH_USER_KEY } from '@/config';
 import axios from '@/utils/axios';
-import { emailSchema, passwordSchema } from '@/utils/validationSchema';
-import { supabase } from '@/utils/supabase/client';
-
-// @icons
-import { IconEye, IconEyeOff } from '@tabler/icons-react';
-
-// Mock user credentials
-const userCredentials = [
-  // { title: 'Super Admin', email: 'super_admin@saasable.io', password: 'Super@123' },
-  // { title: 'Admin', email: 'admin@saasable.io', password: 'Admin@123' },
-  // { title: 'User', email: 'user@saasable.io', password: 'User@123' }
-];
-
-/***************************  AUTH - LOGIN  ***************************/
+import { emailSchema } from '@/utils/validationSchema';
 
 export default function AuthLogin({ inputSx }) {
   const router = useRouter();
   const theme = useTheme();
 
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [loginError, setLoginError] = useState('');
 
@@ -55,7 +37,7 @@ export default function AuthLogin({ inputSx }) {
     handleSubmit,
     reset,
     formState: { errors }
-  } = useForm({ defaultValues: { email: '', password: '' } });
+  } = useForm({ defaultValues: { email: '' } });
 
   // Handle form submission
   const onSubmit = (formData) => {
@@ -63,33 +45,11 @@ export default function AuthLogin({ inputSx }) {
     setLoginError('');
 
     axios
-      .post('/api/auth/login', formData)
-      .then(async (response) => {
+      .post('/api/auth/login', { email: formData.email })
+      .then(() => {
         setIsProcessing(false);
-        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(response.data));
-
-        // Set session for the client-side Supabase instance
-        if (response.data.access_token && response.data.refresh_token) {
-          try {
-            const { error: sessionError } = await supabase.auth.setSession({
-              access_token: response.data.access_token,
-              refresh_token: response.data.refresh_token
-            });
-            if (sessionError) {
-              console.error('Error setting Supabase client session:', sessionError.message);
-              // Optionally handle this error, though the app might still work via token-based API calls
-            } else {
-              console.log('Supabase client session set successfully.');
-            }
-          } catch (e) {
-            console.error('Exception setting Supabase client session:', e);
-          }
-        } else {
-          console.warn('Access token or refresh token missing in login response, cannot set Supabase client session.');
-        }
-
-        router.push(APP_DEFAULT_PATH);
-        // router.push('/events');
+        // Redirect to "Check your email" screen
+        router.push(`/otp-verification?email=${encodeURIComponent(formData.email)}&verify=login`);
       })
       .catch((response) => {
         setIsProcessing(false);
@@ -97,23 +57,8 @@ export default function AuthLogin({ inputSx }) {
       });
   };
 
-  const commonIconProps = { size: 16, color: theme.palette.grey[700] };
-
   return (
     <>
-      <Stack direction="row" sx={{ gap: 1, mb: 2 }}>
-        {userCredentials.map((credential) => (
-          <Button
-            key={credential.title}
-            variant="outlined"
-            color="secondary"
-            sx={{ flex: 1 }}
-            onClick={() => reset({ email: credential.email, password: credential.password })}
-          >
-            {credential.title}
-          </Button>
-        ))}
-      </Stack>
       <form onSubmit={handleSubmit(onSubmit)}>
         <Stack gap={2}>
           <Box>
@@ -124,42 +69,10 @@ export default function AuthLogin({ inputSx }) {
               fullWidth
               error={Boolean(errors.email)}
               sx={inputSx}
+              type="email"
+              autoComplete="email"
             />
             {errors.email?.message && <FormHelperText error>{errors.email.message}</FormHelperText>}
-          </Box>
-
-          <Box>
-            <InputLabel>Password</InputLabel>
-            <OutlinedInput
-              {...register('password', passwordSchema)}
-              type={isPasswordVisible ? 'text' : 'password'}
-              placeholder="Enter your password"
-              fullWidth
-              error={Boolean(errors.password)}
-              endAdornment={
-                <InputAdornment
-                  position="end"
-                  sx={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
-                  onClick={() => setIsPasswordVisible(!isPasswordVisible)}
-                >
-                  {isPasswordVisible ? <IconEye {...commonIconProps} /> : <IconEyeOff {...commonIconProps} />}
-                </InputAdornment>
-              }
-              sx={inputSx}
-            />
-            <Stack direction="row" alignItems="center" justifyContent={errors.password ? 'space-between' : 'flex-end'} width={1}>
-              {errors.password?.message && <FormHelperText error>{errors.password.message}</FormHelperText>}
-              <Link
-                component={NextLink}
-                underline="hover"
-                variant="caption"
-                href="/forgot-password"
-                textAlign="right"
-                sx={{ '&:hover': { color: 'primary.dark' }, mt: 0.75 }}
-              >
-                Forgot Password?
-              </Link>
-            </Stack>
           </Box>
         </Stack>
 
@@ -171,7 +84,7 @@ export default function AuthLogin({ inputSx }) {
           endIcon={isProcessing && <CircularProgress color="secondary" size={16} />}
           sx={{ minWidth: 120, mt: { xs: 1, sm: 4 }, '& .MuiButton-endIcon': { ml: 1 } }}
         >
-          Sign In
+          Send Login Link
         </Button>
 
         {loginError && (

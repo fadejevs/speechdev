@@ -57,7 +57,7 @@ export default function ProfileSection() {
   const [anchorEl, setAnchorEl] = useState(null);
   const [innerAnchorEl, setInnerAnchorEl] = useState(null);
   const [displayName, setDisplayName] = useState('User');
-  const [avatarUrl, setAvatarUrl] = useState('/assets/images/users/avatar-1.png');
+  const [avatarUrl, setAvatarUrl] = useState('');
 
   const open = Boolean(anchorEl);
   const innerOpen = Boolean(innerAnchorEl);

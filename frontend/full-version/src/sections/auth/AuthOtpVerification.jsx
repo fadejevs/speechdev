@@ -24,7 +24,7 @@ const verificationTypes = {
 
 /***************************  AUTH - OTP VERIFICATION  ***************************/
 
-export default function AuthOtpVerification({ email, verify }) {
+export default function AuthOtpVerification({ email }) {
   const router = useRouter();
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -91,4 +91,4 @@ export default function AuthOtpVerification({ email, verify }) {
   );
 }
 
-AuthOtpVerification.propTypes = { email: PropTypes.any, verify: PropTypes.any };
+AuthOtpVerification.propTypes = { email: PropTypes.any };
