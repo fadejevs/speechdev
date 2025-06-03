@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 
 // @project
-import { AuthRole } from '@/enum';
+// import { AuthRole } from '@/enum';
 import { createSupabaseClient } from '@/utils/supabase/server';
 import { supabase } from '@/utils/supabase/client';
 
