@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 import { createSupabaseClient } from '@/utils/supabase/server';
 import { supabase } from '@/utils/supabase/client';
 
-const supabaseServer = createSupabaseClient();
+// const supabaseServer = createSupabaseClient();
 
 export async function login(request) {
   try {
