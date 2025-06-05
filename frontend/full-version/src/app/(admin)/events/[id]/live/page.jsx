@@ -173,19 +173,26 @@ export default function EventLivePage() {
       console.log("Socket connected!");
 
       const startRecognizer = () => {
+        // Add debug logging
+        console.log('Azure Speech Key available:', !!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY);
+        console.log('Azure Region available:', !!process.env.NEXT_PUBLIC_AZURE_REGION);
+        
         if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
           alert("Azure Speech key/region not set");
           return;
         }
 
-
-        
-
         const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(
           process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
           process.env.NEXT_PUBLIC_AZURE_REGION
         );
+        
+        // Configure speech settings
         speechConfig.speechRecognitionLanguage = sourceLanguage;
+        speechConfig.enableDictation();  // Enable dictation mode for better continuous recognition
+        speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw);  // Don't filter any speech
+        
+        // Add target languages
         (eventData.targetLanguages || []).forEach(lang => {
           speechConfig.addTargetLanguage(lang);
         });
@@ -195,9 +202,25 @@ export default function EventLivePage() {
 
         recognizerRef.current = recognizer;
 
+        // Handle recognition errors
+        recognizer.canceled = (s, e) => {
+          console.log("[Live] Recognition canceled. Reason:", e.reason);
+          if (e.reason === SpeechSDK.CancellationReason.Error) {
+            console.error(`[Live] Recognition error: ${e.errorDetails}`);
+            // If there's an error, try to restart the recognizer
+            if (recognizerRef.current) {
+              recognizerRef.current.stopContinuousRecognitionAsync(() => {
+                console.log("[Live] Stopped recognition after error");
+                startRecognizer(); // Restart recognition
+              }, err => console.error("[Live] Error stopping recognition:", err));
+            }
+          }
+        };
+
         recognizer.recognizing = (_s, evt) => {
           const text = evt.result.text;
           if (text && socketRef.current && socketRef.current.connected) {
+            console.log("[Live] Emitting interim transcription:", text);
             socketRef.current.emit("realtime_transcription", {
               text,
               is_final: false,
@@ -213,6 +236,7 @@ export default function EventLivePage() {
             ? Object.fromEntries(Object.entries(evt.result.translations))
             : {};
           if (text && socketRef.current && socketRef.current.connected) {
+            console.log("[Live] Emitting final transcription:", text);
             socketRef.current.emit("realtime_transcription", {
               text,
               is_final: true,
@@ -228,9 +252,20 @@ export default function EventLivePage() {
           });
         };
 
+        // Start recognition with proper error handling
         recognizer.startContinuousRecognitionAsync(
-          () => console.log("Recognition started"),
-          err => console.error("Recognition error:", err)
+          () => console.log("[Live] Recognition started successfully"),
+          err => {
+            console.error("[Live] Failed to start recognition:", err);
+            // If start fails, try to restart after a short delay
+            setTimeout(() => {
+              if (recognizerRef.current) {
+                recognizerRef.current.stopContinuousRecognitionAsync(() => {
+                  startRecognizer();
+                }, stopErr => console.error("[Live] Error stopping failed recognition:", stopErr));
+              }
+            }, 1000);
+          }
         );
       };
 

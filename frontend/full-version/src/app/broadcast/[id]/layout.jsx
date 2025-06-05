@@ -1,10 +1,15 @@
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  userScalable: false
+};
+
 export const metadata = {
   title: "Listen Live — Get Live Speech Translation & Multilingual Captions",
   description: "Join the event in your language with real-time interpretation and live captions. No setup needed. Just listen, follow, and enjoy. Try Everspeak for your next event.",
   alternates: {
     canonical: "https://app.everspeak.ai/",
   },
-  viewport: "width=device-width, initial-scale=1",
   openGraph: {
     type: "website",
     url: "https://app.everspeak.ai/",
@@ -51,7 +56,7 @@ export default function BroadcastLayout({ children }) {
               "price": "0.00",
               "priceCurrency": "EUR"
             }
-          }),
+          })
         }}
       />
     </>

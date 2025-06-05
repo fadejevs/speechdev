@@ -30,7 +30,7 @@ export default function ModalEmail() {
     handleSubmit,
     formState: { errors }
   } = useForm({
-    defaultValues: { email: 'junius12@saasable.io' }
+    defaultValues: { email: 'Email not found' }
   });
 
   const onSubmit = (data) => {

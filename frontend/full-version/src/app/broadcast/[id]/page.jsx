@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk";
@@ -109,7 +109,8 @@ export default function BroadcastPage() {
   const [translationMenuAnchor, setTranslationMenuAnchor]     = useState(null);
 
   // ── State: live transcript, translations, history ──────────────────────────
-  const [liveTranscription, setLiveTranscription] = useState("");
+  const [persistedCaptions, setPersistedCaptions] = useState([]);
+  const [currentInterimCaption, setCurrentInterimCaption] = useState("");
   const [liveTranscriptionLang, setLiveTranscriptionLang] = useState("");
   const [liveTranslations, setLiveTranslations]   = useState({});
   const [history, setHistory]                     = useState([]);
@@ -123,6 +124,12 @@ export default function BroadcastPage() {
   // Add these at the top of your component
   const ttsQueue = useRef([]);
   const ttsBusy = useRef(false);
+  const currentSynthesizerRef = useRef(null); // Ref for the current speech synthesizer
+
+  // Add refs for batching translations
+  const translationBatch = useRef([]);
+  const batchTimer = useRef(null);
+  const BATCH_INTERVAL = 1000; // Reduced to 2 seconds for more real-time feel
 
   useEffect(() => {
     setLoading(true);
@@ -185,34 +192,11 @@ export default function BroadcastPage() {
     return out;
   };
 
-  // Helper to process the queue
-  const processTTSQueue = () => {
-    if (ttsBusy.current || ttsQueue.current.length === 0) return;
-    ttsBusy.current = true;
-    const { text, lang } = ttsQueue.current.shift();
-    speakText(text, lang, () => {
-      ttsBusy.current = false;
-      processTTSQueue();
-    });
-  };
-
-  // Update your TTS trigger logic:
-  useEffect(() => {
-    if (autoSpeakLang && liveTranslations[autoSpeakLang]) {
-      ttsQueue.current.push({
-        text: liveTranslations[autoSpeakLang],
-        lang: autoSpeakLang,
-      });
-      processTTSQueue();
-    }
-    // eslint-disable-next-line
-  }, [liveTranslations, autoSpeakLang]);
-
-  // Update your speakText to accept a callback:
-  const speakText = (text, lang, onDone) => {
+  // speakText function (memoized)
+  const speakText = useCallback((text, lang, onDone) => {
     if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
       alert("Azure Speech key/region not set. Please configure environment variables.");
-      if (onDone) onDone();
+      if (onDone) onDone(false); // Indicate failure
       return;
     }
 
@@ -228,6 +212,7 @@ export default function BroadcastPage() {
 
     const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
     const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
+    currentSynthesizerRef.current = synthesizer; // Store the current synthesizer
 
     synthesizer.speakTextAsync(
       text,
@@ -236,20 +221,19 @@ export default function BroadcastPage() {
           console.log(`[TTS] Synthesis completed for "${text.substring(0,30)}..."`);
         } else if (result.reason === SpeechSDK.ResultReason.Canceled) {
           const cancellation = SpeechSDK.SpeechSynthesisCancellationDetails.fromResult(result);
-          console.warn(`[TTS] CANCELED: Reason=${cancellation.reason}`);
-          if (cancellation.reason === SpeechSDK.CancellationReason.Error) {
-            console.error(`[TTS] CANCELED: ErrorCode=${cancellation.ErrorCode}, ErrorDetails=[${cancellation.errorDetails}]`);
-            if (cancellation.errorDetails && cancellation.errorDetails.includes("voice")) {
-              console.warn(`[TTS] CANCELED: Problem with voice "${voice}" for lang "${lang}". Check voiceMap and Azure supported voices.`);
-            }
-          }
+          console.warn(`[TTS] CANCELED: Reason=${cancellation.reason} for "${text.substring(0,30)}..."`);
+          // This often happens upon interruption by synthesizer.close()
         }
         try {
           synthesizer.close();
         } catch (closeError) {
-          console.error("[TTS] Error closing synthesizer:", closeError);
+          console.error("[TTS] Error closing synthesizer on completion/cancel:", closeError);
         }
-        if (onDone) onDone();
+        // Only clear the ref if this synthesizer is still the current one
+        if (currentSynthesizerRef.current === synthesizer) {
+          currentSynthesizerRef.current = null;
+        }
+        if (onDone) onDone(true); // Indicate success or normal cancellation
       },
       (error) => {
         console.error(`[TTS] Error for text "${text.substring(0,30)}...", lang "${lang}": `, error);
@@ -258,23 +242,147 @@ export default function BroadcastPage() {
         } catch (closeError) {
           console.error("[TTS] Error closing synthesizer on error:", closeError);
         }
-        if (onDone) onDone();
+        if (currentSynthesizerRef.current === synthesizer) {
+          currentSynthesizerRef.current = null;
+        }
+        if (onDone) onDone(false); // Indicate failure
       }
     );
-  };
+  }, []); // voiceMap is stable
+
+  // processTTSQueue function (memoized)
+  const processTTSQueue = useCallback(() => {
+    if (ttsBusy.current || ttsQueue.current.length === 0) {
+      return;
+    }
+    
+    ttsBusy.current = true;
+    // Ensure item exists before trying to shift (though length check should cover)
+    const itemToSpeak = ttsQueue.current.shift();
+    
+    if (!itemToSpeak) { // Should not happen if length > 0
+        ttsBusy.current = false;
+        return;
+    }
+
+    const { text, lang } = itemToSpeak;
+    
+    console.log("[Broadcast] Processing TTS queue. Next item:", {
+      text: text.substring(0, 50) + "..."
+    });
+    
+    speakText(text, lang, (/*success*/) => {
+      // Note: currentSynthesizerRef is handled by speakText callbacks now
+      ttsBusy.current = false;
+      if (autoSpeakLang !== null) { 
+        processTTSQueue(); // Attempt to process next item if TTS still active
+      }
+    });
+  }, [speakText, autoSpeakLang]);
+
+  // processBatchedTranslations function (memoized)
+  const processBatchedTranslations = useCallback(() => {
+    if (translationBatch.current.length === 0 || !autoSpeakLang) {
+      return;
+    }
+
+    const batchedText = translationBatch.current.join(' ');
+    const currentBatchSize = translationBatch.current.length;
+    translationBatch.current = []; // Clear batch
+
+    console.log("[Broadcast] Batch ready for TTS:", {
+      batchSize: currentBatchSize,
+      text: batchedText.substring(0, 100) + "..."
+    });
+    
+    if (batchedText.trim()) {
+      // --- Interruption Logic ---
+      if (ttsBusy.current && currentSynthesizerRef.current) {
+        console.log("[TTS] Interruption: stopping previous speech for new batch.");
+        currentSynthesizerRef.current.close(); // This will trigger the onDone of the ongoing speakText
+        // currentSynthesizerRef.current will be set to null by the speakText callback
+        // ttsBusy.current will be set to false by the speakText callback, allowing the new item to be picked up
+      }
+      // It's important that the old speakText finishes its callbacks (setting ttsBusy false)
+      // before the new one is processed. A small timeout can ensure this if races occur.
+      // However, the speakText callback itself calls processTTSQueue, which will pick up the new item.
+
+      ttsQueue.current = [{ text: batchedText, lang: autoSpeakLang }]; // Replace queue with new single batch
+      
+      // If not busy, processTTSQueue can start immediately.
+      // If it was busy, the interrupted speakText's callback will set ttsBusy to false
+      // and then call processTTSQueue, which will find the new item.
+      if (!ttsBusy.current) {
+         processTTSQueue();
+      }
+    }
+  }, [autoSpeakLang, processTTSQueue]);
+
+  // Effect for batching translations and triggering TTS
+  useEffect(() => {
+    let isMounted = true;
+
+    if (autoSpeakLang && liveTranslations[autoSpeakLang]) {
+      translationBatch.current.push(liveTranslations[autoSpeakLang]);
+      
+      if (batchTimer.current) {
+        clearTimeout(batchTimer.current);
+      }
+      
+      batchTimer.current = setTimeout(() => {
+        if (isMounted) {
+          processBatchedTranslations();
+        }
+      }, BATCH_INTERVAL);
+    }
+    
+    return () => { // Cleanup function
+      isMounted = false;
+      if (batchTimer.current) {
+        clearTimeout(batchTimer.current);
+        batchTimer.current = null;
+      }
+      
+      console.log(`[Broadcast] TTS Batching Effect cleanup (lang: ${autoSpeakLang}). Clearing batch, TTS queue, and stopping speech.`);
+      translationBatch.current = [];
+      
+      if (ttsBusy.current && currentSynthesizerRef.current) {
+        console.log("[TTS Cleanup] Stopping active speech.");
+        currentSynthesizerRef.current.close();
+        currentSynthesizerRef.current = null; // Explicitly clear here for cleanup
+      }
+      ttsQueue.current = [];
+      ttsBusy.current = false; // Reset busy state on cleanup
+    };
+  }, [liveTranslations, autoSpeakLang, processBatchedTranslations, BATCH_INTERVAL]);
 
   useEffect(() => {
     const socket = io(SOCKET_URL, { transports: ["websocket"] });
+    socketRef.current = socket; // Store socket in ref
 
     socket.on("connect", () => {
+      console.log("[Broadcast] Socket connected, joining room:", id);
       socket.emit("join_room", { room: id });
     });
 
     socket.on("realtime_transcription", (data) => {
-      setLiveTranscription(data.text || "");
       setLiveTranscriptionLang(data.source_language || "");
 
+      if (data.is_final) {
+        if (data.text && data.text.trim() !== "") {
+          setPersistedCaptions(prevCaptions => [
+            ...prevCaptions,
+            { id: Date.now() + Math.random(), text: data.text, timestamp: Date.now() } 
+          ]);
+        }
+        setCurrentInterimCaption(""); // Clear interim once final arrives
+      } else {
+        setCurrentInterimCaption(data.text || "");
+      }
+
       // --- Only save if recordEvent is enabled for this event ---
+      // Note: This currently saves both interim and final to local storage.
+      // To save only final, add 'data.is_final &&' to the condition.
       const storedEvents = localStorage.getItem("eventData");
       let shouldRecord = false;
       if (storedEvents) {
@@ -316,19 +424,51 @@ export default function BroadcastPage() {
 
     // --- Add this listener for event status updates ---
     socket.on("event_status_update", (data) => {
-      if (["Paused", "Completed", "Live"].includes(data.status)) {
-        setEventData((prev) => ({
-          ...prev,
-          status: data.status,
-        }));
+      if (data.room_id === id && ["Paused", "Completed", "Live"].includes(data.status)) { // Check room_id
+        console.log("[Broadcast] Event status update received:", data);
+        setEventData((prev) => (prev ? { ...prev, status: data.status } : null));
       }
     });
 
     return () => {
-      socket.emit("leave_room", { room: id });
-      socket.disconnect();
+      console.log("[Broadcast] Cleaning up socket connection for room:", id);
+      if (socketRef.current) {
+        socketRef.current.emit("leave_room", { room: id });
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
-  }, [id, translationLanguage, autoSpeakLang]);
+  }, [id, translationLanguage]); // Removed autoSpeakLang from this specific socket useEffect
+                                 // as it's mainly for socket setup and transcription receiving.
+                                 // TTS logic is handled by its own useEffect.
+
+  // Effect for cleaning up persisted captions
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setPersistedCaptions(prevCaptions => {
+        const now = Date.now();
+        const filtered = prevCaptions.filter(caption => (now - caption.timestamp) < 30000); // 30 seconds
+        if (filtered.length !== prevCaptions.length) {
+          return filtered;
+        }
+        return prevCaptions;
+      });
+    }, 5000); // Cleanup check interval: 5 seconds
+
+    return () => clearInterval(intervalId);
+  }, []); // Runs once on mount
+
+  // Derived state for displayed caption
+  const displayedCaption = useMemo(() => {
+    const finalTexts = persistedCaptions.map(c => c.text).join(' ');
+    // Append interim caption. If finalTexts is empty, interim will be shown alone.
+    // If both are empty, result is empty string.
+    let fullCaption = finalTexts;
+    if (currentInterimCaption) {
+      fullCaption = finalTexts ? `${finalTexts} ${currentInterimCaption}` : currentInterimCaption;
+    }
+    return fullCaption.trim(); // Trim to handle potential leading/trailing spaces
+  }, [persistedCaptions, currentInterimCaption]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
@@ -505,18 +645,14 @@ export default function BroadcastPage() {
           </Box>
           <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
             <Paper elevation={0} sx={{
-              p:2, minHeight:"150px", maxHeight:"300px",
+              p:3, minHeight:"150px", maxHeight:"300px",
               overflowY:"auto",
               borderRadius:"0 0 8px 8px"
             }}>
-              <Box sx={{ p:3 }}>
-                {liveTranscription ? (
-                  <Typography variant="body1">{liveTranscription}</Typography>
-                ) : (
-                  <Typography variant="body1" sx={{ color:"text.secondary" }}>
-                    Waiting for live transcription...
-                  </Typography>
-                )}
+              <Box sx={{ p:0 }}>
+                <Typography variant="body1" sx={{ color: displayedCaption ? "text.primary" : "text.secondary" }}>
+                  {displayedCaption || "Waiting for live transcription..."}
+                </Typography>
               </Box>
             </Paper>
           </Box>
@@ -590,49 +726,57 @@ export default function BroadcastPage() {
             </Box>
           </Box>
           <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
-            {availableTargetLanguages.length > 0 ? (
-              Object.keys(liveTranslations).length > 0 ? (
-                <>
-                  {/* 3. Add Stop Auto-TTS button if enabled */}
-                  {autoSpeakLang && (
-                    <Button
-                      onClick={() => setAutoSpeakLang(null)}
-                      color="secondary"
-                      size="small"
-                      sx={{ mb: 2 }}
-                    >
-                      Stop Auto-TTS
-                    </Button>
-                  )}
-                  {Object.entries(liveTranslations).map(([lang, txt]) => (
-                    <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
-                          {getFullLanguageName(getBaseLangCode(lang))}:
-                        </Typography>
-                        <Typography variant="body1">{txt}</Typography>
-                      </Box>
-                      {/* 4. TTS button: set auto-TTS for this language */}
-                      <Button
-                        onClick={() => setAutoSpeakLang(lang)}
-                        sx={{ ml: 2, minWidth: 0 }}
-                        aria-label={`Auto-play TTS for ${getFullLanguageName(getBaseLangCode(lang))}`}
-                      >
-                        <VolumeUpIcon color={autoSpeakLang === lang ? "primary" : "inherit"} />
-                      </Button>
-                    </Box>
-                  ))}
-                </>
-              ) : (
-                <Typography variant="body1" sx={{ color:"text.secondary", p:4 }}>
-                  Waiting for live translation...
-                </Typography>
-              )
-            ) : (
-              <Typography sx={{ color:"#637381", fontStyle:"italic" }}>
-                No target languages configured for this event.
-              </Typography>
-            )}
+            <Paper elevation={0} sx={{
+              p:3, minHeight:"150px", maxHeight:"300px",
+              overflowY:"auto",
+              borderRadius:"0 0 8px 8px"
+            }}>
+              <Box sx={{ p:0 }}>
+                {availableTargetLanguages.length > 0 ? (
+                  Object.keys(liveTranslations).length > 0 ? (
+                    <>
+                      {/* 3. Add Stop Auto-TTS button if enabled */}
+                      {autoSpeakLang && (
+                        <Button
+                          onClick={() => setAutoSpeakLang(null)}
+                          color="secondary"
+                          size="small"
+                          sx={{ mb: 2 }}
+                        >
+                          Stop Auto-TTS
+                        </Button>
+                      )}
+                      {Object.entries(liveTranslations).map(([lang, txt]) => (
+                        <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
+                              {getFullLanguageName(getBaseLangCode(lang))}:
+                            </Typography>
+                            <Typography variant="body1">{txt}</Typography>
+                          </Box>
+                          {/* 4. TTS button: set auto-TTS for this language */}
+                          <Button
+                            onClick={() => setAutoSpeakLang(lang)}
+                            sx={{ ml: 2, minWidth: 0 }}
+                            aria-label={`Auto-play TTS for ${getFullLanguageName(getBaseLangCode(lang))}`}
+                          >
+                            <VolumeUpIcon color={autoSpeakLang === lang ? "primary" : "inherit"} />
+                          </Button>
+                        </Box>
+                      ))}
+                    </>
+                  ) : (
+                    <Typography variant="body1" sx={{ color:"text.secondary" }}>
+                      Waiting for live translation...
+                    </Typography>
+                  )
+                ) : (
+                  <Typography sx={{ color:"#637381", fontStyle:"italic" }}>
+                    No target languages configured for this event.
+                  </Typography>
+                )}
+              </Box>
+            </Paper>
           </Box>
         </Box>
       </Box>

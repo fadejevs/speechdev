@@ -14,6 +14,8 @@ import '@/utils/devPerformance';
 
 // Configures the viewport settings for the application.
 export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
   userScalable: false // Disables user scaling of the viewport.
 };
 
@@ -23,7 +25,6 @@ export const metadata = {
   alternates: {
     canonical: "https://app.everspeak.ai/",
   },
-  viewport: "width=device-width, initial-scale=1",
   openGraph: {
     type: "website",
     url: "https://app.everspeak.ai/",
