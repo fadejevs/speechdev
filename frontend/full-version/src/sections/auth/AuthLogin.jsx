@@ -40,21 +40,29 @@ export default function AuthLogin({ inputSx }) {
   } = useForm({ defaultValues: { email: '' } });
 
   // Handle form submission
-  const onSubmit = (formData) => {
+  const onSubmit = async (formData) => {
     setIsProcessing(true);
     setLoginError('');
 
-    axios
-      .post('/api/auth/login', { email: formData.email })
-      .then(() => {
-        setIsProcessing(false);
-        // Redirect to "Check your email" screen
-        router.push(`/otp-verification?email=${encodeURIComponent(formData.email)}&verify=login`);
-      })
-      .catch((response) => {
-        setIsProcessing(false);
-        setLoginError(response.error || 'Something went wrong');
-      });
+    try {
+      // First check if the email exists
+      const { data: checkData } = await axios.get(`/api/auth/check-email?email=${formData.email}`);
+      console.log('Check email response:', checkData);
+
+      if (!checkData.exists) {
+        setLoginError('There is no account associated with this email. Please sign up.');
+        router.push('/register');
+        return;
+      }
+
+      // If email exists, magic link has already been sent by the check-email endpoint
+      router.push(`/otp-verification?email=${encodeURIComponent(formData.email)}&verify=login`);
+    } catch (error) {
+      console.error('Login error:', error.response?.data || error);
+      setLoginError(error.response?.data?.error || 'Failed to process login request');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (

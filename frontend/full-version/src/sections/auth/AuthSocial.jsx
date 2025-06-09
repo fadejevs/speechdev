@@ -45,7 +45,12 @@ export default function AuthSocial({ type = SocialTypes.VERTICAL, buttonSx }) {
           fullWidth
           size="small"
           color="secondary"
-          sx={{ ...(type === SocialTypes.HORIZONTAL && { '.MuiButton-startIcon': { m: 0 } }), ...buttonSx }}
+          sx={{ 
+            ...(type === SocialTypes.HORIZONTAL && { '.MuiButton-startIcon': { m: 0 } }), 
+            ...buttonSx,
+            justifyContent: 'flex-start',
+            gap: 1
+          }}
           startIcon={<CardMedia component="img" src={GetImagePath(item.icon)} sx={{ width: 16, height: 16 }} alt={item.label} />}
           onClick={async () => {
             if (item.label === 'Google') {
@@ -60,11 +65,13 @@ export default function AuthSocial({ type = SocialTypes.VERTICAL, buttonSx }) {
             }
           }}
         >
-          {type === SocialTypes.VERTICAL && <Typography variant="caption1">{item.title}</Typography>}
+          <Typography variant="caption1" sx={{ flexGrow: 1, textAlign: 'center' }}>
+            {item.title}
+          </Typography>
         </Button>
       ))}
     </Stack>
   );
 }
 
-AuthSocial.propTypes = { type: PropTypes.any, SocialTypes: PropTypes.any, VERTICAL: PropTypes.any, buttonSx: PropTypes.any };
+AuthSocial.propTypes = { type: PropTypes.any, buttonSx: PropTypes.any };
