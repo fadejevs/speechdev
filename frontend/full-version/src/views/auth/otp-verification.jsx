@@ -68,7 +68,7 @@ export default function OtpVerification() {
     <Stack sx={{ height: 1, gap: 3 }}>
       <Box sx={{ width: 1, maxWidth: 458, m: 'auto' }}>
         <Stack sx={{ gap: { xs: 1, sm: 1.5 }, textAlign: 'center', mb: { xs: 3, sm: 8 } }}>
-          <Typography variant="h1">Verify Code</Typography>
+          <Typography variant="h1">Login Link</Typography>
           <Typography variant="body1" color="text.secondary">
             Code is sent to{' '}
             <Typography component="span" variant="subtitle1" color="text.primary">
@@ -82,7 +82,7 @@ export default function OtpVerification() {
 
         <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mt: { xs: 2, sm: 3 } }}>
           <Typography variant="body2" color="text.secondary">
-            Didn’t receive a code?{' '}
+            Didn’t receive a link?{' '}
             <Link
               variant="subtitle2"
               underline={isTimerActive ? 'none' : 'hover'}

@@ -49,7 +49,7 @@ export default function AuthOtpVerification({ email }) {
         Check your email
       </Typography>
       <Typography variant="body1" align="center" color="text.secondary">
-        We've sent a verification link to <b>{email}</b>. Please check your inbox and follow the instructions to verify your account.
+        We've sent a login link to <b>{email}</b>. Please check your inbox and follow the instructions to log in to your account.
       </Typography>
       {/* 
       <form onSubmit={handleSubmit(onSubmit)} autoComplete="off">
