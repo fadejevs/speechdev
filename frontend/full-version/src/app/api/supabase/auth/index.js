@@ -15,8 +15,10 @@ export async function login(request) {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        // emailRedirectTo: 'http://localhost:3000/auth/callback' // or your deployed URL
-        emailRedirectTo: 'http://app.everspeak.ai/auth/callback' // or your deployed URL
+        emailRedirectTo: 'https://app.everspeak.ai/auth/callback',
+        data: {
+          redirectTo: '/dashboard/analytics'
+        }
       }
     });
     if (error) {

@@ -5,7 +5,7 @@ import axios from 'axios';
 import { AUTH_USER_KEY } from '@/config';
 
 const axiosServices = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_HOST || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001')
+  baseURL: process.env.NEXT_PUBLIC_API_HOST || (typeof window !== 'undefined' ? window.location.origin : '')
 });
 
 /***************************  AXIOS MIDDLEWARE  ***************************/

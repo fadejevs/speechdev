@@ -189,13 +189,6 @@ export default function SettingDetailsCard() {
         </ListItem>
         <ListItem sx={listStyle} divider>
           <ListItemText
-            primary="Phone Number"
-            secondary={userData?.contact || 'No phone number set'}
-            {...{ primaryTypographyProps, secondaryTypographyProps }}
-          />
-        </ListItem>
-        <ListItem sx={listStyle} divider>
-          <ListItemText
             primary="Change Password"
             secondary="Change the passwords for your Account Security"
             {...{ primaryTypographyProps, secondaryTypographyProps }}

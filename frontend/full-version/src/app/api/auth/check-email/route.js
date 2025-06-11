@@ -8,7 +8,8 @@ const supabaseAdmin = createClient(
   {
     auth: {
       autoRefreshToken: false,
-      persistSession: false
+      persistSession: false,
+      flowType: 'pkce'
     }
   }
 );
@@ -48,7 +49,7 @@ export async function GET(request) {
     const { error: signInError } = await supabaseAdmin.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${request.headers.get('origin') || 'http://localhost:3000'}/auth/callback`,
+        emailRedirectTo: `${request.headers.get('origin')}/auth/callback`,
         data: {
           redirectTo: '/dashboard/analytics'
         }

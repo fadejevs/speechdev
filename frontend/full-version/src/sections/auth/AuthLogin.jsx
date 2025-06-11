@@ -59,7 +59,10 @@ export default function AuthLogin({ inputSx }) {
       router.push(`/otp-verification?email=${encodeURIComponent(formData.email)}&verify=login`);
     } catch (error) {
       console.error('Login error:', error.response?.data || error);
-      setLoginError(error.response?.data?.error || 'Failed to process login request');
+      const errorMessage = error.response?.data?.error === 'email rate limit exceeded' 
+        ? 'Too many login attempts. Please wait a few minutes before trying again.'
+        : error.response?.data?.error || 'Failed to process login request';
+      setLoginError(errorMessage);
     } finally {
       setIsProcessing(false);
     }
