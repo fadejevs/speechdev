@@ -127,9 +127,10 @@ export default function BroadcastPage() {
   const currentSynthesizerRef = useRef(null);
   const isSpeaking = useRef(false); // Master lock for TTS
 
-  // Add refs for batching translations
-  const batchTimer = useRef(null);
-
+  // Add refs for 3-second TTS chunking - WORD-LEVEL TRACKING
+  const ttsChunkInterval = useRef(null);
+  const spokenWords = useRef(new Set()); // Track individual words we've spoken
+  const wordsToSpeak = useRef([]); // Queue of new words to speak
 
   useEffect(() => {
     setLoading(true);
@@ -273,26 +274,70 @@ export default function BroadcastPage() {
     });
   }, [speakText]);
 
-  // Effect for handling new translations
+  // Effect for handling new translations - Track individual words
   useEffect(() => {
-    if (!autoSpeakLang || !liveTranslations[autoSpeakLang]) {
+    if (!autoSpeakLang || !realtimeTranslations[autoSpeakLang]) {
       return;
     }
 
-    // Add new sentences to the queue
-    const text = liveTranslations[autoSpeakLang];
-    const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim());
-    if (sentences.length > 0) {
-      sentences.forEach(s => ttsQueue.current.push({ text: s, lang: autoSpeakLang }));
-      console.log(`[TTS] Added ${sentences.length} new sentence(s) to queue. Total: ${ttsQueue.current.length}`);
+    const currentText = realtimeTranslations[autoSpeakLang];
+    
+    // Split into words and filter out already spoken ones
+    const currentWords = currentText.toLowerCase().split(/\s+/).filter(word => word.trim());
+    const newWords = currentWords.filter(word => !spokenWords.current.has(word));
+    
+    if (newWords.length > 0) {
+      // Add new words to our queue
+      wordsToSpeak.current = [...wordsToSpeak.current, ...newWords];
+      
+      // Mark these words as seen (but not spoken yet)
+      newWords.forEach(word => spokenWords.current.add(word));
+      
+      console.log(`[TTS] New words detected: ${newWords.join(' ')}`);
+    }
+    
+  }, [realtimeTranslations, autoSpeakLang]);
+
+  // Separate effect to handle the 4-second interval for TTS chunks
+  useEffect(() => {
+    if (!autoSpeakLang) {
+      // Clear interval if no auto-speak language
+      if (ttsChunkInterval.current) {
+        clearInterval(ttsChunkInterval.current);
+        ttsChunkInterval.current = null;
+      }
+      return;
     }
 
-    // Attempt to start the queue processing
-    processQueue();
-    
-  }, [liveTranslations, autoSpeakLang, processQueue]);
+    // Start the 4-second recurring interval - SPEAK QUEUED WORDS
+    ttsChunkInterval.current = setInterval(() => {
+      if (wordsToSpeak.current.length > 0) {
+        const textToSpeak = wordsToSpeak.current.join(' ');
+        
+        console.log(`[TTS] Speaking queued words: "${textToSpeak}"`);
+        
+        ttsQueue.current.push({ text: textToSpeak, lang: autoSpeakLang });
+        
+        // CLEAR the words queue since we've spoken them
+        wordsToSpeak.current = [];
+        
+        // Try to start processing if not already speaking
+        if (!isSpeaking.current && ttsQueue.current.length > 0) {
+          processQueue();
+        }
+      }
+    }, 4000); // Every 4 seconds, speak queued words
 
-  // Cleanup effect
+    // Cleanup function for this effect
+    return () => {
+      if (ttsChunkInterval.current) {
+        clearInterval(ttsChunkInterval.current);
+        ttsChunkInterval.current = null;
+      }
+    };
+  }, [autoSpeakLang, processQueue]);
+
+  // Cleanup effect - simplified
   useEffect(() => {
     return () => {
       // On unmount, stop any active speech and clear the queue
@@ -300,10 +345,24 @@ export default function BroadcastPage() {
         try { currentSynthesizerRef.current.close(); } catch(e) {}
         currentSynthesizerRef.current = null;
       }
+      if (ttsChunkInterval.current) {
+        clearInterval(ttsChunkInterval.current);
+        ttsChunkInterval.current = null;
+      }
       ttsQueue.current = [];
       isSpeaking.current = false;
+      spokenWords.current = new Set();
+      wordsToSpeak.current = [];
     };
   }, []);
+
+  // Add effect to reset when auto-speak language changes
+  useEffect(() => {
+    if (autoSpeakLang) {
+      spokenWords.current = new Set();
+      wordsToSpeak.current = [];
+    }
+  }, [autoSpeakLang]);
 
   // Effect for socket connection and transcription handling
   useEffect(() => {
