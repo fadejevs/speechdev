@@ -112,7 +112,8 @@ export default function BroadcastPage() {
   const [persistedCaptions, setPersistedCaptions] = useState([]);
   const [currentInterimCaption, setCurrentInterimCaption] = useState("");
   const [liveTranscriptionLang, setLiveTranscriptionLang] = useState("");
-  const [liveTranslations, setLiveTranslations]   = useState({});
+  const [liveTranslations, setLiveTranslations] = useState({}); // For final translations (triggers TTS)
+  const [realtimeTranslations, setRealtimeTranslations] = useState({}); // For interim translations (display only)
   const [history, setHistory]                     = useState([]);
 
   // 1. Add state for auto-TTS language
@@ -121,15 +122,14 @@ export default function BroadcastPage() {
   // Add a ref for the socket
   const socketRef = useRef(null);
 
-  // Add these at the top of your component
+  // State for TTS
   const ttsQueue = useRef([]);
-  const ttsBusy = useRef(false);
-  const currentSynthesizerRef = useRef(null); // Ref for the current speech synthesizer
+  const currentSynthesizerRef = useRef(null);
+  const isSpeaking = useRef(false); // Master lock for TTS
 
   // Add refs for batching translations
-  const translationBatch = useRef([]);
   const batchTimer = useRef(null);
-  const BATCH_INTERVAL = 1000; // Reduced to 2 seconds for more real-time feel
+
 
   useEffect(() => {
     setLoading(true);
@@ -192,173 +192,123 @@ export default function BroadcastPage() {
     return out;
   };
 
-  // speakText function (memoized)
+  // speakText function is now simpler, it just speaks, no locking logic here
   const speakText = useCallback((text, lang, onDone) => {
-    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-      alert("Azure Speech key/region not set. Please configure environment variables.");
-      if (onDone) onDone(false); // Indicate failure
+    // Basic validation
+    if (!text || !process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+      if (onDone) onDone(false);
       return;
     }
 
+    // Configure and create the synthesizer
     const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
       process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
       process.env.NEXT_PUBLIC_AZURE_REGION
     );
-
     const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
     speechConfig.speechSynthesisVoiceName = voice;
-
-    console.log(`[TTS] Attempting to speak: "${text.substring(0,30)}..." in language "${lang}" using voice "${voice}"`);
-
     const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
     const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
-    currentSynthesizerRef.current = synthesizer; // Store the current synthesizer
+    
+    // Store the synthesizer instance so we can clean up if needed
+    currentSynthesizerRef.current = synthesizer;
+
+    console.log(`[TTS] Starting synthesis for: "${text.substring(0, 30)}..."`);
 
     synthesizer.speakTextAsync(
       text,
       (result) => {
+        // This is the main callback when synthesis is done.
+        
+        const cleanup = () => {
+            try { synthesizer.close(); } catch (e) { /* Ignore */ }
+            currentSynthesizerRef.current = null;
+        };
+
         if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-          console.log(`[TTS] Synthesis completed for "${text.substring(0,30)}..."`);
-        } else if (result.reason === SpeechSDK.ResultReason.Canceled) {
-          const cancellation = SpeechSDK.SpeechSynthesisCancellationDetails.fromResult(result);
-          console.warn(`[TTS] CANCELED: Reason=${cancellation.reason} for "${text.substring(0,30)}..."`);
-          // This often happens upon interruption by synthesizer.close()
+          // THE KEY FIX: Get audio duration from the result.
+          // The duration is in 100-nanosecond ticks, so convert to milliseconds.
+          const audioDurationMs = result.audioDuration / 10000;
+          console.log(`[TTS] Synthesis complete. Audio duration: ${audioDurationMs.toFixed(0)}ms. Waiting for playback to finish.`);
+          
+          // Wait for the audio to finish playing, then call our onDone callback.
+          setTimeout(() => {
+            console.log(`[TTS] Playback finished for: "${text.substring(0, 30)}..."`);
+            cleanup();
+            if (onDone) onDone(true);
+          }, audioDurationMs);
+
+        } else {
+          // Handle cancellation or other failures immediately.
+          console.warn(`[TTS] Synthesis failed or canceled. Reason: ${result.reason}`);
+          cleanup();
+          if (onDone) onDone(false);
         }
-        try {
-          synthesizer.close();
-        } catch (closeError) {
-          console.error("[TTS] Error closing synthesizer on completion/cancel:", closeError);
-        }
-        // Only clear the ref if this synthesizer is still the current one
-        if (currentSynthesizerRef.current === synthesizer) {
-          currentSynthesizerRef.current = null;
-        }
-        if (onDone) onDone(true); // Indicate success or normal cancellation
       },
       (error) => {
-        console.error(`[TTS] Error for text "${text.substring(0,30)}...", lang "${lang}": `, error);
-        try {
-          synthesizer.close();
-        } catch (closeError) {
-          console.error("[TTS] Error closing synthesizer on error:", closeError);
-        }
-        if (currentSynthesizerRef.current === synthesizer) {
-          currentSynthesizerRef.current = null;
-        }
-        if (onDone) onDone(false); // Indicate failure
+        // Handle critical errors.
+        console.error(`[TTS] Error during synthesis: ${error}`);
+        try { synthesizer.close(); } catch (e) { /* Ignore */ }
+        currentSynthesizerRef.current = null;
+        if (onDone) onDone(false);
       }
     );
-  }, []); // voiceMap is stable
+  }, []);
 
-  // processTTSQueue function (memoized)
-  const processTTSQueue = useCallback(() => {
-    if (ttsBusy.current || ttsQueue.current.length === 0) {
-      return;
-    }
-    
-    ttsBusy.current = true;
-    // Ensure item exists before trying to shift (though length check should cover)
-    const itemToSpeak = ttsQueue.current.shift();
-    
-    if (!itemToSpeak) { // Should not happen if length > 0
-        ttsBusy.current = false;
-        return;
+  // The single gatekeeper for processing the TTS queue
+  const processQueue = useCallback(() => {
+    if (isSpeaking.current || ttsQueue.current.length === 0) {
+      return; // Exit if already speaking or nothing to speak
     }
 
-    const { text, lang } = itemToSpeak;
+    isSpeaking.current = true; // Set the lock
+
+    const item = ttsQueue.current.shift();
     
-    console.log("[Broadcast] Processing TTS queue. Next item:", {
-      text: text.substring(0, 50) + "..."
-    });
-    
-    speakText(text, lang, (/*success*/) => {
-      // Note: currentSynthesizerRef is handled by speakText callbacks now
-      ttsBusy.current = false;
-      if (autoSpeakLang !== null) { 
-        processTTSQueue(); // Attempt to process next item if TTS still active
-      }
-    });
-  }, [speakText, autoSpeakLang]);
-
-  // processBatchedTranslations function (memoized)
-  const processBatchedTranslations = useCallback(() => {
-    if (translationBatch.current.length === 0 || !autoSpeakLang) {
-      return;
-    }
-
-    const batchedText = translationBatch.current.join(' ');
-    const currentBatchSize = translationBatch.current.length;
-    translationBatch.current = []; // Clear batch
-
-    console.log("[Broadcast] Batch ready for TTS:", {
-      batchSize: currentBatchSize,
-      text: batchedText.substring(0, 100) + "..."
-    });
-    
-    if (batchedText.trim()) {
-      // --- Interruption Logic ---
-      if (ttsBusy.current && currentSynthesizerRef.current) {
-        console.log("[TTS] Interruption: stopping previous speech for new batch.");
-        currentSynthesizerRef.current.close(); // This will trigger the onDone of the ongoing speakText
-        // currentSynthesizerRef.current will be set to null by the speakText callback
-        // ttsBusy.current will be set to false by the speakText callback, allowing the new item to be picked up
-      }
-      // It's important that the old speakText finishes its callbacks (setting ttsBusy false)
-      // before the new one is processed. A small timeout can ensure this if races occur.
-      // However, the speakText callback itself calls processTTSQueue, which will pick up the new item.
-
-      ttsQueue.current = [{ text: batchedText, lang: autoSpeakLang }]; // Replace queue with new single batch
+    speakText(item.text, item.lang, (success) => {
+      isSpeaking.current = false; // Release the lock
       
-      // If not busy, processTTSQueue can start immediately.
-      // If it was busy, the interrupted speakText's callback will set ttsBusy to false
-      // and then call processTTSQueue, which will find the new item.
-      if (!ttsBusy.current) {
-         processTTSQueue();
-      }
-    }
-  }, [autoSpeakLang, processTTSQueue]);
+      // After a short, natural pause, try to process the next item
+      setTimeout(processQueue, 10); 
+    });
+  }, [speakText]);
 
-  // Effect for batching translations and triggering TTS
+  // Effect for handling new translations
   useEffect(() => {
-    let isMounted = true;
-
-    if (autoSpeakLang && liveTranslations[autoSpeakLang]) {
-      translationBatch.current.push(liveTranslations[autoSpeakLang]);
-      
-      if (batchTimer.current) {
-        clearTimeout(batchTimer.current);
-      }
-      
-      batchTimer.current = setTimeout(() => {
-        if (isMounted) {
-          processBatchedTranslations();
-        }
-      }, BATCH_INTERVAL);
+    if (!autoSpeakLang || !liveTranslations[autoSpeakLang]) {
+      return;
     }
+
+    // Add new sentences to the queue
+    const text = liveTranslations[autoSpeakLang];
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+    if (sentences.length > 0) {
+      sentences.forEach(s => ttsQueue.current.push({ text: s, lang: autoSpeakLang }));
+      console.log(`[TTS] Added ${sentences.length} new sentence(s) to queue. Total: ${ttsQueue.current.length}`);
+    }
+
+    // Attempt to start the queue processing
+    processQueue();
     
-    return () => { // Cleanup function
-      isMounted = false;
-      if (batchTimer.current) {
-        clearTimeout(batchTimer.current);
-        batchTimer.current = null;
-      }
-      
-      console.log(`[Broadcast] TTS Batching Effect cleanup (lang: ${autoSpeakLang}). Clearing batch, TTS queue, and stopping speech.`);
-      translationBatch.current = [];
-      
-      if (ttsBusy.current && currentSynthesizerRef.current) {
-        console.log("[TTS Cleanup] Stopping active speech.");
-        currentSynthesizerRef.current.close();
-        currentSynthesizerRef.current = null; // Explicitly clear here for cleanup
+  }, [liveTranslations, autoSpeakLang, processQueue]);
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      // On unmount, stop any active speech and clear the queue
+      if (currentSynthesizerRef.current) {
+        try { currentSynthesizerRef.current.close(); } catch(e) {}
+        currentSynthesizerRef.current = null;
       }
       ttsQueue.current = [];
-      ttsBusy.current = false; // Reset busy state on cleanup
+      isSpeaking.current = false;
     };
-  }, [liveTranslations, autoSpeakLang, processBatchedTranslations, BATCH_INTERVAL]);
+  }, []);
 
+  // Effect for socket connection and transcription handling
   useEffect(() => {
     const socket = io(SOCKET_URL, { transports: ["websocket"] });
-    socketRef.current = socket; // Store socket in ref
+    socketRef.current = socket;
 
     socket.on("connect", () => {
       console.log("[Broadcast] Socket connected, joining room:", id);
@@ -375,99 +325,63 @@ export default function BroadcastPage() {
             { id: Date.now() + Math.random(), text: data.text, timestamp: Date.now() } 
           ]);
         }
-        setCurrentInterimCaption(""); // Clear interim once final arrives
-      } else {
-        setCurrentInterimCaption(data.text || "");
-      }
-
-      // --- Only save if recordEvent is enabled for this event ---
-      // Note: This currently saves both interim and final to local storage.
-      // To save only final, add 'data.is_final &&' to the condition.
-      const storedEvents = localStorage.getItem("eventData");
-      let shouldRecord = false;
-      if (storedEvents) {
-        const arr = JSON.parse(storedEvents);
-        const ev = arr.find((e) => String(e.id) === String(id));
-        if (ev && ev.recordEvent) {
-          shouldRecord = true;
-        }
-      }
-
-      if (shouldRecord) {
-        const key = `transcripts_${String(id)}`;
-        const transcripts = JSON.parse(localStorage.getItem(key) || '{}');
-
-        // Save source transcription
-        if (data.text && data.source_language) {
-          const lang = data.source_language.split('-')[0].toLowerCase();
-          transcripts[lang] = transcripts[lang] || [];
-          transcripts[lang].push(data.text);
-        }
-        // Save translations
-        if (data.translations) {
-          Object.entries(data.translations).forEach(([lang, txt]) => {
-            const baseLang = lang.split('-')[0].toLowerCase();
-            transcripts[baseLang] = transcripts[baseLang] || [];
-            transcripts[baseLang].push(txt);
+        setCurrentInterimCaption("");
+        
+        // Trigger translation for final text (this will trigger TTS)
+        if (data.text && translationLanguage) {
+          fetchTranslations(data.text, translationLanguage).then((translations) => {
+            setLiveTranslations(translations); // This triggers TTS
+            setRealtimeTranslations(translations); // Update display too
           });
         }
-        localStorage.setItem(key, JSON.stringify(transcripts));
-      }
-
-      // Trigger translation in the browser
-      if (data.text && translationLanguage) {
-        fetchTranslations(data.text, translationLanguage).then((plain) => {
-          setLiveTranslations(plain);
-        });
+      } else {
+        setCurrentInterimCaption(data.text || "");
+        
+        // REAL-TIME TRANSLATION: Translate interim text for live updates (NO TTS)
+        if (data.text && data.text.trim() && translationLanguage) {
+          fetchTranslations(data.text, translationLanguage).then((translations) => {
+            setRealtimeTranslations(translations); // Only update display, no TTS
+          });
+        }
       }
     });
 
-    // --- Add this listener for event status updates ---
     socket.on("event_status_update", (data) => {
-      if (data.room_id === id && ["Paused", "Completed", "Live"].includes(data.status)) { // Check room_id
+      if (data.room_id === id && ["Paused", "Completed", "Live"].includes(data.status)) {
         console.log("[Broadcast] Event status update received:", data);
         setEventData((prev) => (prev ? { ...prev, status: data.status } : null));
       }
     });
 
     return () => {
-      console.log("[Broadcast] Cleaning up socket connection for room:", id);
       if (socketRef.current) {
         socketRef.current.emit("leave_room", { room: id });
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, [id, translationLanguage]); // Removed autoSpeakLang from this specific socket useEffect
-                                 // as it's mainly for socket setup and transcription receiving.
-                                 // TTS logic is handled by its own useEffect.
+  }, [id, translationLanguage]);
 
-  // Effect for cleaning up persisted captions
+  // Effect for cleaning up old captions from view
   useEffect(() => {
     const intervalId = setInterval(() => {
       setPersistedCaptions(prevCaptions => {
         const now = Date.now();
-        const filtered = prevCaptions.filter(caption => (now - caption.timestamp) < 30000); // 30 seconds
-        if (filtered.length !== prevCaptions.length) {
-          return filtered;
-        }
-        return prevCaptions;
+        const filtered = prevCaptions.filter(caption => (now - caption.timestamp) < 30000);
+        return filtered.length === prevCaptions.length ? prevCaptions : filtered;
       });
-    }, 5000); // Cleanup check interval: 5 seconds
-
+    }, 5000);
     return () => clearInterval(intervalId);
-  }, []); // Runs once on mount
+  }, []);
 
-  // Derived state for displayed caption
+  // Derived state for the complete displayed caption
   const displayedCaption = useMemo(() => {
     const finalTexts = persistedCaptions.map(c => c.text).join(' ');
-    // Append interim caption. If finalTexts is empty, interim will be shown alone.
-    // If both are empty, result is empty string.
     let fullCaption = finalTexts;
     if (currentInterimCaption) {
       fullCaption = finalTexts ? `${finalTexts} ${currentInterimCaption}` : currentInterimCaption;
     }
-    return fullCaption.trim(); // Trim to handle potential leading/trailing spaces
+    return fullCaption.trim();
   }, [persistedCaptions, currentInterimCaption]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -629,18 +543,6 @@ export default function BroadcastPage() {
                   ? getFullLanguageName(getBaseLangCode(transcriptionLanguage))
                   : <span style={{ color: "#ccc" }}>[No language]</span>}
               </Box>
-              {/* <Button
-                size="small"
-                endIcon={<ArrowDropDownIcon />}
-                onClick={(e) => setTranscriptionMenuAnchor(e.currentTarget)}
-                sx={{
-                  textTransform: "none",
-                  fontSize: "14px",
-                  color: "#6366F1",
-                }}
-              >
-                Change Language
-              </Button> */}
             </Box>
           </Box>
           <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
@@ -733,20 +635,19 @@ export default function BroadcastPage() {
             }}>
               <Box sx={{ p:0 }}>
                 {availableTargetLanguages.length > 0 ? (
-                  Object.keys(liveTranslations).length > 0 ? (
+                  Object.keys(realtimeTranslations).length > 0 ? (
                     <>
-                      {/* 3. Add Stop Auto-TTS button if enabled */}
                       {autoSpeakLang && (
                         <Button
                           onClick={() => setAutoSpeakLang(null)}
                           color="secondary"
                           size="small"
-                          sx={{ mb: 2 }}
+                          sx={{ mb: 2, ml: 2 }}
                         >
                           Stop Auto-TTS
                         </Button>
                       )}
-                      {Object.entries(liveTranslations).map(([lang, txt]) => (
+                      {Object.entries(realtimeTranslations).map(([lang, txt]) => (
                         <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
                           <Box sx={{ flex: 1 }}>
                             <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
@@ -754,7 +655,6 @@ export default function BroadcastPage() {
                             </Typography>
                             <Typography variant="body1">{txt}</Typography>
                           </Box>
-                          {/* 4. TTS button: set auto-TTS for this language */}
                           <Button
                             onClick={() => setAutoSpeakLang(lang)}
                             sx={{ ml: 2, minWidth: 0 }}
