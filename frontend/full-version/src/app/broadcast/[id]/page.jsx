@@ -110,6 +110,7 @@ export default function BroadcastPage() {
 
   // ── State: live transcript, translations, history ──────────────────────────
   const [persistedCaptions, setPersistedCaptions] = useState([]);
+  const [persistedTranslations, setPersistedTranslations] = useState([]); // Accumulated translations
   const [currentInterimCaption, setCurrentInterimCaption] = useState("");
   const [liveTranscriptionLang, setLiveTranscriptionLang] = useState("");
   const [liveTranslations, setLiveTranslations] = useState({}); // For final translations (triggers TTS)
@@ -126,11 +127,12 @@ export default function BroadcastPage() {
   const ttsQueue = useRef([]);
   const currentSynthesizerRef = useRef(null);
   const isSpeaking = useRef(false); // Master lock for TTS
+  const spokenSentences = useRef(new Set()); // Track spoken sentences to avoid duplicates
 
-  // Add refs for 3-second TTS chunking - WORD-LEVEL TRACKING
-  const ttsChunkInterval = useRef(null);
-  const spokenWords = useRef(new Set()); // Track individual words we've spoken
-  const wordsToSpeak = useRef([]); // Queue of new words to speak
+  // Add refs for batching translations
+  const batchTimer = useRef(null);
+  const lastFinalTranscriptionTime = useRef(0);
+
 
   useEffect(() => {
     setLoading(true);
@@ -274,70 +276,37 @@ export default function BroadcastPage() {
     });
   }, [speakText]);
 
-  // Effect for handling new translations - Track individual words
+  // Effect for handling new translations
   useEffect(() => {
-    if (!autoSpeakLang || !realtimeTranslations[autoSpeakLang]) {
+    if (!autoSpeakLang || !liveTranslations[autoSpeakLang]) {
       return;
     }
 
-    const currentText = realtimeTranslations[autoSpeakLang];
+    // Add new sentences to the queue
+    const text = liveTranslations[autoSpeakLang];
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim());
     
-    // Split into words and filter out already spoken ones
-    const currentWords = currentText.toLowerCase().split(/\s+/).filter(word => word.trim());
-    const newWords = currentWords.filter(word => !spokenWords.current.has(word));
+    // Only add sentences that haven't been spoken yet
+    const newSentences = sentences.filter(sentence => {
+      const trimmed = sentence.trim();
+      return trimmed && !spokenSentences.current.has(trimmed);
+    });
     
-    if (newWords.length > 0) {
-      // Add new words to our queue
-      wordsToSpeak.current = [...wordsToSpeak.current, ...newWords];
+    if (newSentences.length > 0) {
+      newSentences.forEach(sentence => {
+        const trimmed = sentence.trim();
+        ttsQueue.current.push({ text: trimmed, lang: autoSpeakLang });
+        spokenSentences.current.add(trimmed); // Mark as queued/spoken
+      });
+      console.log(`[TTS] Added ${newSentences.length} new sentence(s) to queue. Total: ${ttsQueue.current.length}`);
       
-      // Mark these words as seen (but not spoken yet)
-      newWords.forEach(word => spokenWords.current.add(word));
-      
-      console.log(`[TTS] New words detected: ${newWords.join(' ')}`);
+      // Attempt to start the queue processing
+      processQueue();
     }
     
-  }, [realtimeTranslations, autoSpeakLang]);
+  }, [liveTranslations, autoSpeakLang, processQueue]);
 
-  // Separate effect to handle the 4-second interval for TTS chunks
-  useEffect(() => {
-    if (!autoSpeakLang) {
-      // Clear interval if no auto-speak language
-      if (ttsChunkInterval.current) {
-        clearInterval(ttsChunkInterval.current);
-        ttsChunkInterval.current = null;
-      }
-      return;
-    }
-
-    // Start the 4-second recurring interval - SPEAK QUEUED WORDS
-    ttsChunkInterval.current = setInterval(() => {
-      if (wordsToSpeak.current.length > 0) {
-        const textToSpeak = wordsToSpeak.current.join(' ');
-        
-        console.log(`[TTS] Speaking queued words: "${textToSpeak}"`);
-        
-        ttsQueue.current.push({ text: textToSpeak, lang: autoSpeakLang });
-        
-        // CLEAR the words queue since we've spoken them
-        wordsToSpeak.current = [];
-        
-        // Try to start processing if not already speaking
-        if (!isSpeaking.current && ttsQueue.current.length > 0) {
-          processQueue();
-        }
-      }
-    }, 4000); // Every 4 seconds, speak queued words
-
-    // Cleanup function for this effect
-    return () => {
-      if (ttsChunkInterval.current) {
-        clearInterval(ttsChunkInterval.current);
-        ttsChunkInterval.current = null;
-      }
-    };
-  }, [autoSpeakLang, processQueue]);
-
-  // Cleanup effect - simplified
+  // Cleanup effect
   useEffect(() => {
     return () => {
       // On unmount, stop any active speech and clear the queue
@@ -345,24 +314,21 @@ export default function BroadcastPage() {
         try { currentSynthesizerRef.current.close(); } catch(e) {}
         currentSynthesizerRef.current = null;
       }
-      if (ttsChunkInterval.current) {
-        clearInterval(ttsChunkInterval.current);
-        ttsChunkInterval.current = null;
-      }
       ttsQueue.current = [];
       isSpeaking.current = false;
-      spokenWords.current = new Set();
-      wordsToSpeak.current = [];
+      spokenSentences.current.clear(); // Clear spoken sentences tracking
     };
   }, []);
 
-  // Add effect to reset when auto-speak language changes
+  // Clear spoken sentences when auto-speak language changes
   useEffect(() => {
-    if (autoSpeakLang) {
-      spokenWords.current = new Set();
-      wordsToSpeak.current = [];
-    }
+    spokenSentences.current.clear();
   }, [autoSpeakLang]);
+
+  // Clear persisted translations when translation language changes
+  useEffect(() => {
+    setPersistedTranslations([]);
+  }, [translationLanguage]);
 
   // Effect for socket connection and transcription handling
   useEffect(() => {
@@ -375,25 +341,100 @@ export default function BroadcastPage() {
     });
 
     socket.on("realtime_transcription", (data) => {
+      console.log("[Transcription] Received:", { 
+        text: data.text, 
+        is_final: data.is_final, 
+        source_language: data.source_language 
+      });
+      
       setLiveTranscriptionLang(data.source_language || "");
 
       if (data.is_final) {
-        if (data.text && data.text.trim() !== "") {
-          setPersistedCaptions(prevCaptions => [
-            ...prevCaptions,
-            { id: Date.now() + Math.random(), text: data.text, timestamp: Date.now() } 
-          ]);
-        }
+        // Clear interim caption FIRST to prevent duplication
         setCurrentInterimCaption("");
         
+        // Prevent rapid-fire final transcriptions (likely duplicates from speech service)
+        const now = Date.now();
+        if (now - lastFinalTranscriptionTime.current < 500) { // Less than 500ms apart
+          console.log("[Transcription] Skipping rapid-fire final transcription:", data.text);
+          return;
+        }
+        lastFinalTranscriptionTime.current = now;
+        
+        if (data.text && data.text.trim() !== "") {
+          const newCaption = { 
+            id: Date.now() + Math.random(), 
+            text: data.text.trim(), 
+            timestamp: Date.now() 
+          };
+          
+          setPersistedCaptions(prevCaptions => {
+            // Check if this text already exists in recent captions to prevent duplicates
+            const isDuplicate = prevCaptions.some(caption => {
+              const timeDiff = Date.now() - caption.timestamp;
+              if (timeDiff > 5000) return false; // Only check recent captions
+              
+              // Exact match
+              if (caption.text === newCaption.text) return true;
+              
+              // Similarity check for speech recognition variations
+              const captionWords = caption.text.toLowerCase().split(/\s+/);
+              const newWords = newCaption.text.toLowerCase().split(/\s+/);
+              
+              // If texts are very similar in length and content
+              if (Math.abs(captionWords.length - newWords.length) <= 2) {
+                const commonWords = captionWords.filter(word => newWords.includes(word));
+                const similarity = commonWords.length / Math.max(captionWords.length, newWords.length);
+                if (similarity > 0.8) return true; // 80% similarity threshold
+              }
+              
+              // Check if one text contains most of the other (substring variants)
+              const shorterText = caption.text.length < newCaption.text.length ? caption.text : newCaption.text;
+              const longerText = caption.text.length >= newCaption.text.length ? caption.text : newCaption.text;
+              if (longerText.toLowerCase().includes(shorterText.toLowerCase()) && shorterText.length > 10) {
+                return true;
+              }
+              
+              return false;
+            });
+            
+            if (isDuplicate) {
+              console.log("[Transcription] Skipping similar/duplicate caption:", newCaption.text);
+              return prevCaptions;
+            }
+            
+            console.log("[Transcription] Adding final caption:", newCaption.text);
+            return [...prevCaptions, newCaption];
+          });
+        }
+        
         // Trigger translation for final text (this will trigger TTS)
-        if (data.text && translationLanguage) {
-          fetchTranslations(data.text, translationLanguage).then((translations) => {
+        if (data.text && data.text.trim() && translationLanguage) {
+          fetchTranslations(data.text.trim(), translationLanguage).then((translations) => {
             setLiveTranslations(translations); // This triggers TTS
             setRealtimeTranslations(translations); // Update display too
+            
+            // Add to persisted translations for accumulation
+            if (Object.keys(translations).length > 0) {
+              const targetLang = getLanguageCode(translationLanguage);
+              const translatedText = translations[targetLang.split(/[-_]/)[0].toLowerCase()];
+              
+              if (translatedText && translatedText.trim()) {
+                setPersistedTranslations(prevTranslations => [
+                  ...prevTranslations,
+                  { 
+                    id: Date.now() + Math.random(), 
+                    text: translatedText.trim(),
+                    language: targetLang,
+                    timestamp: Date.now() 
+                  }
+                ]);
+              }
+            }
           });
         }
       } else {
+        console.log("[Transcription] Setting interim caption:", data.text);
         setCurrentInterimCaption(data.text || "");
         
         // REAL-TIME TRANSLATION: Translate interim text for live updates (NO TTS)
@@ -429,6 +470,13 @@ export default function BroadcastPage() {
         const filtered = prevCaptions.filter(caption => (now - caption.timestamp) < 30000);
         return filtered.length === prevCaptions.length ? prevCaptions : filtered;
       });
+      
+      // Also clean up old translations
+      setPersistedTranslations(prevTranslations => {
+        const now = Date.now();
+        const filtered = prevTranslations.filter(translation => (now - translation.timestamp) < 30000);
+        return filtered.length === prevTranslations.length ? prevTranslations : filtered;
+      });
     }, 5000);
     return () => clearInterval(intervalId);
   }, []);
@@ -437,11 +485,56 @@ export default function BroadcastPage() {
   const displayedCaption = useMemo(() => {
     const finalTexts = persistedCaptions.map(c => c.text).join(' ');
     let fullCaption = finalTexts;
+    
     if (currentInterimCaption) {
-      fullCaption = finalTexts ? `${finalTexts} ${currentInterimCaption}` : currentInterimCaption;
+      const interimTrimmed = currentInterimCaption.trim();
+      
+      if (interimTrimmed) {
+        // Check if the interim caption is already contained in the final texts
+        const isAlreadyIncluded = finalTexts.includes(interimTrimmed);
+        
+        // Also check if the final text ends with the interim text (partial overlap)
+        const hasPartialOverlap = finalTexts.endsWith(interimTrimmed);
+        
+        // Check if interim is very similar to the end of final text (speech recognition variations)
+        const finalWords = finalTexts.toLowerCase().split(' ').slice(-5); // Last 5 words
+        const interimWords = interimTrimmed.toLowerCase().split(' ');
+        const hasSimilarEnding = interimWords.length > 0 && 
+          finalWords.some(word => interimWords.includes(word)) &&
+          interimWords.length <= 3; // Only for short interim captions
+        
+        // Only add interim caption if it doesn't duplicate existing content
+        if (!isAlreadyIncluded && !hasPartialOverlap && !hasSimilarEnding) {
+          fullCaption = finalTexts ? `${finalTexts} ${interimTrimmed}` : interimTrimmed;
+        }
+      }
     }
+    
     return fullCaption.trim();
   }, [persistedCaptions, currentInterimCaption]);
+
+  // Derived state for the complete displayed translation
+  const displayedTranslation = useMemo(() => {
+    const finalTranslations = persistedTranslations.map(t => t.text).join(' ');
+    let fullTranslation = finalTranslations;
+    
+    // Add interim translation if available
+    if (translationLanguage && realtimeTranslations) {
+      const targetLang = getLanguageCode(translationLanguage);
+      const currentInterimTranslation = realtimeTranslations[targetLang.split(/[-_]/)[0].toLowerCase()];
+      
+      if (currentInterimTranslation && currentInterimTranslation.trim()) {
+        const interimTrimmed = currentInterimTranslation.trim();
+        
+        // Only add if it's not already included in final translations
+        if (!finalTranslations.includes(interimTrimmed)) {
+          fullTranslation = finalTranslations ? `${finalTranslations} ${interimTrimmed}` : interimTrimmed;
+        }
+      }
+    }
+    
+    return fullTranslation.trim();
+  }, [persistedTranslations, realtimeTranslations, translationLanguage]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
@@ -694,41 +787,42 @@ export default function BroadcastPage() {
             }}>
               <Box sx={{ p:0 }}>
                 {availableTargetLanguages.length > 0 ? (
-                  Object.keys(realtimeTranslations).length > 0 ? (
-                    <>
-                      {autoSpeakLang && (
+                  <Box sx={{ display: "flex", flexDirection: "column" }}>
+                    {autoSpeakLang && (
+                      <Button
+                        onClick={() => setAutoSpeakLang(null)}
+                        color="secondary"
+                        size="small"
+                        sx={{ mb: 2, alignSelf: "flex-start" }}
+                      >
+                        Stop Auto-TTS
+                      </Button>
+                    )}
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="body1" sx={{ color: displayedTranslation ? "text.primary" : "text.secondary" }}>
+                          {displayedTranslation || "Waiting for live translation..."}
+                        </Typography>
+                      </Box>
+                      {translationLanguage && displayedTranslation && (
                         <Button
-                          onClick={() => setAutoSpeakLang(null)}
-                          color="secondary"
-                          size="small"
-                          sx={{ mb: 2, ml: 2 }}
+                          onClick={() => {
+                            const targetLang = getLanguageCode(translationLanguage);
+                            const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
+                            setAutoSpeakLang(autoSpeakLang === langCode ? null : langCode);
+                          }}
+                          sx={{ minWidth: 0 }}
+                          aria-label={`Auto-play TTS for ${getFullLanguageName(getBaseLangCode(translationLanguage))}`}
                         >
-                          Stop Auto-TTS
+                          <VolumeUpIcon color={
+                            autoSpeakLang === getLanguageCode(translationLanguage).split(/[-_]/)[0].toLowerCase() 
+                              ? "primary" 
+                              : "inherit"
+                            } />
                         </Button>
                       )}
-                      {Object.entries(realtimeTranslations).map(([lang, txt]) => (
-                        <Box key={lang} sx={{ mb:2, display: "flex", alignItems: "center" }}>
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="subtitle2" sx={{ fontWeight:600, mb:0.5 }}>
-                              {getFullLanguageName(getBaseLangCode(lang))}:
-                            </Typography>
-                            <Typography variant="body1">{txt}</Typography>
-                          </Box>
-                          <Button
-                            onClick={() => setAutoSpeakLang(lang)}
-                            sx={{ ml: 2, minWidth: 0 }}
-                            aria-label={`Auto-play TTS for ${getFullLanguageName(getBaseLangCode(lang))}`}
-                          >
-                            <VolumeUpIcon color={autoSpeakLang === lang ? "primary" : "inherit"} />
-                          </Button>
-                        </Box>
-                      ))}
-                    </>
-                  ) : (
-                    <Typography variant="body1" sx={{ color:"text.secondary" }}>
-                      Waiting for live translation...
-                    </Typography>
-                  )
+                    </Box>
+                  </Box>
                 ) : (
                   <Typography sx={{ color:"#637381", fontStyle:"italic" }}>
                     No target languages configured for this event.

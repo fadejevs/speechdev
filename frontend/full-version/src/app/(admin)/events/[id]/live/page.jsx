@@ -439,7 +439,7 @@ export default function EventLivePage() {
     );
   }
 
-  console.log('eventData:', eventData);
+  // console.log('eventData:', eventData);
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3 }, minHeight: "100vh" }}>

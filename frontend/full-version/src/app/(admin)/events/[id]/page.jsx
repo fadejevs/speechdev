@@ -131,7 +131,7 @@ const EditEventPage = () => {
           }
         );
         const data = await res.json();
-        console.log('Fetched event data:', data);
+        // console.log('Fetched event data:', data);
         if (data && data.length > 0) {
           const event = data[0];
           console.log('Event object:', event);

@@ -20,7 +20,7 @@ export const AuthProvider = ({ children }) => {
     axios
       .get('/api/auth/getUser')
       .then((response) => {
-        console.log('API user response:', response.data);
+        // console.log('API user response:', response.data);
         setUser(response.data || {});
         setIsProcessing(false);
       })
