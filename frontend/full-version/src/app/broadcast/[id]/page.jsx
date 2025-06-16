@@ -130,9 +130,11 @@ export default function BroadcastPage() {
   const isSpeaking = useRef(false); // Master lock for TTS
   const spokenSentences = useRef(new Set()); // Track spoken sentences to avoid duplicates
 
-  // Add refs for batching translations
+  // Add refs for stabilization timer
   const batchTimer = useRef(null);
   const lastFinalTranscriptionTime = useRef(0);
+  const lastProcessedTranslation = useRef('');
+  const stabilizationTimer = useRef(null);
 
   useEffect(() => {
     setLoading(true);
@@ -276,78 +278,79 @@ export default function BroadcastPage() {
     });
   }, [speakText]);
 
-  // Final, Correct TTS Effect: Immediate Processing + Advanced Duplicate Checking
+  // Robust TTS with aggressive duplicate prevention
   useEffect(() => {
-    if (!autoSpeakLang) return;
+    if (!autoSpeakLang || !realtimeTranslations[autoSpeakLang]) return;
 
-    // Use the most current and complete text available.
-    const textToProcess = liveTranslations[autoSpeakLang] || realtimeTranslations[autoSpeakLang] || "";
-    if (!textToProcess) return;
+    const currentTranslation = realtimeTranslations[autoSpeakLang];
     
-    // Find all complete sentences in the text.
-    const completeSentences = textToProcess.match(/[^.!?]*[.!?]/g);
-    if (!completeSentences) return;
-
-    // Filter out any sentence that has already been spoken.
-    const newSentences = completeSentences.filter(sentence => {
-      const trimmed = sentence.trim();
-      // Only consider sentences of a reasonable length.
-      if (trimmed.length < 15) return false;
-
-      // Use the advanced similarity check to prevent duplicates.
-      return !Array.from(spokenSentences.current).some(spokenText =>
-        isSemanticallySimilar(trimmed, spokenText)
-      );
-    });
-
-    // If we have new, unique sentences, queue them for speech.
-    if (newSentences.length > 0) {
-      newSentences.forEach(sentence => {
+    // Clear existing timer
+    if (stabilizationTimer.current) {
+      clearTimeout(stabilizationTimer.current);
+    }
+    
+    // Start new stabilization timer
+    stabilizationTimer.current = setTimeout(() => {
+      // Find all complete sentences
+      const completeSentences = currentTranslation.match(/[^.!?]*[.!?]/g) || [];
+      
+      completeSentences.forEach(sentence => {
         const trimmed = sentence.trim();
-        ttsQueue.current.push({ text: trimmed, lang: autoSpeakLang });
-        spokenSentences.current.add(trimmed);
-      });
-      console.log(`[TTS] Queued ${newSentences.length} new, unique sentences.`);
-      processQueue();
-    }
-  }, [liveTranslations, realtimeTranslations, autoSpeakLang, processQueue]);
-
-  /**
-   * Checks if two sentences are semantically similar enough to be considered duplicates.
-   * This is the core of the repetition prevention logic.
-   */
-  function isSemanticallySimilar(newText, spokenText) {
-    const normalize = (str) => str.toLowerCase().replace(/[^\w\s]/g, '').trim();
-    const normalizedNew = normalize(newText);
-    const normalizedSpoken = normalize(spokenText);
-
-    // 1. Exact match
-    if (normalizedNew === normalizedSpoken) return true;
-
-    // 2. Substring check - ONLY if lengths are reasonably similar.
-    // This prevents a short fragment like "Hello" from blocking a full sentence
-    // like "Hello, how are you today?".
-    const lengthDifference = Math.abs(normalizedNew.length - normalizedSpoken.length);
-    if (lengthDifference < 25) { // Only check for substrings if length diff is small
-        if (normalizedNew.includes(normalizedSpoken) || normalizedSpoken.includes(normalizedNew)) {
-          console.log(`[TTS-DUPE] Substring match: "${newText}" vs "${spokenText}"`);
-          return true;
+        if (trimmed.length < 15) return;
+        
+        // AGGRESSIVE duplicate check - check against ALL previously spoken sentences
+        const isAlreadySpoken = Array.from(spokenSentences.current).some(spokenText => {
+          // 1. Exact match
+          if (spokenText === trimmed) return true;
+          
+          // 2. Normalize both for comparison (remove punctuation, lowercase)
+          const normalize = (str) => str.toLowerCase().replace(/[^\w\s]/g, '').trim();
+          const normalizedSpoken = normalize(spokenText);
+          const normalizedNew = normalize(trimmed);
+          
+          // 3. If normalized versions are the same
+          if (normalizedSpoken === normalizedNew) return true;
+          
+          // 4. If one contains the other (>90% overlap)
+          if (normalizedSpoken.includes(normalizedNew) || normalizedNew.includes(normalizedSpoken)) {
+            const lengthDiff = Math.abs(normalizedSpoken.length - normalizedNew.length);
+            if (lengthDiff < 10) return true; // Very similar lengths
+          }
+          
+          // 5. Word-based similarity check
+          const spokenWords = normalizedSpoken.split(/\s+/);
+          const newWords = normalizedNew.split(/\s+/);
+          const overlap = spokenWords.filter(word => newWords.includes(word)).length;
+          const similarity = overlap / Math.max(spokenWords.length, newWords.length);
+          
+          if (similarity > 0.85) { // 85% word similarity = duplicate
+            console.log(`[TTS-BLOCK] High similarity (${similarity.toFixed(2)}): "${trimmed}" vs "${spokenText}"`);
+            return true;
+          }
+          
+          return false;
+        });
+        
+        // Only speak if NOT already spoken
+        if (!isAlreadySpoken) {
+          ttsQueue.current.push({ text: trimmed, lang: autoSpeakLang });
+          spokenSentences.current.add(trimmed);
+          console.log(`[TTS] Speaking NEW sentence: "${trimmed}"`);
+        } else {
+          console.log(`[TTS-SKIP] Already spoken: "${trimmed}"`);
         }
-    }
+      });
+      
+      // Process TTS queue
+      if (ttsQueue.current.length > 0) {
+        processQueue();
+      }
+      
+      stabilizationTimer.current = null;
+      
+    }, 500); // 500ms stabilization
 
-    // 3. Word similarity check
-    const newWords = new Set(normalizedNew.split(/\s+/));
-    const spokenWords = new Set(normalizedSpoken.split(/\s+/));
-    const intersectionSize = new Set([...newWords].filter(word => spokenWords.has(word))).size;
-    const similarity = (2 * intersectionSize) / (newWords.size + spokenWords.size);
-
-    if (similarity > 0.75) {
-      console.log(`[TTS-DUPE] High similarity (${similarity.toFixed(2)}): "${newText}" vs "${spokenText}"`);
-      return true;
-    }
-
-    return false;
-  }
+  }, [realtimeTranslations, autoSpeakLang, processQueue]);
 
   // Cleanup effect
   useEffect(() => {
