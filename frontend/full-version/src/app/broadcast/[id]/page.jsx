@@ -98,6 +98,7 @@ export default function BroadcastPage() {
   // ── 1) Load event & init langs ─────────────────────────────────────────────
   const [eventData, setEventData] = useState(null);
   const [loading, setLoading]     = useState(true);
+  const [socketConnected, setSocketConnected] = useState(false);
 
   const [availableSourceLanguages, setAvailableSourceLanguages] = useState([]);
   const [availableTargetLanguages, setAvailableTargetLanguages] = useState([]);
@@ -132,7 +133,6 @@ export default function BroadcastPage() {
   // Add refs for batching translations
   const batchTimer = useRef(null);
   const lastFinalTranscriptionTime = useRef(0);
-  const ttsDelayTimer = useRef(null);
 
   useEffect(() => {
     setLoading(true);
@@ -276,78 +276,72 @@ export default function BroadcastPage() {
     });
   }, [speakText]);
 
-  // Smarter TTS Effect with Stability Timer
+  // Final, Correct TTS Effect: Immediate Processing + Advanced Duplicate Checking
   useEffect(() => {
     if (!autoSpeakLang) return;
 
-    // Determine the most current text.
+    // Use the most current and complete text available.
     const textToProcess = liveTranslations[autoSpeakLang] || realtimeTranslations[autoSpeakLang] || "";
+    if (!textToProcess) return;
+    
+    // Find all complete sentences in the text.
+    const completeSentences = textToProcess.match(/[^.!?]*[.!?]/g);
+    if (!completeSentences) return;
 
-    // A sentence is considered "stable" when the translation text
-    // hasn't changed for a short period. This timer handles that.
-    if (ttsDelayTimer.current) {
-      clearTimeout(ttsDelayTimer.current);
-    }
+    // Filter out any sentence that has already been spoken.
+    const newSentences = completeSentences.filter(sentence => {
+      const trimmed = sentence.trim();
+      // Only consider sentences of a reasonable length.
+      if (trimmed.length < 15) return false;
 
-    ttsDelayTimer.current = setTimeout(() => {
-      // Extract all complete sentences from the now-stable text.
-      const completeSentences = textToProcess.match(/[^.!?]*[.!?]/g);
-      if (!completeSentences) return;
+      // Use the advanced similarity check to prevent duplicates.
+      return !Array.from(spokenSentences.current).some(spokenText =>
+        isSemanticallySimilar(trimmed, spokenText)
+      );
+    });
 
-      // Filter out sentences that we've already spoken.
-      const newSentences = completeSentences.filter(sentence => {
+    // If we have new, unique sentences, queue them for speech.
+    if (newSentences.length > 0) {
+      newSentences.forEach(sentence => {
         const trimmed = sentence.trim();
-        if (trimmed.length < 15) return false;
-
-        return !Array.from(spokenSentences.current).some(spokenText =>
-          isSemanticallySimilar(trimmed, spokenText)
-        );
+        ttsQueue.current.push({ text: trimmed, lang: autoSpeakLang });
+        spokenSentences.current.add(trimmed);
       });
-
-      // Queue the new, unique sentences for speech.
-      if (newSentences.length > 0) {
-        newSentences.forEach(sentence => {
-          const trimmed = sentence.trim();
-          ttsQueue.current.push({ text: trimmed, lang: autoSpeakLang });
-          spokenSentences.current.add(trimmed);
-        });
-        console.log(`[TTS] Queued ${newSentences.length} stable sentences.`);
-        processQueue();
-      }
-    }, 800); // 800ms delay to wait for sentence stability.
-
+      console.log(`[TTS] Queued ${newSentences.length} new, unique sentences.`);
+      processQueue();
+    }
   }, [liveTranslations, realtimeTranslations, autoSpeakLang, processQueue]);
-
-  useEffect(() => {
-    // Cleanup timer on unmount
-    return () => {
-      if (ttsDelayTimer.current) {
-        clearTimeout(ttsDelayTimer.current);
-      }
-    };
-  }, []);
 
   /**
    * Checks if two sentences are semantically similar enough to be considered duplicates.
+   * This is the core of the repetition prevention logic.
    */
   function isSemanticallySimilar(newText, spokenText) {
     const normalize = (str) => str.toLowerCase().replace(/[^\w\s]/g, '').trim();
     const normalizedNew = normalize(newText);
     const normalizedSpoken = normalize(spokenText);
 
+    // 1. Exact match
     if (normalizedNew === normalizedSpoken) return true;
 
-    if (normalizedNew.includes(normalizedSpoken) || normalizedSpoken.includes(newText)) {
-      console.log(`[TTS-DUPE] Substring match: "${newText}" vs "${spokenText}"`);
-      return true;
+    // 2. Substring check - ONLY if lengths are reasonably similar.
+    // This prevents a short fragment like "Hello" from blocking a full sentence
+    // like "Hello, how are you today?".
+    const lengthDifference = Math.abs(normalizedNew.length - normalizedSpoken.length);
+    if (lengthDifference < 25) { // Only check for substrings if length diff is small
+        if (normalizedNew.includes(normalizedSpoken) || normalizedSpoken.includes(normalizedNew)) {
+          console.log(`[TTS-DUPE] Substring match: "${newText}" vs "${spokenText}"`);
+          return true;
+        }
     }
 
+    // 3. Word similarity check
     const newWords = new Set(normalizedNew.split(/\s+/));
     const spokenWords = new Set(normalizedSpoken.split(/\s+/));
     const intersectionSize = new Set([...newWords].filter(word => spokenWords.has(word))).size;
     const similarity = (2 * intersectionSize) / (newWords.size + spokenWords.size);
 
-    if (similarity > 0.7) {
+    if (similarity > 0.75) {
       console.log(`[TTS-DUPE] High similarity (${similarity.toFixed(2)}): "${newText}" vs "${spokenText}"`);
       return true;
     }
@@ -366,12 +360,6 @@ export default function BroadcastPage() {
       ttsQueue.current = [];
       isSpeaking.current = false;
       spokenSentences.current.clear(); // Clear spoken sentences tracking
-      
-      // Clear TTS delay timer
-      if (ttsDelayTimer.current) {
-        clearTimeout(ttsDelayTimer.current);
-        ttsDelayTimer.current = null;
-      }
     };
   }, []);
 
@@ -392,7 +380,18 @@ export default function BroadcastPage() {
 
     socket.on("connect", () => {
       console.log("[Broadcast] Socket connected, joining room:", id);
+      setSocketConnected(true);
       socket.emit("join_room", { room: id });
+    });
+
+    socket.on("disconnect", () => {
+      console.log("[Broadcast] Socket disconnected.");
+      setSocketConnected(false);
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("[Broadcast] Socket connection error:", err.message);
+      setSocketConnected(false);
     });
 
     socket.on("realtime_transcription", (data) => {
@@ -795,9 +794,18 @@ export default function BroadcastPage() {
               borderRadius:"0 0 8px 8px"
             }}>
               <Box sx={{ p:0 }}>
-                <Typography variant="body1" sx={{ color: displayedCaption ? "text.primary" : "text.secondary" }}>
-                  {displayedCaption || "Waiting for live transcription..."}
-                </Typography>
+                {!socketConnected ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <CircularProgress size={20} />
+                    <Typography variant="body1" sx={{ color: "text.secondary" }}>
+                      Waiting for connection...
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Typography variant="body1" sx={{ color: displayedCaption ? "text.primary" : "text.secondary" }}>
+                    {displayedCaption || "Waiting for live transcription..."}
+                  </Typography>
+                )}
               </Box>
             </Paper>
           </Box>
