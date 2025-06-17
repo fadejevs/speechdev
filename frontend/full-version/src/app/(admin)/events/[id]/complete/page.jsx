@@ -10,6 +10,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import IconButton from '@mui/material/IconButton';
 import SelfieDoodle from '@/images/illustration/SelfieDoodle';
 import TextField from '@mui/material/TextField';
+import DownloadIcon from '@mui/icons-material/Download';
 
 // ── 1) add this mapping under your imports ──────────────────────
 const languagesMap = {
@@ -473,23 +474,41 @@ const EventCompletionPage = () => {
                       a.click();
                       URL.revokeObjectURL(url);
                     }}
+                    startIcon={<DownloadIcon sx={{ fontSize: '20px' }} />}
                     sx={{
                       bgcolor: '#6366f1',
                       color: 'white',
                       borderRadius: '8px',
                       textTransform: 'none',
                       fontWeight: 500,
-                      px: 2,
+                      px: { xs: 1, sm: 2 },
                       py: 0.5,
                       fontSize: '13px',
-                      minWidth: 'auto',
-                      '&:hover': { bgcolor: '#4338ca' }
+                      minWidth: { xs: '32px', sm: 'auto' },
+                      height: '32px',
+                      '& .MuiButton-startIcon': {
+                        mr: { xs: 0, sm: 1 },
+                        ml: { xs: 0, sm: -0.5 }
+                      },
+                      '&:hover': { bgcolor: '#4338ca' },
+                      '&.Mui-disabled': {
+                        bgcolor: '#F4F6F8',
+                        color: '#919EAB'
+                      }
                     }}
                   >
-                    Download
+                    <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
+                      Download
+                    </Box>
                   </Button>
-                  <IconButton size="small">
-                    <MoreVertIcon />
+                  <IconButton 
+                    size="small"
+                    sx={{
+                      color: '#637381',
+                      padding: '4px'
+                    }}
+                  >
+                    <MoreVertIcon sx={{ fontSize: '20px' }} />
                   </IconButton>
                 </Box>
               </Box>

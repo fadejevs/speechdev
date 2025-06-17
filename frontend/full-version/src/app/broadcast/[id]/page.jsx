@@ -718,62 +718,69 @@ export default function BroadcastPage() {
       </Box>
 
       {/* Main Content */}
-      <Box sx={{ flex:1, maxWidth:"1200px", width:"100%", mx:"auto", p:{ xs:2, sm:3 } }}>
+      <Box sx={{ flex:1, maxWidth:"1200px", width:"100%", mx:"auto", p:{ xs:1.5, sm:2, md:3 } }}>
         {/* Event Header */}
         <Box sx={{
-          mb:3, p:{ xs:2, sm:3 }, borderRadius:2,
-          bgcolor:"white", boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
+          mb:{ xs:2, sm:3 }, 
+          p:{ xs:2, sm:3 }, 
+          borderRadius:2,
+          bgcolor:"white", 
+          boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
           border:"1px solid #F2F3F5"
         }}>
-          <Typography variant="h6" sx={{ fontWeight:600, color:"#212B36", mb:1 }}>
+          <Typography variant="h6" sx={{ fontWeight:600, color:"#212B36", mb:1, fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
             {eventData.title}
           </Typography>
-          <Typography variant="body2" sx={{ color:"#637381" }}>
+          <Typography variant="body2" sx={{ color:"#637381", fontSize: { xs: '0.875rem', sm: '0.9375rem' } }}>
             {eventData.description}
           </Typography>
         </Box>
 
         {/* Live Transcription */}
         <Box sx={{
-          mb:3, borderRadius:2, bgcolor:"white",
+          mb:{ xs:2, sm:3 }, 
+          borderRadius:2, 
+          bgcolor:"white",
           boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
-          border:"1px solid #F2F3F5", overflow:"hidden"
+          border:"1px solid #F2F3F5", 
+          overflow:"hidden"
         }}>
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              px: { xs: 2, sm: 3 },
-              py: 2,
-              borderBottom: "1px solid #F2F3F5",
-            }}
-          >
-            <Typography variant="h6" sx={{ fontWeight: 600, color: "#212B36" }}>
+          <Box sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: { xs: "flex-start", sm: "center" },
+            flexDirection: { xs: "column", sm: "row" },
+            gap: { xs: 1, sm: 0 },
+            px: { xs: 2, sm: 3 },
+            py: { xs: 1.5, sm: 2 },
+            borderBottom: "1px solid #F2F3F5",
+          }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: "#212B36", fontSize: { xs: '1rem', sm: '1.125rem' } }}>
               Live Transcription
             </Typography>
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Box
-                sx={{
-                  bgcolor: "#EEF2FF",
-                  color: "#6366F1",
-                  px: 1.5,
-                  py: 0.5,
-                  borderRadius: 1,
-                  fontSize: "14px",
-                  fontWeight: 500,
-                }}
-              >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: { xs: '100%', sm: 'auto' } }}>
+              <Box sx={{
+                bgcolor: "#EEF2FF",
+                color: "#6366F1",
+                px: 1.5,
+                py: 0.5,
+                borderRadius: 1,
+                fontSize: { xs: "13px", sm: "14px" },
+                fontWeight: 500,
+                flex: { xs: 1, sm: 'none' }
+              }}>
                 {transcriptionLanguage
                   ? getFullLanguageName(getBaseLangCode(transcriptionLanguage))
                   : <span style={{ color: "#ccc" }}>[No language]</span>}
               </Box>
             </Box>
           </Box>
-          <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
+          <Box sx={{ px:{ xs:1.5, sm:3 }, py:{ xs:2, sm:3 }, minHeight:"200px" }}>
             <Paper elevation={0} sx={{
-              p:3, minHeight:"150px", maxHeight:"300px",
+              p:{ xs:2, sm:3 }, 
+              minHeight:"150px", 
+              maxHeight:{ xs:"250px", sm:"300px" },
               overflowY:"auto",
               borderRadius:"0 0 8px 8px"
             }}>
@@ -781,12 +788,16 @@ export default function BroadcastPage() {
                 {!socketConnected ? (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     <CircularProgress size={20} />
-                    <Typography variant="body1" sx={{ color: "text.secondary" }}>
+                    <Typography variant="body1" sx={{ color: "text.secondary", fontSize: { xs: '0.875rem', sm: '1rem' } }}>
                       Waiting for connection...
                     </Typography>
                   </Box>
                 ) : (
-                  <Typography variant="body1" sx={{ color: displayedCaption ? "text.primary" : "text.secondary" }}>
+                  <Typography variant="body1" sx={{ 
+                    color: displayedCaption ? "text.primary" : "text.secondary",
+                    fontSize: { xs: '0.875rem', sm: '1rem' },
+                    lineHeight: { xs: 1.5, sm: 1.75 }
+                  }}>
                     {displayedCaption || "Waiting for live transcription..."}
                   </Typography>
                 )}
@@ -797,36 +808,44 @@ export default function BroadcastPage() {
 
         {/* Live Translation */}
         <Box sx={{
-          mb:3, borderRadius:2, bgcolor:"white",
+          mb:{ xs:2, sm:3 }, 
+          borderRadius:2, 
+          bgcolor:"white",
           boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
-          border:"1px solid #F2F3F5", overflow:"hidden"
+          border:"1px solid #F2F3F5", 
+          overflow:"hidden"
         }}>
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              px: { xs: 2, sm: 3 },
-              py: 2,
-              borderBottom: "1px solid #F2F3F5",
-            }}
-          >
-            <Typography variant="h6" sx={{ fontWeight: 600, color: "#212B36"}}>
+          <Box sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: { xs: "flex-start", sm: "center" },
+            flexDirection: { xs: "column", sm: "row" },
+            gap: { xs: 1, sm: 0 },
+            px: { xs: 2, sm: 3 },
+            py: { xs: 1.5, sm: 2 },
+            borderBottom: "1px solid #F2F3F5",
+          }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: "#212B36", fontSize: { xs: '1rem', sm: '1.125rem' } }}>
               Live Translation
             </Typography>
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Box
-                sx={{
-                  bgcolor: "#EEF2FF",
-                  color: "#6366F1",
-                  px: 1.5,
-                  py: 0.5,
-                  borderRadius: 1,
-                  fontSize: "14px",
-                  fontWeight: 500,
-                }}
-              >
+            <Box sx={{ 
+              display: "flex", 
+              alignItems: "center", 
+              gap: 1,
+              width: { xs: '100%', sm: 'auto' },
+              flexWrap: { xs: 'wrap', sm: 'nowrap' }
+            }}>
+              <Box sx={{
+                bgcolor: "#EEF2FF",
+                color: "#6366F1",
+                px: 1.5,
+                py: 0.5,
+                borderRadius: 1,
+                fontSize: { xs: "13px", sm: "14px" },
+                fontWeight: 500,
+                flex: { xs: 1, sm: 'none' }
+              }}>
                 {translationLanguage
                   ? getFullLanguageName(getBaseLangCode(translationLanguage))
                   : <span style={{ color: "#ccc" }}>[No language]</span>}
@@ -837,8 +856,9 @@ export default function BroadcastPage() {
                 onClick={(e) => setTranslationMenuAnchor(e.currentTarget)}
                 sx={{
                   textTransform: "none",
-                  fontSize: "14px",
+                  fontSize: { xs: "13px", sm: "14px" },
                   color: "#6366F1",
+                  minWidth: { xs: '120px', sm: 'auto' }
                 }}
               >
                 Change Language
@@ -862,9 +882,11 @@ export default function BroadcastPage() {
               </Menu>
             </Box>
           </Box>
-          <Box sx={{ px:{ xs:2, sm:3 }, py:3, minHeight:"200px" }}>
+          <Box sx={{ px:{ xs:1.5, sm:3 }, py:{ xs:2, sm:3 }, minHeight:"200px" }}>
             <Paper elevation={0} sx={{
-              p:3, minHeight:"150px", maxHeight:"300px",
+              p:{ xs:2, sm:3 }, 
+              minHeight:"150px", 
+              maxHeight:{ xs:"250px", sm:"300px" },
               overflowY:"auto",
               borderRadius:"0 0 8px 8px"
             }}>
@@ -876,14 +898,27 @@ export default function BroadcastPage() {
                         onClick={() => setAutoSpeakLang(null)}
                         color="secondary"
                         size="small"
-                        sx={{ mb: 2, alignSelf: "flex-start" }}
+                        sx={{ 
+                          mb: 2, 
+                          alignSelf: "flex-start",
+                          fontSize: { xs: '0.8125rem', sm: '0.875rem' }
+                        }}
                       >
                         Stop Auto-TTS
                       </Button>
                     )}
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    <Box sx={{ 
+                      display: "flex", 
+                      alignItems: { xs: "flex-start", sm: "center" }, 
+                      gap: 2,
+                      flexDirection: { xs: 'column', sm: 'row' }
+                    }}>
                       <Box sx={{ flex: 1 }}>
-                        <Typography variant="body1" sx={{ color: displayedTranslation ? "text.primary" : "text.secondary" }}>
+                        <Typography variant="body1" sx={{ 
+                          color: displayedTranslation ? "text.primary" : "text.secondary",
+                          fontSize: { xs: '0.875rem', sm: '1rem' },
+                          lineHeight: { xs: 1.5, sm: 1.75 }
+                        }}>
                           {displayedTranslation || "Waiting for live translation..."}
                         </Typography>
                       </Box>
@@ -894,7 +929,10 @@ export default function BroadcastPage() {
                             const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
                             setAutoSpeakLang(autoSpeakLang === langCode ? null : langCode);
                           }}
-                          sx={{ minWidth: 0 }}
+                          sx={{ 
+                            minWidth: { xs: '100%', sm: 0 },
+                            justifyContent: { xs: 'center', sm: 'flex-start' }
+                          }}
                           aria-label={`Auto-play TTS for ${getFullLanguageName(getBaseLangCode(translationLanguage))}`}
                         >
                           <VolumeUpIcon color={
@@ -907,7 +945,11 @@ export default function BroadcastPage() {
                     </Box>
                   </Box>
                 ) : (
-                  <Typography sx={{ color:"#637381", fontStyle:"italic" }}>
+                  <Typography sx={{ 
+                    color:"#637381", 
+                    fontStyle:"italic",
+                    fontSize: { xs: '0.875rem', sm: '1rem' }
+                  }}>
                     No target languages configured for this event.
                   </Typography>
                 )}

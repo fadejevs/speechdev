@@ -672,10 +672,13 @@ const CreateEventModal = ({
         fullWidth
         PaperProps={{
           sx: {
-            borderRadius: '8px',
+            borderRadius: { xs: '0px', sm: '8px' },
             boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
-            width: '550px',
-            maxWidth: '100%'
+            width: { xs: '100%', sm: '650px', md: '750px' },
+            maxWidth: { xs: '100%', sm: '95%' },
+            margin: { xs: 0, sm: 'auto' },
+            height: { xs: '100%', sm: 'auto' },
+            maxHeight: { xs: '100%', sm: '90vh' }
           }
         }}
       >
@@ -683,23 +686,36 @@ const CreateEventModal = ({
           display: 'flex', 
           justifyContent: 'space-between', 
           alignItems: 'center', 
-          p: 2, 
+          p: { xs: 1.5, sm: 2 }, 
           borderBottom: '1px solid #f0f0f0',
-          position: 'relative'
+          position: 'sticky',
+          top: 0,
+          bgcolor: 'background.paper',
+          zIndex: 1
         }}>
-          <Typography variant="h6" sx={{ fontWeight: 500, fontSize: '1rem' }}>
+          <Typography variant="h6" sx={{ fontWeight: 500, fontSize: { xs: '0.95rem', sm: '1rem' } }}>
             {isEditing ? 'Edit Event' : 'Create New Event'}
           </Typography>
           <IconButton 
             onClick={handleCloseWithConfirmation} 
             size="small"
-            sx={{ position: 'absolute', right: 16 }}
+            sx={{ position: 'absolute', right: { xs: 4, sm: 8 } }}
           >
             <CloseIcon />
           </IconButton>
         </Box>
         
-        <DialogContent sx={{ p: 3 }}>
+        <DialogContent sx={{ 
+          p: { xs: 1.5, sm: 3 },
+          overflowY: 'auto',
+          '&::-webkit-scrollbar': {
+            width: '8px'
+          },
+          '&::-webkit-scrollbar-thumb': {
+            backgroundColor: '#E0E0E0',
+            borderRadius: '4px'
+          }
+        }}>
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="500" sx={{ mb: 2 }}>
               General Information
@@ -822,7 +838,7 @@ const CreateEventModal = ({
                     }
                   }}
                 />
-                <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                <Box sx={{ mt: 2, display: 'flex', gap: { xs: 1, sm: 2 }, flexDirection: { xs: 'column', sm: 'row' } }}>
                   <TimePicker
                     label="Start Time"
                     value={eventData.startTime}
@@ -881,22 +897,38 @@ const CreateEventModal = ({
           </Box>
         </DialogContent>
         
-        <DialogActions sx={{ p: 2, borderTop: '1px solid #f0f0f0', justifyContent: 'space-between' }}>
+        <DialogActions sx={{ 
+          p: { xs: 1.5, sm: 2 }, 
+          borderTop: '1px solid #f0f0f0', 
+          justifyContent: 'space-between',
+          position: 'sticky',
+          bottom: 0,
+          bgcolor: 'background.paper',
+          zIndex: 1,
+          flexDirection: { xs: 'column', sm: 'row' },
+          gap: { xs: 1, sm: 0 }
+        }}>
           <Button 
             onClick={handleCloseWithConfirmation} 
             variant="text"
-            sx={{ color: '#637381' }}
+            fullWidth={true}
+            sx={{ 
+              color: '#637381',
+              display: { xs: 'block', sm: 'inline-flex' }
+            }}
           >
             Cancel
           </Button>
           <Button 
             onClick={handleSubmit} 
             variant="contained" 
+            fullWidth={true}
             sx={{ 
               bgcolor: '#6366f1', 
               '&:hover': { bgcolor: '#4338ca' },
               borderRadius: '8px',
-              textTransform: 'none'
+              textTransform: 'none',
+              display: { xs: 'block', sm: 'inline-flex' }
             }}
             disabled={!isFormValid()}
           >
@@ -913,22 +945,40 @@ const CreateEventModal = ({
             borderRadius: '8px',
             boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
             width: '400px',
-            maxWidth: '100%',
+            maxWidth: '95%',
+            margin: { xs: 2, sm: 'auto' },
             textAlign: 'center'
           }
         }}
       >
-        <DialogContent sx={{ pt: 4, pb: 3 }}>
+        <DialogContent sx={{ 
+          pt: 4, 
+          pb: 3,
+          px: { xs: 2, sm: 3 }
+        }}>
           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
-            <Box sx={{ height: 172, width: 230 }}>
+            <Box sx={{ 
+              height: { xs: 140, sm: 172 }, 
+              width: { xs: 180, sm: 230 } 
+            }}>
               <PlantDoodle />
             </Box>
           </Box>
-          <Typography variant="h6" sx={{ mb: 1 }}>
+          <Typography variant="h6" sx={{ 
+            mb: 1,
+            fontSize: { xs: '1.1rem', sm: '1.25rem' }
+          }}>
             Are you sure you want to cancel event creation?
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ p: 2, justifyContent: 'center', gap: 2 }}>
+        <DialogActions sx={{ 
+          p: { xs: 1.5, sm: 2 }, 
+          flexDirection: { xs: 'column', sm: 'row' },
+          gap: { xs: 1, sm: 2 },
+          '& > button': {
+            width: { xs: '100%', sm: 'auto' }
+          }
+        }}>
           <Button 
             onClick={handleDiscard} 
             variant="outlined"

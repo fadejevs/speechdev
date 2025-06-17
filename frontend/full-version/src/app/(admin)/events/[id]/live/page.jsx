@@ -448,8 +448,10 @@ export default function EventLivePage() {
         sx={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
-          mb: 4,
+          alignItems: { xs: "flex-start", sm: "center" },
+          flexDirection: { xs: "column", sm: "row" },
+          gap: { xs: 2, sm: 0 },
+          mb: { xs: 3, sm: 4 },
         }}
       >
         <Button
@@ -459,20 +461,27 @@ export default function EventLivePage() {
             color: "#212B36",
             textTransform: "none",
             "&:hover": { bgcolor: "rgba(33, 43, 54, 0.08)" },
+            fontSize: { xs: '0.875rem', sm: '1rem' }
           }}
         >
           Back To Events
         </Button>
 
-        <Box sx={{ display: "flex", gap: 2 }}>
+        <Box sx={{ 
+          display: "flex", 
+          gap: { xs: 1, sm: 2 },
+          width: { xs: '100%', sm: 'auto' }
+        }}>
           <Button
             variant="outlined"
             onClick={handlePauseResumeEvent}
             sx={{
               textTransform: "none",
-              px: 3,
+              px: { xs: 2, sm: 3 },
               py: 1,
               borderRadius: "8px",
+              flex: { xs: 1, sm: 'initial' },
+              fontSize: { xs: '0.875rem', sm: '1rem' }
             }}
           >
             {eventData?.status === "Paused" ? "Resume Event" : "Pause Event"}
@@ -482,9 +491,11 @@ export default function EventLivePage() {
             onClick={handleCompleteEvent}
             sx={{
               textTransform: "none",
-              px: 3,
+              px: { xs: 2, sm: 3 },
               py: 1,
               borderRadius: "8px",
+              flex: { xs: 1, sm: 'initial' },
+              fontSize: { xs: '0.875rem', sm: '1rem' }
             }}
           >
             Complete Event
@@ -497,24 +508,23 @@ export default function EventLivePage() {
         sx={{
           bgcolor: "white",
           borderRadius: 2,
-          p: 4,
-          mb: 4,
+          p: { xs: 2.5, sm: 4 },
+          mb: { xs: 3, sm: 4 },
           textAlign: "center",
           boxShadow: "0px 2px 4px rgba(145, 158, 171, 0.16)",
         }}
       >
-        {/* force exact size & clip any overflow */}
         <Box
           sx={{
             display: "flex",
             justifyContent: "center",
-            mb: 2,
+            mb: { xs: 1.5, sm: 2 },
           }}
         >
           <Box
             sx={{
-              width: 230,
-              height: 172,
+              width: { xs: 180, sm: 230 },
+              height: { xs: 135, sm: 172 },
               overflow: "hidden",
             }}
           >
@@ -529,11 +539,21 @@ export default function EventLivePage() {
         </Box>
         <Typography
           variant="h5"
-          sx={{ fontWeight: 600, color: "#212B36", mb: 1 }}
+          sx={{ 
+            fontWeight: 600, 
+            color: "#212B36", 
+            mb: 1,
+            fontSize: { xs: '1.25rem', sm: '1.5rem' }
+          }}
         >
           Your Event Is Live
         </Typography>
-        <Typography variant="body2" sx={{ color: "#637381", mb: 2 }}>
+        <Typography variant="body2" sx={{ 
+          color: "#637381", 
+          mb: 2,
+          fontSize: { xs: '0.875rem', sm: '1rem' },
+          px: { xs: 1, sm: 2 }
+        }}>
           {eventData.description || "Share this link to let people watch the broadcast live."}
         </Typography>
         <Button
@@ -542,8 +562,9 @@ export default function EventLivePage() {
           sx={{
             textTransform: "none",
             borderRadius: "8px",
-            px: 3,
+            px: { xs: 2, sm: 3 },
             py: 1,
+            fontSize: { xs: '0.875rem', sm: '1rem' }
           }}
         >
           Share Event
@@ -557,7 +578,7 @@ export default function EventLivePage() {
           borderRadius: 2,
           border: "1px solid #F2F3F5",
           boxShadow: "0px 2px 4px rgba(145, 158, 171, 0.16)",
-          mb: 4,
+          mb: { xs: 3, sm: 4 },
           overflow: "hidden",
         }}
       >
@@ -565,15 +586,22 @@ export default function EventLivePage() {
         <Box
           sx={{
             px: { xs: 2, sm: 3 },
-            py: 2,
+            py: { xs: 1.5, sm: 2 },
             borderBottom: "1px solid #F2F3F5",
           }}
         >
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+          <Typography variant="h6" sx={{ 
+            fontWeight: 600,
+            fontSize: { xs: '1.125rem', sm: '1.25rem' }
+          }}>
             Published languages
           </Typography>
           {eventData.description && (
-            <Typography variant="body2" sx={{ color: "#637381", mt: 0.5 }}>
+            <Typography variant="body2" sx={{ 
+              color: "#637381", 
+              mt: 0.5,
+              fontSize: { xs: '0.875rem', sm: '1rem' }
+            }}>
               {eventData.description}
             </Typography>
           )}
@@ -586,22 +614,58 @@ export default function EventLivePage() {
             justifyContent: "space-between",
             alignItems: "center",
             px: { xs: 2, sm: 3 },
-            py: 1.5,
+            py: { xs: 2, sm: 2.5 },
             borderBottom: "1px solid #F2F3F5",
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <Typography>
+          <Box sx={{ 
+            display: "flex", 
+            alignItems: "center", 
+            gap: 1
+          }}>
+            <Typography sx={{ 
+              fontSize: { xs: '0.9375rem', sm: '1rem' },
+              color: '#212B36',
+              fontWeight: 500
+            }}>
               {getLanguageName(eventData.sourceLanguage || (Array.isArray(eventData.sourceLanguages) ? eventData.sourceLanguages[0] : ""))}
             </Typography>
-            <Chip label="Source" color="primary" size="small" />
+            <Chip 
+              label="Source" 
+              color="primary" 
+              size="small"
+              sx={{ 
+                fontSize: '0.75rem',
+                height: '24px',
+                bgcolor: '#EEF2FF',
+                color: '#6366F1',
+                border: 'none',
+                '& .MuiChip-label': {
+                  px: 1.5,
+                  py: 0.5
+                }
+              }}
+            />
           </Box>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Box sx={{ 
+            display: "flex", 
+            alignItems: "center", 
+            gap: 1
+          }}>
             <Button
               size="small"
               endIcon={<ArrowDropDownIcon />}
-              sx={{ textTransform: "none", fontSize: "14px" }}
               onClick={handleMenuOpen}
+              sx={{ 
+                textTransform: "none", 
+                fontSize: { xs: '0.875rem', sm: '0.875rem' },
+                color: '#6366F1',
+                px: 1,
+                minWidth: 0,
+                '&:hover': {
+                  bgcolor: 'transparent'
+                }
+              }}
             >
               Change Input
             </Button>
@@ -609,6 +673,13 @@ export default function EventLivePage() {
               anchorEl={anchorEl}
               open={Boolean(anchorEl)}
               onClose={handleMenuClose}
+              PaperProps={{
+                sx: {
+                  mt: 1,
+                  boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
+                  borderRadius: '8px'
+                }
+              }}
             >
               {audioInputDevices.length === 0 ? (
                 <MenuItem disabled>No audio inputs found</MenuItem>
@@ -624,8 +695,13 @@ export default function EventLivePage() {
                 ))
               )}
             </Menu>
-            <IconButton size="small">
-              <MoreVertIcon />
+            <IconButton 
+              size="small"
+              sx={{
+                color: '#637381'
+              }}
+            >
+              <MoreVertIcon sx={{ fontSize: '20px' }} />
             </IconButton>
           </Box>
         </Box>
@@ -639,24 +715,50 @@ export default function EventLivePage() {
               justifyContent: "space-between",
               alignItems: "center",
               px: { xs: 2, sm: 3 },
-              py: 1.5,
+              py: { xs: 2, sm: 2.5 },
               borderBottom: "1px solid #F2F3F5",
             }}
           >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Typography>{getLanguageName(getBaseLangCode(lang))}</Typography>
-              <Chip label="Translation" color="info" size="small" />
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              {/* <Button
+            <Box sx={{ 
+              display: "flex", 
+              alignItems: "center", 
+              gap: 1
+            }}>
+              <Typography sx={{ 
+                fontSize: { xs: '0.9375rem', sm: '1rem' },
+                color: '#212B36',
+                fontWeight: 500
+              }}>
+                {getLanguageName(getBaseLangCode(lang))}
+              </Typography>
+              <Chip 
+                label="Translation" 
+                color="info" 
                 size="small"
-                endIcon={<ArrowDropDownIcon />}
-                sx={{ textTransform: "none", fontSize: "14px" }}
+                sx={{ 
+                  fontSize: '0.75rem',
+                  height: '24px',
+                  bgcolor: '#E5F7FF',
+                  color: '#0089D7',
+                  border: 'none',
+                  '& .MuiChip-label': {
+                    px: 1.5,
+                    py: 0.5
+                  }
+                }}
+              />
+            </Box>
+            <Box sx={{ 
+              display: "flex", 
+              alignItems: "center"
+            }}>
+              <IconButton 
+                size="small"
+                sx={{
+                  color: '#637381'
+                }}
               >
-                Change Input
-              </Button> */}
-              <IconButton size="small">
-                <MoreVertIcon />
+                <MoreVertIcon sx={{ fontSize: '20px' }} />
               </IconButton>
             </Box>
           </Box>
@@ -669,17 +771,21 @@ export default function EventLivePage() {
         onClose={handleCloseShareDialog}
         PaperProps={{
           sx: {
-            borderRadius: "16px",
-            width: "400px",
-            margin: "0 auto",
+            borderRadius: { xs: '12px', sm: '16px' },
+            width: { xs: '95%', sm: '400px' },
+            maxWidth: '95%',
+            margin: '0 auto',
             boxShadow: "0px 20px 40px rgba(0, 0, 0, 0.1)",
             overflow: "visible",
           },
         }}
       >
-        <Box sx={{ p: 3 }}>
+        <Box sx={{ p: { xs: 2, sm: 3 } }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            <Typography variant="h6" sx={{ 
+              fontWeight: 600,
+              fontSize: { xs: '1.125rem', sm: '1.25rem' }
+            }}>
               Share Event Access
             </Typography>
             <IconButton onClick={handleCloseShareDialog} size="small">
@@ -695,24 +801,33 @@ export default function EventLivePage() {
               sx: {
                 borderRadius: "8px",
                 bgcolor: "#F9FAFB",
-                height: "40px",
-                "& .MuiOutlinedInput-input": { p: "10px 14px" },
+                height: { xs: '36px', sm: '40px' },
+                "& .MuiOutlinedInput-input": { 
+                  p: { xs: '8px 12px', sm: '10px 14px' },
+                  fontSize: { xs: '0.875rem', sm: '1rem' }
+                },
               },
             }}
             sx={{ mb: 1 }}
           />
-          <Typography variant="body2" sx={{ color: "#637381", mb: 3 }}>
+          <Typography variant="body2" sx={{ 
+            color: "#637381", 
+            mb: { xs: 2, sm: 3 },
+            fontSize: { xs: '0.875rem', sm: '1rem' }
+          }}>
             Anyone with this link can view the live broadcast.
           </Typography>
           <Button
             variant="contained"
+            fullWidth
             startIcon={copied ? <CheckIcon /> : <ContentCopyIcon />}
             onClick={handleCopyLink}
             sx={{
               textTransform: "none",
               borderRadius: "8px",
-              px: 3,
+              px: { xs: 2, sm: 3 },
               py: 1,
+              fontSize: { xs: '0.875rem', sm: '1rem' }
             }}
           >
             {copied ? "Copied!" : "Copy Event Link"}
