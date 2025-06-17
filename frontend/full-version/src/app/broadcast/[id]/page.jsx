@@ -426,85 +426,50 @@ export default function BroadcastPage() {
           });
         }
         
-        // Trigger translation for final text (this will trigger TTS)
+        // Trigger translation for final text. This is the new, direct TTS logic.
         if (data.text && data.text.trim() && translationLanguage) {
-          // Store the timestamp when we started processing this translation
-          const translationStartTime = Date.now();
-          
-          // Wait for 1.5 seconds to let any rapid corrections come in
-          setTimeout(() => {
-            // If another translation has started processing in the meantime, skip this one
-            if (Date.now() - lastFinalTranscriptionTime.current < 1500) {
-              console.log("[TTS] Skipping translation - newer transcription received");
-              return;
-            }
+          fetchTranslations(data.text.trim(), translationLanguage).then((translations) => {
+            const targetLang = getLanguageCode(translationLanguage);
+            const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
+            const translatedText = translations[langCode];
 
-            fetchTranslations(data.text.trim(), translationLanguage).then((translations) => {
-              const targetLang = getLanguageCode(translationLanguage);
-              const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
-              const translatedText = translations[langCode];
-
-              if (translatedText && translatedText.trim()) {
-                // Even more aggressive duplicate detection
-                const isDuplicate = Array.from(spokenSentences.current).some(spokenText => {
-                  // Exact match
-                  if (spokenText === translatedText) return true;
-                  
-                  // Normalize for comparison (remove ALL punctuation, whitespace, case)
-                  const normalize = (str) => str.toLowerCase().replace(/[^\w]/g, '');
-                  const normalizedSpoken = normalize(spokenText);
-                  const normalizedNew = normalize(translatedText);
-                  
-                  // If normalized versions are the same or very similar
-                  if (normalizedSpoken === normalizedNew) return true;
-                  
-                  // Check for substring containment (with very high threshold)
-                  if (normalizedSpoken.includes(normalizedNew) || normalizedNew.includes(normalizedSpoken)) {
-                    return true;
-                  }
-                  
-                  // Word-based similarity check (with higher threshold)
-                  const spokenWords = normalizedSpoken.split(/\s+/);
-                  const newWords = normalizedNew.split(/\s+/);
-                  const overlap = spokenWords.filter(word => newWords.includes(word)).length;
-                  const similarity = overlap / Math.max(spokenWords.length, newWords.length);
-                  
-                  return similarity > 0.90; // Increased similarity threshold to 90%
-                });
-
-                if (!isDuplicate && autoSpeakLang === langCode) {
-                  // Double check the time again to ensure no newer translations have come in
-                  if (Date.now() - translationStartTime < 2000) {
-                    ttsQueue.current.push({ text: translatedText.trim(), lang: langCode });
-                    spokenSentences.current.add(translatedText.trim());
-                    console.log(`[TTS] Queuing stabilized sentence: "${translatedText.trim()}"`);
-                    processQueue();
-                  } else {
-                    console.log(`[TTS] Skipping old translation: "${translatedText.trim()}"`);
-                  }
-                } else if (isDuplicate) {
-                  console.log(`[TTS] Skipping duplicate: "${translatedText.trim()}"`);
+            if (translatedText && translatedText.trim()) {
+              // Queue for TTS if enabled
+              if (autoSpeakLang === langCode) {
+                const textToSpeak = translatedText.trim();
+                
+                // A simple check to avoid queueing the exact same sentence if the service sends it twice.
+                if (!spokenSentences.current.has(textToSpeak)) {
+                  ttsQueue.current.push({ text: textToSpeak, lang: langCode });
+                  spokenSentences.current.add(textToSpeak); // Remember sentence
+                  console.log(`[TTS] Queuing final sentence: "${textToSpeak}"`);
+                  processQueue();
+                } else {
+                  console.log(`[TTS] Skipping duplicate: "${textToSpeak}"`);
                 }
               }
 
-              // Update display state
-              setLiveTranslations(translations);
-              setRealtimeTranslations(translations);
-              
+              // Update display states
+              setLiveTranslations(translations); // For potential use elsewhere, but not for triggering TTS
+              setRealtimeTranslations({}); // Clear interim display translation
+
               // Add to persisted translations for display
-              if (Object.keys(translations).length > 0) {
-                setPersistedTranslations(prevTranslations => {
-                  const newTranslation = {
-                    id: Date.now() + Math.random(),
-                    text: translatedText.trim(),
-                    language: targetLang,
-                    timestamp: Date.now()
-                  };
-                  return [...prevTranslations, newTranslation];
-                });
-              }
-            });
-          }, 1500); // Wait 1.5 seconds before processing
+              const newTranslation = {
+                id: Date.now() + Math.random(),
+                text: translatedText.trim(),
+                language: targetLang,
+                timestamp: Date.now()
+              };
+
+              setPersistedTranslations(prev => {
+                // Avoid displaying the exact same line twice in a row
+                if (prev.length > 0 && prev[prev.length - 1].text === newTranslation.text) {
+                  return prev;
+                }
+                return [...prev, newTranslation];
+              });
+            }
+          });
         }
       } else {
         // Handle interim transcriptions - ONLY update display, never trigger TTS
