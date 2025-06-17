@@ -479,70 +479,90 @@ export default function BroadcastPage() {
         
         // Trigger translation for final text (this will trigger TTS)
         if (data.text && data.text.trim() && translationLanguage) {
-          fetchTranslations(data.text.trim(), translationLanguage).then((translations) => {
-            setLiveTranslations(translations); // This triggers TTS
-            setRealtimeTranslations(translations); // Update display too
-            
-            // Add to persisted translations for accumulation
-            if (Object.keys(translations).length > 0) {
+          // Store the timestamp when we started processing this translation
+          const translationStartTime = Date.now();
+          
+          // Wait for 1.5 seconds to let any rapid corrections come in
+          setTimeout(() => {
+            // If another translation has started processing in the meantime, skip this one
+            if (Date.now() - lastFinalTranscriptionTime.current < 1500) {
+              console.log("[TTS] Skipping translation - newer transcription received");
+              return;
+            }
+
+            fetchTranslations(data.text.trim(), translationLanguage).then((translations) => {
               const targetLang = getLanguageCode(translationLanguage);
-              const translatedText = translations[targetLang.split(/[-_]/)[0].toLowerCase()];
-              
+              const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
+              const translatedText = translations[langCode];
+
               if (translatedText && translatedText.trim()) {
+                // Even more aggressive duplicate detection
+                const isDuplicate = Array.from(spokenSentences.current).some(spokenText => {
+                  // Exact match
+                  if (spokenText === translatedText) return true;
+                  
+                  // Normalize for comparison (remove ALL punctuation, whitespace, case)
+                  const normalize = (str) => str.toLowerCase().replace(/[^\w]/g, '');
+                  const normalizedSpoken = normalize(spokenText);
+                  const normalizedNew = normalize(translatedText);
+                  
+                  // If normalized versions are the same or very similar
+                  if (normalizedSpoken === normalizedNew) return true;
+                  
+                  // Check for substring containment (with very high threshold)
+                  if (normalizedSpoken.includes(normalizedNew) || normalizedNew.includes(normalizedSpoken)) {
+                    return true;
+                  }
+                  
+                  // Word-based similarity check (with higher threshold)
+                  const spokenWords = normalizedSpoken.split(/\s+/);
+                  const newWords = normalizedNew.split(/\s+/);
+                  const overlap = spokenWords.filter(word => newWords.includes(word)).length;
+                  const similarity = overlap / Math.max(spokenWords.length, newWords.length);
+                  
+                  return similarity > 0.90; // Increased similarity threshold to 90%
+                });
+
+                if (!isDuplicate && autoSpeakLang === langCode) {
+                  // Double check the time again to ensure no newer translations have come in
+                  if (Date.now() - translationStartTime < 2000) {
+                    ttsQueue.current.push({ text: translatedText.trim(), lang: langCode });
+                    spokenSentences.current.add(translatedText.trim());
+                    console.log(`[TTS] Queuing stabilized sentence: "${translatedText.trim()}"`);
+                    processQueue();
+                  } else {
+                    console.log(`[TTS] Skipping old translation: "${translatedText.trim()}"`);
+                  }
+                } else if (isDuplicate) {
+                  console.log(`[TTS] Skipping duplicate: "${translatedText.trim()}"`);
+                }
+              }
+
+              // Update display state
+              setLiveTranslations(translations);
+              setRealtimeTranslations(translations);
+              
+              // Add to persisted translations for display
+              if (Object.keys(translations).length > 0) {
                 setPersistedTranslations(prevTranslations => {
                   const newTranslation = {
-                    id: Date.now() + Math.random(), 
+                    id: Date.now() + Math.random(),
                     text: translatedText.trim(),
                     language: targetLang,
                     timestamp: Date.now()
                   };
-                  
-                  // Check for duplicates/similar translations
-                  const isDuplicate = prevTranslations.some(translation => {
-                    const timeDiff = Date.now() - translation.timestamp;
-                    if (timeDiff > 5000) return false; // Only check recent translations
-                    
-                    // Exact match
-                    if (translation.text === newTranslation.text) return true;
-                    
-                    // Similarity check for translation variations
-                    const translationWords = translation.text.toLowerCase().split(/\s+/);
-                    const newWords = newTranslation.text.toLowerCase().split(/\s+/);
-                    
-                    // If texts are very similar in length and content
-                    if (Math.abs(translationWords.length - newWords.length) <= 2) {
-                      const commonWords = translationWords.filter(word => newWords.includes(word));
-                      const similarity = commonWords.length / Math.max(translationWords.length, newWords.length);
-                      if (similarity > 0.7) return true; // 70% similarity threshold for translations
-                    }
-                    
-                    // Check if one text contains most of the other
-                    const shorterText = translation.text.length < newTranslation.text.length ? translation.text : newTranslation.text;
-                    const longerText = translation.text.length >= newTranslation.text.length ? translation.text : newTranslation.text;
-                    if (longerText.toLowerCase().includes(shorterText.toLowerCase()) && shorterText.length > 10) {
-                      return true;
-                    }
-                    
-                    return false;
-                  });
-                  
-                  if (isDuplicate) {
-                    console.log("[Translation] Skipping similar/duplicate translation:", newTranslation.text);
-                    return prevTranslations;
-                  }
-                  
-                  console.log("[Translation] Adding final translation:", newTranslation.text);
                   return [...prevTranslations, newTranslation];
                 });
               }
-            }
-          });
+            });
+          }, 1500); // Wait 1.5 seconds before processing
         }
       } else {
+        // Handle interim transcriptions - ONLY update display, never trigger TTS
         console.log("[Transcription] Setting interim caption:", data.text);
         setCurrentInterimCaption(data.text || "");
         
-        // REAL-TIME TRANSLATION: Translate interim text for live updates (NO TTS)
+        // Update display only for interim translations, no TTS
         if (data.text && data.text.trim() && translationLanguage) {
           fetchTranslations(data.text, translationLanguage).then((translations) => {
             setRealtimeTranslations(translations); // Only update display, no TTS
@@ -565,7 +585,7 @@ export default function BroadcastPage() {
         socketRef.current = null;
       }
     };
-  }, [id, translationLanguage]);
+  }, [id, translationLanguage, processQueue, autoSpeakLang]);
 
   // Effect for cleaning up old captions from view
   useEffect(() => {
