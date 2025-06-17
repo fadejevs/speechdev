@@ -1,59 +1,41 @@
 import { NextResponse } from "next/server";
 
-// We read your existing DEEPL_AUTH_KEY from process.env
-const DEEPL_AUTH_KEY = process.env.DEEPL_AUTH_KEY;
-
 export async function POST(request) {
   try {
-    const { text, to } = await request.json();
-    if (!text || !to) {
-      return NextResponse.json(
-        { error: "Missing `text` or `to` in request body" },
-        { status: 400 }
-      );
+    const { text, target_lang } = await request.json();
+    
+    if (!text || !target_lang) {
+      return NextResponse.json({ error: 'Missing text or target_lang' }, { status: 400 });
     }
 
-    if (!DEEPL_AUTH_KEY) {
-      return NextResponse.json(
-        { error: "Server misconfiguration: missing DEEPL_AUTH_KEY" },
-        { status: 500 }
-      );
+    if (!process.env.NEXT_PUBLIC_DEEPL_AUTH_KEY) {
+      return NextResponse.json({ error: 'DeepL API key not configured' }, { status: 500 });
     }
 
-    // DeepL wants uppercase target codes (e.g. "EN", "DE", "FR", …)
-    const targetLang = to.toUpperCase();
-
-    const params = new URLSearchParams();
-    params.append("auth_key", DEEPL_AUTH_KEY);
-    params.append("text", text);
-    params.append("target_lang", targetLang);
-
-    const res = await fetch("https://api-free.deepl.com/v2/translate", {
+    const response = await fetch("https://api.deepl.com/v2/translate", {
       method: "POST",
       headers: {
+        "Authorization": `DeepL-Auth-Key ${process.env.NEXT_PUBLIC_DEEPL_AUTH_KEY}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: params.toString(),
+      body: new URLSearchParams({
+        text: text,
+        target_lang: target_lang.toUpperCase(),
+      }).toString(),
     });
 
-    if (!res.ok) {
-      const details = await res.text();
-      console.error("DeepL error:", details);
-      return NextResponse.json(
-        { error: "DeepL translation failed", details },
-        { status: res.status }
-      );
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('DeepL API error:', errorText);
+      return NextResponse.json({ error: 'Translation failed' }, { status: response.status });
     }
 
-    const data = await res.json();
+    const data = await response.json();
     const translation = data.translations?.[0]?.text || "";
-
+    
     return NextResponse.json({ translation });
-  } catch (err) {
-    console.error("Unexpected error in /api/translate:", err);
-    return NextResponse.json(
-      { error: "Unexpected server error" },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('Translation API error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

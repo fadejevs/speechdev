@@ -171,7 +171,6 @@ export default function BroadcastPage() {
   // Add this function for translation (using your API or Azure)
   const fetchTranslations = async (text, langOverride) => {
     const out = {};
-    // Always use langOverride, never fallback to translationLanguage from closure
     const raw = getLanguageCode(langOverride);
     if (!raw) {
       console.warn("No target language set, skipping fallback");
@@ -179,20 +178,33 @@ export default function BroadcastPage() {
     }
     const toCode = raw.split(/[-_]/)[0].toLowerCase();
     try {
+      // Add debugging logs
+      console.log("[Translation Debug] API Key length:", process.env.NEXT_PUBLIC_DEEPL_AUTH_KEY?.length || 0);
+      console.log("[Translation Debug] API Key starts with:", process.env.NEXT_PUBLIC_DEEPL_AUTH_KEY?.substring(0, 4));
+      
       const res = await fetch("/api/translate", {
         method: "POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ text, to: toCode }),
+        body: JSON.stringify({ 
+          text: text,
+          target_lang: toCode.toUpperCase()
+        }),
       });
+      
+      // Add more debugging
       if (!res.ok) {
         const err = await res.text();
-        console.error("Translate API error:", err);
+        console.error("[Translation Debug] Error details:", {
+          status: res.status,
+          statusText: res.statusText,
+          error: err
+        });
         return out;
       }
       const { translation } = await res.json();
       out[toCode] = translation;
     } catch (e) {
-      console.error("fetchTranslations failed:", e);
+      console.error("[Translation Debug] Full error:", e);
     }
     return out;
   };

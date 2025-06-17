@@ -33,12 +33,13 @@ const nextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:",
               // Explicit worker-src too (fallback to script-src if omitted)
               "worker-src 'self' blob: data:",
-              // allow Azure Speech websockets + Geoapify + Supabase
+              // allow Azure Speech websockets + Geoapify + Supabase + DeepL
               "connect-src 'self' https://speechdev.onrender.com " +
                 "ws://speechdev.onrender.com wss://speechdev.onrender.com " +
                 "wss://*.s2s.speech.microsoft.com wss://*.tts.speech.microsoft.com " +
                 "https://api.geoapify.com " +
-                "https://jpydgtzmbcwbyufpvupp.supabase.co",
+                "https://jpydgtzmbcwbyufpvupp.supabase.co " +
+                "https://api.deepl.com",
               // Allow blob: for audio playback
               "media-src 'self' blob:",
               // the rest of your assets
