@@ -279,109 +279,58 @@ export default function BroadcastPage() {
     }
 
     isSpeaking.current = true; // Set the lock
-
     const item = ttsQueue.current.shift();
     
     speakText(item.text, item.lang, (success) => {
       isSpeaking.current = false; // Release the lock
-      
-      // After a short, natural pause, try to process the next item
-      setTimeout(processQueue, 10); 
+      setTimeout(processQueue, 250); // Small pause between sentences
     });
   }, [speakText]);
 
-  // Robust TTS with aggressive duplicate prevention
+  // Simplified TTS effect that only processes final translations
   useEffect(() => {
-    if (!autoSpeakLang || !realtimeTranslations[autoSpeakLang]) return;
+    if (!autoSpeakLang || !liveTranslations[autoSpeakLang]) return;
 
-    const currentTranslation = realtimeTranslations[autoSpeakLang];
+    const text = liveTranslations[autoSpeakLang].trim();
+    if (!text || text.length < 10) return; // Skip very short texts
     
-    // Clear existing timer
-    if (stabilizationTimer.current) {
-      clearTimeout(stabilizationTimer.current);
+    // Simple duplicate check using exact matches
+    if (spokenSentences.current.has(text)) {
+      console.log(`[TTS] Skipping duplicate: "${text}"`);
+      return;
     }
-    
-    // Start new stabilization timer
-    stabilizationTimer.current = setTimeout(() => {
-      // Find all complete sentences
-      const completeSentences = currentTranslation.match(/[^.!?]*[.!?]/g) || [];
-      
-      completeSentences.forEach(sentence => {
-        const trimmed = sentence.trim();
-        if (trimmed.length < 15) return;
-        
-        // AGGRESSIVE duplicate check - check against ALL previously spoken sentences
-        const isAlreadySpoken = Array.from(spokenSentences.current).some(spokenText => {
-          // 1. Exact match
-          if (spokenText === trimmed) return true;
-          
-          // 2. Normalize both for comparison (remove punctuation, lowercase)
-          const normalize = (str) => str.toLowerCase().replace(/[^\w\s]/g, '').trim();
-          const normalizedSpoken = normalize(spokenText);
-          const normalizedNew = normalize(trimmed);
-          
-          // 3. If normalized versions are the same
-          if (normalizedSpoken === normalizedNew) return true;
-          
-          // 4. If one contains the other (>90% overlap)
-          if (normalizedSpoken.includes(normalizedNew) || normalizedNew.includes(normalizedSpoken)) {
-            const lengthDiff = Math.abs(normalizedSpoken.length - normalizedNew.length);
-            if (lengthDiff < 10) return true; // Very similar lengths
-          }
-          
-          // 5. Word-based similarity check
-          const spokenWords = normalizedSpoken.split(/\s+/);
-          const newWords = normalizedNew.split(/\s+/);
-          const overlap = spokenWords.filter(word => newWords.includes(word)).length;
-          const similarity = overlap / Math.max(spokenWords.length, newWords.length);
-          
-          if (similarity > 0.85) { // 85% word similarity = duplicate
-            console.log(`[TTS-BLOCK] High similarity (${similarity.toFixed(2)}): "${trimmed}" vs "${spokenText}"`);
-            return true;
-          }
-          
-          return false;
-        });
-        
-        // Only speak if NOT already spoken
-        if (!isAlreadySpoken) {
-          ttsQueue.current.push({ text: trimmed, lang: autoSpeakLang });
-          spokenSentences.current.add(trimmed);
-          console.log(`[TTS] Speaking NEW sentence: "${trimmed}"`);
-        } else {
-          console.log(`[TTS-SKIP] Already spoken: "${trimmed}"`);
-        }
-      });
-      
-      // Process TTS queue
-      if (ttsQueue.current.length > 0) {
-        processQueue();
-      }
-      
-      stabilizationTimer.current = null;
-      
-    }, 500); // 500ms stabilization
 
-  }, [realtimeTranslations, autoSpeakLang, processQueue]);
+    // Queue the sentence and mark it as spoken
+    console.log(`[TTS] Queueing new sentence: "${text}"`);
+    ttsQueue.current.push({ text, lang: autoSpeakLang });
+    spokenSentences.current.add(text);
+    processQueue();
+
+  }, [liveTranslations, autoSpeakLang, processQueue]);
+
+  // Clear spoken sentences when auto-speak language changes
+  useEffect(() => {
+    spokenSentences.current.clear();
+    ttsQueue.current = [];
+    if (currentSynthesizerRef.current) {
+      try { currentSynthesizerRef.current.close(); } catch(e) {}
+      currentSynthesizerRef.current = null;
+    }
+    isSpeaking.current = false;
+  }, [autoSpeakLang]);
 
   // Cleanup effect
   useEffect(() => {
     return () => {
-      // On unmount, stop any active speech and clear the queue
       if (currentSynthesizerRef.current) {
         try { currentSynthesizerRef.current.close(); } catch(e) {}
         currentSynthesizerRef.current = null;
       }
       ttsQueue.current = [];
       isSpeaking.current = false;
-      spokenSentences.current.clear(); // Clear spoken sentences tracking
+      spokenSentences.current.clear();
     };
   }, []);
-
-  // Clear spoken sentences when auto-speak language changes
-  useEffect(() => {
-    spokenSentences.current.clear();
-  }, [autoSpeakLang]);
 
   // Clear persisted translations when translation language changes
   useEffect(() => {
