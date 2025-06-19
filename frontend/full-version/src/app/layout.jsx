@@ -56,7 +56,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <head />
-      <body>
+      <body suppressHydrationWarning={true}>
         <ProviderWrapper>{children}</ProviderWrapper>
         {/* Schema.org JSON-LD */}
         <script

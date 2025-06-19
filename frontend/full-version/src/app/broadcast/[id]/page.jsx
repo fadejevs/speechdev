@@ -92,6 +92,39 @@ const fetchEventById = async (id) => {
   return data && data.length > 0 ? data[0] : null;
 };
 
+// Add Safari detection and audio context handling
+const isSafari = () => {
+  if (typeof navigator === 'undefined') return false;
+  return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+};
+
+const isIOS = () => {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent);
+};
+
+// Add audio context workaround for Safari
+const initializeAudioContext = () => {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return null;
+    
+    const audioContext = new AudioContext();
+    
+    // Safari requires user interaction to start audio context
+    if (audioContext.state === 'suspended') {
+      return audioContext;
+    }
+    
+    return audioContext;
+  } catch (error) {
+    console.warn('[Audio Context] Failed to initialize:', error);
+    return null;
+  }
+};
+
 export default function BroadcastPage() {
   const { id } = useParams();
 
@@ -124,17 +157,42 @@ export default function BroadcastPage() {
   // Add a ref for the socket
   const socketRef = useRef(null);
 
-  // State for TTS
+  // State for TTS with Safari/iOS workarounds
   const ttsQueue = useRef([]);
   const currentSynthesizerRef = useRef(null);
   const isSpeaking = useRef(false); // Master lock for TTS
   const spokenSentences = useRef(new Set()); // Track spoken sentences to avoid duplicates
+  const audioContextRef = useRef(null);
+  const ttsErrorCount = useRef(0); // Track consecutive TTS errors
+  const maxTtsErrors = 3; // Maximum errors before fallback
 
   // Add refs for stabilization timer
   const batchTimer = useRef(null);
   const lastFinalTranscriptionTime = useRef(0);
   const lastProcessedTranslation = useRef('');
   const stabilizationTimer = useRef(null);
+
+  // Add fallback for when TTS fails completely
+  const [ttsError, setTtsError] = useState(null);
+  const [showTtsWarning, setShowTtsWarning] = useState(false);
+
+  // Initialize audio context on component mount for Safari
+  useEffect(() => {
+    if (isSafari() || isIOS()) {
+      audioContextRef.current = initializeAudioContext();
+    }
+    
+    // Cleanup audio context on unmount
+    return () => {
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        try {
+          audioContextRef.current.close();
+        } catch (e) {
+          console.warn('[Audio Context] Cleanup failed:', e);
+        }
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -209,90 +267,199 @@ export default function BroadcastPage() {
     return out;
   };
 
-  // speakText function is now simpler, it just speaks, no locking logic here
-  const speakText = useCallback((text, lang, onDone) => {
+  // Enhanced speakText function with Safari/iOS workarounds
+  const speakText = useCallback(async (text, lang, onDone) => {
     // Basic validation
     if (!text || !process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
       if (onDone) onDone(false);
       return;
     }
 
-    // Configure and create the synthesizer
-    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-      process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-      process.env.NEXT_PUBLIC_AZURE_REGION
-    );
-    const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
-    speechConfig.speechSynthesisVoiceName = voice;
-    const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
-    const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
+    // Safari/iOS specific workarounds
+    const safariMode = isSafari() || isIOS();
     
-    // Store the synthesizer instance so we can clean up if needed
-    currentSynthesizerRef.current = synthesizer;
-
-    console.log(`[TTS] Starting synthesis for: "${text.substring(0, 30)}..."`);
-
-    synthesizer.speakTextAsync(
-      text,
-      (result) => {
-        // This is the main callback when synthesis is done.
-        
-        const cleanup = () => {
-            try { synthesizer.close(); } catch (e) { /* Ignore */ }
-            currentSynthesizerRef.current = null;
-        };
-
-        if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-          // THE KEY FIX: Get audio duration from the result.
-          // The duration is in 100-nanosecond ticks, so convert to milliseconds.
-          const audioDurationMs = result.audioDuration / 10000;
-          console.log(`[TTS] Synthesis complete. Audio duration: ${audioDurationMs.toFixed(0)}ms. Waiting for playback to finish.`);
-          
-          // Wait for the audio to finish playing, then call our onDone callback.
-          setTimeout(() => {
-            console.log(`[TTS] Playback finished for: "${text.substring(0, 30)}..."`);
-            cleanup();
-            if (onDone) onDone(true);
-          }, audioDurationMs);
-
-        } else {
-          // Handle cancellation or other failures immediately.
-          console.warn(`[TTS] Synthesis failed or canceled. Reason: ${result.reason}`);
-          cleanup();
-          if (onDone) onDone(false);
+    if (safariMode) {
+      // Ensure audio context is active for Safari
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        try {
+          await audioContextRef.current.resume();
+          console.log('[TTS Safari] Audio context resumed');
+        } catch (error) {
+          console.warn('[TTS Safari] Failed to resume audio context:', error);
         }
-      },
-      (error) => {
-        // Handle critical errors.
-        console.error(`[TTS] Error during synthesis: ${error}`);
-        try { synthesizer.close(); } catch (e) { /* Ignore */ }
-        currentSynthesizerRef.current = null;
-        if (onDone) onDone(false);
       }
-    );
+      
+      // Add small delay for Safari to prevent rapid-fire issues
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    try {
+      // Configure and create the synthesizer with Safari optimizations
+      const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
+        process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+        process.env.NEXT_PUBLIC_AZURE_REGION
+      );
+      
+      const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
+      speechConfig.speechSynthesisVoiceName = voice;
+      
+      // Safari-specific audio config
+      let audioConfig;
+      if (safariMode) {
+        // Use default speaker output for Safari instead of custom configurations
+        audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
+      } else {
+        audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
+      }
+      
+      const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
+      
+      // Store the synthesizer instance so we can clean up if needed
+      currentSynthesizerRef.current = synthesizer;
+
+      console.log(`[TTS] Starting synthesis for: "${text.substring(0, 30)}..." (Safari mode: ${safariMode})`);
+
+      // Wrap in error boundary for Safari
+      const synthesisPromise = new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          console.warn('[TTS] Synthesis timeout, cleaning up...');
+          try { synthesizer.close(); } catch (e) { /* Ignore */ }
+          currentSynthesizerRef.current = null;
+          reject(new Error('Synthesis timeout'));
+        }, 30000); // 30 second timeout for Safari
+
+        synthesizer.speakTextAsync(
+          text,
+          (result) => {
+            clearTimeout(timeoutId);
+            
+            const cleanup = () => {
+              try { 
+                synthesizer.close(); 
+              } catch (e) { 
+                console.warn('[TTS] Synthesizer cleanup error:', e);
+              }
+              currentSynthesizerRef.current = null;
+            };
+
+            if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+              // Reset error count on success
+              ttsErrorCount.current = 0;
+              
+              const audioDurationMs = result.audioDuration / 10000;
+              console.log(`[TTS] Synthesis complete. Audio duration: ${audioDurationMs.toFixed(0)}ms`);
+              
+              // For Safari, use a shorter wait time to prevent hanging
+              const waitTime = safariMode ? Math.min(audioDurationMs, 5000) : audioDurationMs;
+              
+              setTimeout(() => {
+                console.log(`[TTS] Playback finished for: "${text.substring(0, 30)}..."`);
+                cleanup();
+                resolve(true);
+              }, waitTime);
+
+            } else {
+              console.warn(`[TTS] Synthesis failed or canceled. Reason: ${result.reason}`);
+              cleanup();
+              resolve(false);
+            }
+          },
+          (error) => {
+            clearTimeout(timeoutId);
+            console.error(`[TTS] Error during synthesis: ${error}`);
+            
+            // Increment error count
+            ttsErrorCount.current++;
+            
+            try { 
+              synthesizer.close(); 
+            } catch (e) { 
+              console.warn('[TTS] Error cleanup failed:', e);
+            }
+            currentSynthesizerRef.current = null;
+            
+            reject(error);
+          }
+        );
+      });
+
+      const success = await synthesisPromise;
+      if (onDone) onDone(success);
+
+    } catch (error) {
+      console.error(`[TTS] Critical error: ${error.message}`);
+      ttsErrorCount.current++;
+      
+      // If too many errors, temporarily disable TTS
+      if (ttsErrorCount.current >= maxTtsErrors) {
+        console.warn(`[TTS] Too many errors (${ttsErrorCount.current}), temporarily disabling TTS`);
+        setTimeout(() => {
+          ttsErrorCount.current = 0;
+          console.log('[TTS] TTS re-enabled after cooldown');
+        }, 10000); // 10 second cooldown
+      }
+      
+      if (onDone) onDone(false);
+    }
   }, []);
 
-  // The single gatekeeper for processing the TTS queue
-  const processQueue = useCallback(() => {
+  // Enhanced queue processor with Safari error handling
+  const processQueue = useCallback(async () => {
     if (isSpeaking.current || ttsQueue.current.length === 0) {
       return; // Exit if already speaking or nothing to speak
+    }
+
+    // Skip processing if too many errors occurred
+    if (ttsErrorCount.current >= maxTtsErrors) {
+      console.warn('[TTS] Skipping queue processing due to too many errors');
+      return;
     }
 
     isSpeaking.current = true; // Set the lock
     const item = ttsQueue.current.shift();
     
-    speakText(item.text, item.lang, (success) => {
-      isSpeaking.current = false; // Release the lock
-      setTimeout(processQueue, 250); // Small pause between sentences
-    });
+    try {
+      await speakText(item.text, item.lang, (success) => {
+        isSpeaking.current = false; // Release the lock
+        
+        // For Safari, add a longer pause between sentences to prevent crashes
+        const pauseTime = (isSafari() || isIOS()) ? 500 : 250;
+        setTimeout(() => {
+          processQueue(); // Process next item
+        }, pauseTime);
+      });
+    } catch (error) {
+      console.error('[TTS] Queue processing error:', error);
+      isSpeaking.current = false;
+      
+      // Continue processing queue after error with delay
+      setTimeout(() => {
+        processQueue();
+      }, 1000);
+    }
   }, [speakText]);
 
-  // Simplified TTS effect that only processes final translations
+  // TTS effect with enhanced error handling
   useEffect(() => {
     if (!autoSpeakLang || !liveTranslations[autoSpeakLang]) return;
 
     const text = liveTranslations[autoSpeakLang].trim();
     if (!text || text.length < 10) return; // Skip very short texts
+    
+    // Check if TTS is disabled due to too many errors
+    if (ttsErrorCount.current >= maxTtsErrors) {
+      if (!showTtsWarning) {
+        setShowTtsWarning(true);
+        setTtsError(`TTS temporarily disabled due to browser compatibility issues. Try refreshing the page or using a different browser.`);
+        
+        // Auto-hide warning after 10 seconds
+        setTimeout(() => {
+          setShowTtsWarning(false);
+          setTtsError(null);
+        }, 10000);
+      }
+      return;
+    }
     
     // Simple duplicate check using exact matches
     if (spokenSentences.current.has(text)) {
@@ -304,7 +471,15 @@ export default function BroadcastPage() {
     console.log(`[TTS] Queueing new sentence: "${text}"`);
     ttsQueue.current.push({ text, lang: autoSpeakLang });
     spokenSentences.current.add(text);
-    processQueue();
+    
+    // Use try-catch for queue processing
+    try {
+      processQueue();
+    } catch (error) {
+      console.error('[TTS] Error starting queue processing:', error);
+      setTtsError('TTS failed to start. Please try again.');
+      setTimeout(() => setTtsError(null), 5000);
+    }
 
   }, [liveTranslations, autoSpeakLang, processQueue]);
 
@@ -317,6 +492,8 @@ export default function BroadcastPage() {
       currentSynthesizerRef.current = null;
     }
     isSpeaking.current = false;
+    setTtsError(null);
+    setShowTtsWarning(false);
   }, [autoSpeakLang]);
 
   // Cleanup effect
@@ -329,6 +506,13 @@ export default function BroadcastPage() {
       ttsQueue.current = [];
       isSpeaking.current = false;
       spokenSentences.current.clear();
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        try {
+          audioContextRef.current.close();
+        } catch (e) {
+          console.warn('[Audio Context] Cleanup failed:', e);
+        }
+      }
     };
   }, []);
 
@@ -858,6 +1042,21 @@ export default function BroadcastPage() {
               <Box sx={{ p:0 }}>
                 {availableTargetLanguages.length > 0 ? (
                   <Box sx={{ display: "flex", flexDirection: "column" }}>
+                    {/* TTS Error Notification */}
+                    {ttsError && (
+                      <Box sx={{ 
+                        mb: 2, 
+                        p: 1.5, 
+                        bgcolor: "#fff3cd", 
+                        border: "1px solid #ffeaa7", 
+                        borderRadius: 1,
+                        fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                        color: "#856404"
+                      }}>
+                        ⚠️ {ttsError}
+                      </Box>
+                    )}
+                    
                     {autoSpeakLang && (
                       <Button
                         onClick={() => setAutoSpeakLang(null)}
@@ -889,9 +1088,26 @@ export default function BroadcastPage() {
                       </Box>
                       {translationLanguage && displayedTranslation && (
                         <Button
-                          onClick={() => {
+                          onClick={async () => {
                             const targetLang = getLanguageCode(translationLanguage);
                             const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
+                            
+                            // Safari/iOS specific user interaction handling
+                            if (isSafari() || isIOS()) {
+                              // Ensure audio context is activated by user interaction
+                              if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+                                try {
+                                  await audioContextRef.current.resume();
+                                  console.log('[TTS Safari] Audio context activated by user interaction');
+                                } catch (error) {
+                                  console.warn('[TTS Safari] Failed to activate audio context:', error);
+                                }
+                              }
+                              
+                              // Add a small delay for Safari
+                              await new Promise(resolve => setTimeout(resolve, 50));
+                            }
+                            
                             setAutoSpeakLang(autoSpeakLang === langCode ? null : langCode);
                           }}
                           sx={{ 
