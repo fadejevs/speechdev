@@ -316,7 +316,7 @@ export default function BroadcastPage() {
     return out;
   };
 
-  // Enhanced speakText function with better cleanup
+  // Enhanced speakText function with Safari-specific complete recreation
   const speakText = useCallback((text, lang, onDone) => {
     // Basic validation
     if (!text || !process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
@@ -339,40 +339,36 @@ export default function BroadcastPage() {
     
     const performSynthesis = async () => {
       if (safariMode) {
-        console.log('[TTS Safari] Preparing Safari-specific synthesis');
+        console.log('[TTS Safari] Using aggressive Safari strategy');
         
-        // Ensure audio context is active for Safari before each synthesis
+        // Force a complete reset of audio context for each synthesis
         if (audioContextRef.current) {
-          if (audioContextRef.current.state === 'suspended') {
-            try {
-              await audioContextRef.current.resume();
-              console.log('[TTS Safari] Audio context resumed for synthesis');
-            } catch (error) {
-              console.warn('[TTS Safari] Failed to resume audio context:', error);
-            }
-          }
-          
-          // Force audio context to stay active
           try {
-            // Create a short silent audio to keep context active
-            const oscillator = audioContextRef.current.createOscillator();
-            const gainNode = audioContextRef.current.createGain();
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContextRef.current.destination);
-            gainNode.gain.setValueAtTime(0, audioContextRef.current.currentTime);
-            oscillator.start();
-            oscillator.stop(audioContextRef.current.currentTime + 0.01);
+            if (audioContextRef.current.state !== 'closed') {
+              await audioContextRef.current.close();
+            }
           } catch (e) {
-            console.warn('[TTS Safari] Failed to create keep-alive audio:', e);
+            console.warn('[TTS Safari] Failed to close old audio context:', e);
           }
         }
         
-        // Add longer delay for Safari to settle
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Create fresh audio context for each synthesis
+        audioContextRef.current = initializeAudioContext();
+        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          try {
+            await audioContextRef.current.resume();
+            console.log('[TTS Safari] Fresh audio context activated');
+          } catch (error) {
+            console.warn('[TTS Safari] Failed to activate fresh audio context:', error);
+          }
+        }
+        
+        // Much longer delay for Safari to fully reset
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       try {
-        // Configure and create the synthesizer with Safari optimizations
+        // For Safari, create completely fresh synthesizer instance each time
         const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
           process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
           process.env.NEXT_PUBLIC_AZURE_REGION
@@ -389,76 +385,96 @@ export default function BroadcastPage() {
         const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
         const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
         
-        // Store the synthesizer instance so we can clean up if needed
+        // Store the synthesizer instance
         currentSynthesizerRef.current = synthesizer;
 
-        // Create synthesis promise with longer timeout for Safari
+        // Create synthesis promise with Safari-specific handling
         const synthesisPromise = new Promise((resolve, reject) => {
-          const timeoutMs = safariMode ? 45000 : 30000; // Longer timeout for Safari
+          const timeoutMs = safariMode ? 60000 : 30000; // Much longer timeout for Safari
+          let isResolved = false;
+          
           const timeoutId = setTimeout(() => {
-            console.warn(`[TTS] Synthesis timeout after ${timeoutMs}ms, cleaning up...`);
-            try { synthesizer.close(); } catch (e) { /* Ignore */ }
-            currentSynthesizerRef.current = null;
-            isSpeaking.current = false;
-            reject(new Error('Synthesis timeout'));
+            if (!isResolved) {
+              console.warn(`[TTS] Synthesis timeout after ${timeoutMs}ms`);
+              isResolved = true;
+              try { synthesizer.close(); } catch (e) { /* Ignore */ }
+              currentSynthesizerRef.current = null;
+              isSpeaking.current = false;
+              reject(new Error('Synthesis timeout'));
+            }
           }, timeoutMs);
 
           synthesizer.speakTextAsync(
             text,
             (result) => {
+              if (isResolved) return; // Prevent double resolution
               clearTimeout(timeoutId);
+              isResolved = true;
               
-              const cleanup = () => {
-                try { 
-                  synthesizer.close(); 
-                } catch (e) { 
-                  console.warn('[TTS] Synthesizer cleanup error:', e);
-                }
-                currentSynthesizerRef.current = null;
-                isSpeaking.current = false;
-              };
-
+              console.log(`[TTS] Synthesis result: ${result.reason} (Safari: ${safariMode})`);
+              
               if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
                 // Reset error count on success
                 ttsErrorCount.current = 0;
                 
                 const audioDurationMs = result.audioDuration / 10000;
-                console.log(`[TTS] Synthesis complete. Duration: ${audioDurationMs.toFixed(0)}ms (Safari: ${safariMode})`);
+                console.log(`[TTS] Audio duration: ${audioDurationMs.toFixed(0)}ms`);
                 
-                // Safari needs special handling for timing
+                // For Safari, use a much more conservative wait time
                 let waitTime;
                 if (safariMode) {
-                  // For Safari, use a fixed minimum wait time regardless of audio duration
-                  waitTime = Math.max(1000, Math.min(audioDurationMs + 500, 4000));
+                  // For Safari: wait minimum 2 seconds + extra buffer, maximum 6 seconds
+                  waitTime = Math.max(2000, Math.min(audioDurationMs + 1000, 6000));
                 } else {
-                  waitTime = Math.min(audioDurationMs, 3000);
+                  waitTime = Math.min(audioDurationMs + 200, 3000);
                 }
                 
-                console.log(`[TTS] Will wait ${waitTime}ms before marking as complete`);
+                console.log(`[TTS] Will wait ${waitTime}ms for playback completion`);
+                
+                // Clean up synthesizer immediately for Safari
+                if (safariMode) {
+                  try { 
+                    synthesizer.close(); 
+                  } catch (e) { 
+                    console.warn('[TTS] Immediate Safari cleanup failed:', e);
+                  }
+                  currentSynthesizerRef.current = null;
+                }
                 
                 setTimeout(() => {
-                  console.log(`[TTS] Playback finished: "${text.substring(0, 30)}..." (Safari: ${safariMode})`);
-                  cleanup();
+                  console.log(`[TTS] Marking playback as complete`);
+                  
+                  // Final cleanup for non-Safari
+                  if (!safariMode) {
+                    try { 
+                      synthesizer.close(); 
+                    } catch (e) { 
+                      console.warn('[TTS] Final cleanup failed:', e);
+                    }
+                    currentSynthesizerRef.current = null;
+                  }
+                  
+                  isSpeaking.current = false;
                   resolve(true);
                 }, waitTime);
 
               } else {
-                console.warn(`[TTS] Synthesis failed. Reason: ${result.reason}`);
-                cleanup();
+                console.warn(`[TTS] Synthesis failed: ${result.reason}`);
+                try { synthesizer.close(); } catch (e) { /* Ignore */ }
+                currentSynthesizerRef.current = null;
+                isSpeaking.current = false;
                 resolve(false);
               }
             },
             (error) => {
+              if (isResolved) return; // Prevent double resolution
               clearTimeout(timeoutId);
-              console.error(`[TTS] Synthesis error: ${error}`);
+              isResolved = true;
               
+              console.error(`[TTS] Synthesis error: ${error}`);
               ttsErrorCount.current++;
               
-              try { 
-                synthesizer.close(); 
-              } catch (e) { 
-                console.warn('[TTS] Error cleanup failed:', e);
-              }
+              try { synthesizer.close(); } catch (e) { /* Ignore */ }
               currentSynthesizerRef.current = null;
               isSpeaking.current = false;
               
@@ -480,7 +496,7 @@ export default function BroadcastPage() {
           setTimeout(() => {
             ttsErrorCount.current = 0;
             console.log('[TTS] TTS re-enabled after cooldown');
-          }, 10000);
+          }, 15000); // Longer cooldown for Safari
         }
         
         if (onDone) onDone(false);
@@ -534,7 +550,7 @@ export default function BroadcastPage() {
       
       // Safari needs longer pauses between sentences
       const safariMode = isSafari() || isIOS();
-      const pauseTime = safariMode ? 1500 : 600; // Much longer pause for Safari
+      const pauseTime = safariMode ? 3000 : 600; // Much longer pause for Safari (3 seconds)
       
       console.log(`[TTS Queue] Waiting ${pauseTime}ms before next item (Safari: ${safariMode})`);
       
@@ -672,6 +688,17 @@ export default function BroadcastPage() {
         setTimeout(() => processQueue(), 50); // Very small delay to ensure state is settled
       } else {
         console.log(`[TTS Effect] Queue processing already active, new sentences will be processed automatically`);
+        
+        // Safari-specific: Force restart if queue seems stuck
+        if ((isSafari() || isIOS()) && ttsQueue.current.length > 1) {
+          console.log('[TTS Effect Safari] Forcing queue restart for Safari');
+          setTimeout(() => {
+            if (ttsQueue.current.length > 0 && !isSpeaking.current && !isProcessingQueue.current) {
+              console.log('[TTS Effect Safari] Executing forced restart');
+              processQueue();
+            }
+          }, 4000); // Wait 4 seconds then force restart if needed
+        }
       }
     }
 
