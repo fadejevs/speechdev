@@ -439,46 +439,75 @@ export default function BroadcastPage() {
   // Enhanced queue processor with better state management
   const processQueue = useCallback(() => {
     // Prevent multiple queue processors running
-    if (isProcessingQueue.current || isSpeaking.current || ttsQueue.current.length === 0) {
+    if (isProcessingQueue.current) {
+      console.log('[TTS Queue] Already processing, skipping');
+      return;
+    }
+
+    if (ttsQueue.current.length === 0) {
+      console.log('[TTS Queue] Queue is empty');
+      return;
+    }
+
+    if (isSpeaking.current) {
+      console.log('[TTS Queue] Already speaking, will retry soon');
+      // Retry after a short delay
+      setTimeout(() => {
+        if (ttsQueue.current.length > 0 && !isSpeaking.current) {
+          processQueue();
+        }
+      }, 1000);
       return;
     }
 
     // Skip if too many errors
     if (ttsErrorCount.current >= maxTtsErrors) {
-      console.warn('[TTS] Skipping queue processing due to errors');
+      console.warn('[TTS Queue] Skipping due to errors');
       return;
     }
 
     isProcessingQueue.current = true;
     const item = ttsQueue.current.shift();
     
-    console.log(`[TTS Queue] Processing: "${item.text.substring(0, 30)}..." (${ttsQueue.current.length} remaining)`);
+    console.log(`[TTS Queue] Processing: "${item.text.substring(0, 50)}..." (${ttsQueue.current.length} remaining)`);
     
     speakText(item.text, item.lang, (success) => {
-      console.log(`[TTS Queue] Completed with success: ${success}`);
+      console.log(`[TTS Queue] Completed with success: ${success}. Queue length: ${ttsQueue.current.length}`);
       isProcessingQueue.current = false;
       
       // Continue processing queue after appropriate delay
-      const pauseTime = (isSafari() || isIOS()) ? 1000 : 500;
+      const pauseTime = (isSafari() || isIOS()) ? 800 : 400;
       
       setTimeout(() => {
+        console.log(`[TTS Queue] Checking for next item. Queue length: ${ttsQueue.current.length}, isSpeaking: ${isSpeaking.current}, isProcessing: ${isProcessingQueue.current}`);
+        
         if (ttsQueue.current.length > 0 && !isSpeaking.current && !isProcessingQueue.current) {
-          console.log(`[TTS Queue] Continuing with ${ttsQueue.current.length} items`);
+          console.log(`[TTS Queue] Continuing with next item`);
           processQueue();
+        } else {
+          console.log(`[TTS Queue] No more items to process or conditions not met`);
         }
       }, pauseTime);
     });
   }, [speakText]);
 
-  // Simplified queue watchdog
+  // Enhanced queue watchdog with better logging
   useEffect(() => {
     const watchdogInterval = setInterval(() => {
-      // Only restart if we have items, nothing is speaking, and TTS is enabled
-      if (ttsQueue.current.length > 0 && !isSpeaking.current && !isProcessingQueue.current && autoSpeakLang) {
+      const queueLength = ttsQueue.current.length;
+      const speaking = isSpeaking.current;
+      const processing = isProcessingQueue.current;
+      
+      if (queueLength > 0) {
+        console.log(`[TTS Watchdog] Queue status: ${queueLength} items, speaking: ${speaking}, processing: ${processing}, autoSpeak: ${autoSpeakLang}`);
+      }
+      
+      // Only restart if we have items, nothing is speaking/processing, and TTS is enabled
+      if (queueLength > 0 && !speaking && !processing && autoSpeakLang) {
         console.log('[TTS Watchdog] Restarting stuck queue');
         processQueue();
       }
-    }, 5000); // Check every 5 seconds
+    }, 3000); // Check every 3 seconds
 
     return () => clearInterval(watchdogInterval);
   }, [processQueue, autoSpeakLang]);
@@ -488,9 +517,10 @@ export default function BroadcastPage() {
     if (!autoSpeakLang || !liveTranslations[autoSpeakLang]) return;
 
     const text = liveTranslations[autoSpeakLang].trim();
-    if (!text || text.length < 10) return; // Skip very short texts
+    if (!text || text.length < 5) return; // Reduced minimum length
     
-    console.log(`[TTS Effect] New translation: "${text}" for language: ${autoSpeakLang}`);
+    console.log(`[TTS Effect] Processing translation: "${text}" for language: ${autoSpeakLang}`);
+    console.log(`[TTS Effect] Current queue length: ${ttsQueue.current.length}, isSpeaking: ${isSpeaking.current}, isProcessing: ${isProcessingQueue.current}`);
     
     // Check if TTS is disabled due to too many errors
     if (ttsErrorCount.current >= maxTtsErrors) {
@@ -507,37 +537,54 @@ export default function BroadcastPage() {
       return;
     }
     
+    // Create a unique identifier for this translation based on content and timestamp
+    const translationId = `${autoSpeakLang}_${Date.now()}_${text.substring(0, 20)}`;
+    
     // Enhanced duplicate check - use a hash-based approach for better performance
     const textHash = text.toLowerCase().replace(/[^\w\s]/g, '').trim();
-    if (spokenSentences.current.has(textHash)) {
-      console.log(`[TTS] Skipping duplicate: "${text}"`);
-      return;
-    }
-
-    // Split long text into sentences for better TTS flow
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 5);
     
-    if (sentences.length === 0) return;
+    // Split long text into sentences for better TTS flow
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 3);
+    
+    if (sentences.length === 0) {
+      // If no sentences found, treat the whole text as one sentence
+      sentences.push(text);
+    }
+    
+    let newSentencesQueued = 0;
     
     // Queue each sentence separately
     sentences.forEach((sentence, index) => {
       const cleanSentence = sentence.trim();
-      const sentenceHash = cleanSentence.toLowerCase().replace(/[^\w\s]/g, '');
+      if (cleanSentence.length < 3) return; // Skip very short sentences
       
-      if (!spokenSentences.current.has(sentenceHash) && cleanSentence.length >= 5) {
-        console.log(`[TTS] Queueing sentence ${index + 1}/${sentences.length}: "${cleanSentence}"`);
-        ttsQueue.current.push({ text: cleanSentence, lang: autoSpeakLang });
+      const sentenceHash = `${autoSpeakLang}_${cleanSentence.toLowerCase().replace(/[^\w\s]/g, '')}`;
+      
+      // Check if this exact sentence hasn't been spoken recently
+      if (!spokenSentences.current.has(sentenceHash)) {
+        console.log(`[TTS] Queueing NEW sentence ${index + 1}/${sentences.length}: "${cleanSentence}"`);
+        ttsQueue.current.push({ 
+          text: cleanSentence, 
+          lang: autoSpeakLang,
+          id: `${translationId}_${index}`
+        });
         spokenSentences.current.add(sentenceHash);
+        newSentencesQueued++;
+      } else {
+        console.log(`[TTS] Skipping duplicate sentence: "${cleanSentence}"`);
       }
     });
     
-    // Mark the full text as processed
-    spokenSentences.current.add(textHash);
+    console.log(`[TTS Effect] Queued ${newSentencesQueued} new sentences. Total queue: ${ttsQueue.current.length}`);
     
-    // Start processing if not already running
-    if (!isSpeaking.current && !isProcessingQueue.current) {
-      console.log(`[TTS] Starting queue processing with ${ttsQueue.current.length} items`);
-      setTimeout(() => processQueue(), 100); // Small delay to ensure state is settled
+    // Start processing if we have new sentences and nothing is currently running
+    if (newSentencesQueued > 0) {
+      if (!isSpeaking.current && !isProcessingQueue.current) {
+        console.log(`[TTS Effect] Starting immediate processing`);
+        setTimeout(() => processQueue(), 50); // Very small delay to ensure state is settled
+      } else {
+        console.log(`[TTS Effect] Queue processing already active, new sentences will be processed automatically`);
+      }
     }
 
   }, [liveTranslations, autoSpeakLang, processQueue]);
@@ -548,6 +595,19 @@ export default function BroadcastPage() {
     forceStopTTS();
     spokenSentences.current.clear();
   }, [autoSpeakLang, forceStopTTS]);
+
+  // Periodic cleanup of old spoken sentences to prevent memory buildup
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      const currentSize = spokenSentences.current.size;
+      if (currentSize > 100) { // If we have more than 100 remembered sentences
+        console.log(`[TTS Cleanup] Clearing ${currentSize} old spoken sentences`);
+        spokenSentences.current.clear();
+      }
+    }, 30000); // Clean up every 30 seconds
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
 
   // Cleanup effect
   useEffect(() => {
@@ -667,24 +727,16 @@ export default function BroadcastPage() {
             const translatedText = translations[langCode];
 
             if (translatedText && translatedText.trim()) {
-              // Queue for TTS if enabled
-              if (autoSpeakLang === langCode) {
-                const textToSpeak = translatedText.trim();
-                
-                // A simple check to avoid queueing the exact same sentence if the service sends it twice.
-                if (!spokenSentences.current.has(textToSpeak)) {
-                  ttsQueue.current.push({ text: textToSpeak, lang: langCode });
-                  spokenSentences.current.add(textToSpeak); // Remember sentence
-                  console.log(`[TTS] Queuing final sentence: "${textToSpeak}"`);
-                  processQueue();
-                } else {
-                  console.log(`[TTS] Skipping duplicate: "${textToSpeak}"`);
-                }
-              }
+              console.log(`[Translation] Final translation received: "${translatedText}" for lang: ${langCode}`);
+              
+              // Always update liveTranslations to trigger TTS effect
+              setLiveTranslations(prev => ({
+                ...prev,
+                [langCode]: translatedText.trim()
+              }));
 
-              // Update display states
-              setLiveTranslations(translations); // For potential use elsewhere, but not for triggering TTS
-              setRealtimeTranslations({}); // Clear interim display translation
+              // Clear interim display translation
+              setRealtimeTranslations({});
 
               // Add to persisted translations for display
               const newTranslation = {
