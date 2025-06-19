@@ -103,6 +103,11 @@ const isIOS = () => {
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
 };
 
+const isMobile = () => {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
 // Add audio context workaround for Safari
 const initializeAudioContext = () => {
   if (typeof window === 'undefined') return null;
@@ -113,15 +118,124 @@ const initializeAudioContext = () => {
     
     const audioContext = new AudioContext();
     
-    // Safari requires user interaction to start audio context
-    if (audioContext.state === 'suspended') {
-      return audioContext;
+    // For mobile, try to resume immediately if possible
+    if (audioContext.state === 'suspended' && isMobile()) {
+      // Don't resume here, wait for user interaction
+      console.log('[Mobile Audio] Audio context created in suspended state - waiting for user interaction');
     }
     
     return audioContext;
   } catch (error) {
     console.warn('[Audio Context] Failed to initialize:', error);
     return null;
+  }
+};
+
+// Add mobile-specific TTS function using Web Speech API as fallback
+const speakWithWebSpeechAPI = (text, lang) => {
+  return new Promise((resolve) => {
+    if (!window.speechSynthesis) {
+      console.warn('[Mobile TTS] Web Speech API not available');
+      resolve(false);
+      return;
+    }
+
+    try {
+      // Cancel any ongoing speech
+      window.speechSynthesis.cancel();
+      
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = lang === 'en' ? 'en-US' : lang;
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+
+      utterance.onend = () => {
+        console.log('[Mobile TTS] Web Speech API synthesis completed');
+        resolve(true);
+      };
+
+      utterance.onerror = (event) => {
+        console.error('[Mobile TTS] Web Speech API error:', event.error);
+        resolve(false);
+      };
+
+      // Start speaking immediately while we have user gesture
+      window.speechSynthesis.speak(utterance);
+      console.log('[Mobile TTS] Started Web Speech API synthesis');
+      
+    } catch (error) {
+      console.error('[Mobile TTS] Web Speech API failed:', error);
+      resolve(false);
+    }
+  });
+};
+
+// Mobile-optimized TTS function that preserves user gesture
+const speakTextMobile = async (text, lang) => {
+  console.log('[Mobile TTS] Attempting mobile TTS for:', text.substring(0, 30) + '...');
+  
+  // Try Web Speech API first for mobile (more reliable)
+  if (isMobile()) {
+    const webSpeechSuccess = await speakWithWebSpeechAPI(text, lang);
+    if (webSpeechSuccess) {
+      return true;
+    }
+    console.log('[Mobile TTS] Web Speech API failed, falling back to Azure');
+  }
+
+  // Fallback to Azure TTS with mobile-optimized config
+  if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+    console.warn('[Mobile TTS] Azure credentials missing');
+    return false;
+  }
+
+  try {
+    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
+      process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+      process.env.NEXT_PUBLIC_AZURE_REGION
+    );
+    
+    const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
+    speechConfig.speechSynthesisVoiceName = voice;
+    
+    // Mobile-specific audio configuration - use default audio output without explicit config
+    const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, null);
+
+    return new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        console.warn('[Mobile TTS] Azure synthesis timeout');
+        try { synthesizer.close(); } catch (e) {}
+        resolve(false);
+      }, 10000); // Shorter timeout for mobile
+
+      synthesizer.speakTextAsync(
+        text,
+        (result) => {
+          clearTimeout(timeoutId);
+          
+          try { synthesizer.close(); } catch (e) {}
+          
+          if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+            console.log('[Mobile TTS] Azure synthesis completed');
+            resolve(true);
+          } else {
+            console.warn('[Mobile TTS] Azure synthesis failed:', result.reason);
+            resolve(false);
+          }
+        },
+        (error) => {
+          clearTimeout(timeoutId);
+          console.error('[Mobile TTS] Azure synthesis error:', error);
+          try { synthesizer.close(); } catch (e) {}
+          resolve(false);
+        }
+      );
+    });
+
+  } catch (error) {
+    console.error('[Mobile TTS] Azure TTS setup failed:', error);
+    return false;
   }
 };
 
@@ -450,6 +564,9 @@ export default function BroadcastPage() {
 
   // TTS effect with enhanced error handling
   useEffect(() => {
+    // Skip this effect for mobile - mobile uses immediate TTS
+    if (isMobile()) return;
+    
     if (!autoSpeakLang || !liveTranslations[autoSpeakLang]) return;
 
     const text = liveTranslations[autoSpeakLang].trim();
@@ -633,14 +750,35 @@ export default function BroadcastPage() {
               if (autoSpeakLang === langCode) {
                 const textToSpeak = translatedText.trim();
                 
-                // A simple check to avoid queueing the exact same sentence if the service sends it twice.
-                if (!spokenSentences.current.has(textToSpeak)) {
-                  ttsQueue.current.push({ text: textToSpeak, lang: langCode });
-                  spokenSentences.current.add(textToSpeak); // Remember sentence
-                  console.log(`[TTS] Queuing final sentence: "${textToSpeak}"`);
-                  processQueue();
+                // MOBILE OPTIMIZATION: Use immediate TTS for mobile
+                if (isMobile()) {
+                  // Simple duplicate check for mobile
+                  if (!spokenSentences.current.has(textToSpeak)) {
+                    spokenSentences.current.add(textToSpeak);
+                    console.log(`[Mobile TTS] Speaking new translation immediately: "${textToSpeak}"`);
+                    
+                    // Speak immediately without queue delays
+                    speakTextMobile(textToSpeak, langCode).then((success) => {
+                      if (!success) {
+                        console.warn('[Mobile TTS] Failed to speak new translation');
+                      }
+                    }).catch((error) => {
+                      console.error('[Mobile TTS] Error speaking new translation:', error);
+                    });
+                  } else {
+                    console.log(`[Mobile TTS] Skipping duplicate: "${textToSpeak}"`);
+                  }
                 } else {
-                  console.log(`[TTS] Skipping duplicate: "${textToSpeak}"`);
+                  // DESKTOP: Use original queue system
+                  // A simple check to avoid queueing the exact same sentence if the service sends it twice.
+                  if (!spokenSentences.current.has(textToSpeak)) {
+                    ttsQueue.current.push({ text: textToSpeak, lang: langCode });
+                    spokenSentences.current.add(textToSpeak); // Remember sentence
+                    console.log(`[TTS] Queuing final sentence: "${textToSpeak}"`);
+                    processQueue();
+                  } else {
+                    console.log(`[TTS] Skipping duplicate: "${textToSpeak}"`);
+                  }
                 }
               }
 
@@ -1103,6 +1241,50 @@ export default function BroadcastPage() {
                             const targetLang = getLanguageCode(translationLanguage);
                             const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
                             
+                            // MOBILE OPTIMIZATION: Handle TTS immediately during user gesture
+                            if (isMobile()) {
+                              console.log('[Mobile TTS] Button clicked - immediate mobile TTS');
+                              
+                              // Activate audio context immediately during user interaction
+                              if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+                                try {
+                                  await audioContextRef.current.resume();
+                                  console.log('[Mobile TTS] Audio context activated during user click');
+                                } catch (error) {
+                                  console.warn('[Mobile TTS] Failed to activate audio context:', error);
+                                }
+                              }
+                              
+                              // If clicking the same language, speak current text immediately
+                              if (autoSpeakLang === langCode) {
+                                if (displayedTranslation && displayedTranslation.trim().length >= 10) {
+                                  console.log('[Mobile TTS] Speaking current translation immediately');
+                                  const success = await speakTextMobile(displayedTranslation.trim(), langCode);
+                                  if (!success) {
+                                    setTtsError('Mobile TTS failed. Try again or use a different browser.');
+                                    setTimeout(() => setTtsError(null), 5000);
+                                  }
+                                }
+                                return; // Don't toggle off, just speak
+                              }
+                              
+                              // Enable auto-speak for mobile
+                              setAutoSpeakLang(langCode);
+                              
+                              // Speak current text immediately if available
+                              if (displayedTranslation && displayedTranslation.trim().length >= 10) {
+                                console.log('[Mobile TTS] Speaking initial translation immediately');
+                                const success = await speakTextMobile(displayedTranslation.trim(), langCode);
+                                if (!success) {
+                                  setTtsError('Mobile TTS failed. Try again or use a different browser.');
+                                  setTimeout(() => setTtsError(null), 5000);
+                                }
+                              }
+                              
+                              return;
+                            }
+                            
+                            // DESKTOP HANDLING (Original logic)
                             // If clicking the same language, force restart TTS queue
                             if (autoSpeakLang === langCode) {
                               console.log('[TTS] Force restarting TTS queue');
@@ -1129,7 +1311,7 @@ export default function BroadcastPage() {
                               return; // Don't toggle off
                             }
                             
-                            // Safari/iOS specific user interaction handling
+                            // Safari/iOS specific user interaction handling for desktop
                             if (isSafari() || isIOS()) {
                               // Ensure audio context is activated by user interaction
                               if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
