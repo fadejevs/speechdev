@@ -294,10 +294,11 @@ export default function BroadcastPage() {
     return out;
   };
 
-  // Enhanced speakText function with lightweight Safari handling
+  // Enhanced speakText function with iOS debugging and fallback
   const speakText = useCallback((text, lang, onDone) => {
     // Basic validation
     if (!text || !process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+      console.error('[TTS] Missing text or Azure credentials');
       if (onDone) onDone(false);
       return;
     }
@@ -310,128 +311,242 @@ export default function BroadcastPage() {
     }
 
     console.log(`[TTS] Starting synthesis: "${text.substring(0, 30)}..."`);
+    console.log(`[TTS] Browser: ${navigator.userAgent}`);
+    console.log(`[TTS] Safari: ${isSafari()}, iOS: ${isIOS()}`);
+    
     isSpeaking.current = true;
-
     const safariMode = isSafari() || isIOS();
     
-    const performSynthesis = async () => {
-      // Lightweight Safari preparation
-      if (safariMode && audioContextRef.current && audioContextRef.current.state === 'suspended') {
+    // Try Web Speech API fallback for iOS/Safari first
+    if (safariMode && 'speechSynthesis' in window) {
+      console.log('[TTS Safari] Trying Web Speech API fallback');
+      
+      const tryWebSpeech = async () => {
         try {
-          await audioContextRef.current.resume();
-          console.log('[TTS Safari] Audio context activated');
-        } catch (error) {
-          console.warn('[TTS Safari] Audio context activation failed:', error);
-        }
-      }
-
-      try {
-        // Create synthesizer (same for all browsers)
-        const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-          process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-          process.env.NEXT_PUBLIC_AZURE_REGION
-        );
-        
-        const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
-        speechConfig.speechSynthesisVoiceName = voice;
-        
-        const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
-        const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
-        
-        currentSynthesizerRef.current = synthesizer;
-
-        // Lightweight promise handling
-        const synthesisPromise = new Promise((resolve, reject) => {
-          const timeoutMs = 20000; // Reasonable timeout for all browsers
+          // Cancel any existing speech
+          window.speechSynthesis.cancel();
+          
+          // Wait a bit for iOS to settle
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const utterance = new SpeechSynthesisUtterance(text);
+          
+          // Set language if possible
+          const langMap = {
+            'en': 'en-US',
+            'es': 'es-ES', 
+            'fr': 'fr-FR',
+            'de': 'de-DE',
+            'it': 'it-IT',
+            'pt': 'pt-PT',
+            'ru': 'ru-RU',
+            'zh': 'zh-CN',
+            'ja': 'ja-JP',
+            'ko': 'ko-KR',
+            'lv': 'lv-LV',
+            'lt': 'lt-LT'
+          };
+          
+          utterance.lang = langMap[lang] || langMap['en'] || 'en-US';
+          utterance.rate = 0.9;
+          utterance.pitch = 1.0;
+          utterance.volume = 1.0;
+          
           let completed = false;
           
-          const timeoutId = setTimeout(() => {
+          utterance.onstart = () => {
+            console.log('[TTS Safari] Web Speech started');
+          };
+          
+          utterance.onend = () => {
             if (!completed) {
-              console.warn(`[TTS] Timeout after ${timeoutMs}ms`);
+              console.log('[TTS Safari] Web Speech completed successfully');
               completed = true;
-              try { synthesizer.close(); } catch (e) { /* Ignore */ }
-              currentSynthesizerRef.current = null;
               isSpeaking.current = false;
-              reject(new Error('Synthesis timeout'));
+              if (onDone) onDone(true);
             }
-          }, timeoutMs);
-
-          synthesizer.speakTextAsync(
-            text,
-            (result) => {
-              if (completed) return;
-              clearTimeout(timeoutId);
+          };
+          
+          utterance.onerror = (event) => {
+            console.error('[TTS Safari] Web Speech error:', event.error);
+            console.error('[TTS Safari] Error details:', event);
+            if (!completed) {
               completed = true;
-              
-              console.log(`[TTS] Result: ${result.reason}`);
-              
-              if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-                ttsErrorCount.current = 0; // Reset on success
-                
-                // Simple, fast completion for all browsers
-                const audioDurationMs = result.audioDuration / 10000;
-                console.log(`[TTS] Audio duration: ${audioDurationMs.toFixed(0)}ms`);
-                
-                // Keep wait times reasonable for real-time feel
-                const waitTime = safariMode ? 
-                  Math.min(audioDurationMs + 300, 2000) :  // Safari: max 2s wait
-                  Math.min(audioDurationMs + 100, 1500);   // Others: max 1.5s wait
-                
-                setTimeout(() => {
-                  console.log(`[TTS] Playback complete`);
-                  try { synthesizer.close(); } catch (e) { /* Ignore */ }
-                  currentSynthesizerRef.current = null;
-                  isSpeaking.current = false;
-                  resolve(true);
-                }, waitTime);
+              isSpeaking.current = false;
+              // Fall back to Azure SDK
+              performAzureSynthesis();
+            }
+          };
+          
+          // Timeout for Web Speech API
+          setTimeout(() => {
+            if (!completed) {
+              console.warn('[TTS Safari] Web Speech timeout, trying Azure SDK');
+              window.speechSynthesis.cancel();
+              completed = true;
+              performAzureSynthesis();
+            }
+          }, 15000);
+          
+          console.log('[TTS Safari] Starting Web Speech synthesis');
+          console.log('[TTS Safari] Utterance config:', {
+            lang: utterance.lang,
+            rate: utterance.rate,
+            pitch: utterance.pitch,
+            volume: utterance.volume
+          });
+          
+          // Check if speechSynthesis is actually available
+          if (window.speechSynthesis.speaking) {
+            console.warn('[TTS Safari] Already speaking, canceling first');
+            window.speechSynthesis.cancel();
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+          
+          window.speechSynthesis.speak(utterance);
+          
+        } catch (error) {
+          console.error('[TTS Safari] Web Speech API failed:', error);
+          // Fall back to Azure SDK
+          performAzureSynthesis();
+        }
+      };
+      
+      tryWebSpeech();
+      return;
+    }
+    
+    // Azure SDK synthesis (original method)
+    performAzureSynthesis();
+    
+    function performAzureSynthesis() {
+      console.log('[TTS] Using Azure Speech SDK');
+      
+      const performSynthesis = async () => {
+        // Lightweight Safari preparation
+        if (safariMode && audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          try {
+            await audioContextRef.current.resume();
+            console.log('[TTS Safari] Audio context activated');
+          } catch (error) {
+            console.warn('[TTS Safari] Audio context activation failed:', error);
+          }
+        }
 
-              } else {
-                console.warn(`[TTS] Failed: ${result.reason}`);
+        try {
+          console.log('[TTS] Creating Azure synthesizer...');
+          
+          // Create synthesizer (same for all browsers)
+          const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
+            process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+            process.env.NEXT_PUBLIC_AZURE_REGION
+          );
+          
+          const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
+          speechConfig.speechSynthesisVoiceName = voice;
+          console.log(`[TTS] Using voice: ${voice}`);
+          
+          const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
+          const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
+          
+          currentSynthesizerRef.current = synthesizer;
+          console.log('[TTS] Synthesizer created successfully');
+
+          // Lightweight promise handling
+          const synthesisPromise = new Promise((resolve, reject) => {
+            const timeoutMs = 20000;
+            let completed = false;
+            
+            const timeoutId = setTimeout(() => {
+              if (!completed) {
+                console.warn(`[TTS] Azure synthesis timeout after ${timeoutMs}ms`);
+                completed = true;
                 try { synthesizer.close(); } catch (e) { /* Ignore */ }
                 currentSynthesizerRef.current = null;
                 isSpeaking.current = false;
-                resolve(false);
+                reject(new Error('Azure synthesis timeout'));
               }
-            },
-            (error) => {
-              if (completed) return;
-              clearTimeout(timeoutId);
-              completed = true;
-              
-              console.error(`[TTS] Error: ${error}`);
-              ttsErrorCount.current++;
-              
-              try { synthesizer.close(); } catch (e) { /* Ignore */ }
-              currentSynthesizerRef.current = null;
-              isSpeaking.current = false;
-              
-              reject(error);
-            }
-          );
-        });
+            }, timeoutMs);
 
-        const success = await synthesisPromise;
-        if (onDone) onDone(success);
+            console.log('[TTS] Starting Azure synthesis...');
+            synthesizer.speakTextAsync(
+              text,
+              (result) => {
+                if (completed) return;
+                clearTimeout(timeoutId);
+                completed = true;
+                
+                console.log(`[TTS] Azure result: ${result.reason}`);
+                console.log(`[TTS] Result details:`, result);
+                
+                if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+                  ttsErrorCount.current = 0;
+                  
+                  const audioDurationMs = result.audioDuration / 10000;
+                  console.log(`[TTS] Audio duration: ${audioDurationMs.toFixed(0)}ms`);
+                  
+                  const waitTime = safariMode ? 
+                    Math.min(audioDurationMs + 300, 2000) :
+                    Math.min(audioDurationMs + 100, 1500);
+                  
+                  console.log(`[TTS] Waiting ${waitTime}ms for playback completion`);
+                  
+                  setTimeout(() => {
+                    console.log(`[TTS] Azure playback complete`);
+                    try { synthesizer.close(); } catch (e) { console.warn('[TTS] Cleanup error:', e); }
+                    currentSynthesizerRef.current = null;
+                    isSpeaking.current = false;
+                    resolve(true);
+                  }, waitTime);
 
-      } catch (error) {
-        console.error(`[TTS] Critical error: ${error.message}`);
-        ttsErrorCount.current++;
-        isSpeaking.current = false;
-        
-        // Quick recovery
-        if (ttsErrorCount.current >= maxTtsErrors) {
-          console.warn(`[TTS] Too many errors, brief pause`);
-          setTimeout(() => {
-            ttsErrorCount.current = 0;
-            console.log('[TTS] Re-enabled');
-          }, 5000); // Much shorter cooldown
+                } else {
+                  console.warn(`[TTS] Azure synthesis failed: ${result.reason}`);
+                  console.warn(`[TTS] Error details:`, result.errorDetails);
+                  try { synthesizer.close(); } catch (e) { /* Ignore */ }
+                  currentSynthesizerRef.current = null;
+                  isSpeaking.current = false;
+                  resolve(false);
+                }
+              },
+              (error) => {
+                if (completed) return;
+                clearTimeout(timeoutId);
+                completed = true;
+                
+                console.error(`[TTS] Azure synthesis error:`, error);
+                ttsErrorCount.current++;
+                
+                try { synthesizer.close(); } catch (e) { /* Ignore */ }
+                currentSynthesizerRef.current = null;
+                isSpeaking.current = false;
+                
+                reject(error);
+              }
+            );
+          });
+
+          const success = await synthesisPromise;
+          if (onDone) onDone(success);
+
+        } catch (error) {
+          console.error(`[TTS] Azure SDK critical error:`, error);
+          ttsErrorCount.current++;
+          isSpeaking.current = false;
+          
+          if (ttsErrorCount.current >= maxTtsErrors) {
+            console.warn(`[TTS] Too many Azure errors, brief pause`);
+            setTimeout(() => {
+              ttsErrorCount.current = 0;
+              console.log('[TTS] Re-enabled after errors');
+            }, 5000);
+          }
+          
+          if (onDone) onDone(false);
         }
-        
-        if (onDone) onDone(false);
-      }
-    };
+      };
 
-    performSynthesis();
+      performSynthesis();
+    }
   }, []);
 
   // Streamlined queue processor for smooth real-time performance
@@ -502,16 +617,29 @@ export default function BroadcastPage() {
 
   // TTS effect with enhanced error handling
   useEffect(() => {
-    if (!autoSpeakLang || !liveTranslations[autoSpeakLang]) return;
+    console.log(`[TTS Effect] Effect triggered. autoSpeakLang: ${autoSpeakLang}`);
+    console.log(`[TTS Effect] liveTranslations:`, liveTranslations);
+    
+    if (!autoSpeakLang || !liveTranslations[autoSpeakLang]) {
+      console.log(`[TTS Effect] No autoSpeakLang or no translation for ${autoSpeakLang}`);
+      return;
+    }
 
     const text = liveTranslations[autoSpeakLang].trim();
-    if (!text || text.length < 5) return; // Reduced minimum length
+    console.log(`[TTS Effect] Processing text: "${text}" (length: ${text.length})`);
+    
+    if (!text || text.length < 5) {
+      console.log(`[TTS Effect] Text too short, skipping`);
+      return;
+    }
     
     console.log(`[TTS Effect] Processing translation: "${text}" for language: ${autoSpeakLang}`);
     console.log(`[TTS Effect] Current queue length: ${ttsQueue.current.length}, isSpeaking: ${isSpeaking.current}, isProcessing: ${isProcessingQueue.current}`);
+    console.log(`[TTS Effect] Browser info: Safari=${isSafari()}, iOS=${isIOS()}`);
     
     // Check if TTS is disabled due to too many errors
     if (ttsErrorCount.current >= maxTtsErrors) {
+      console.warn(`[TTS Effect] TTS disabled due to ${ttsErrorCount.current} errors`);
       if (!showTtsWarning) {
         setShowTtsWarning(true);
         setTtsError(`TTS temporarily disabled due to browser compatibility issues. Try refreshing the page or using a different browser.`);
@@ -527,6 +655,7 @@ export default function BroadcastPage() {
     
     // Create a unique identifier for this translation based on content and timestamp
     const translationId = `${autoSpeakLang}_${Date.now()}_${text.substring(0, 20)}`;
+    console.log(`[TTS Effect] Translation ID: ${translationId}`);
     
     // Enhanced duplicate check - use a hash-based approach for better performance
     const textHash = text.toLowerCase().replace(/[^\w\s]/g, '').trim();
@@ -539,18 +668,23 @@ export default function BroadcastPage() {
       sentences.push(text);
     }
     
+    console.log(`[TTS Effect] Split into ${sentences.length} sentences:`, sentences);
+    
     let newSentencesQueued = 0;
     
     // Queue each sentence separately
     sentences.forEach((sentence, index) => {
       const cleanSentence = sentence.trim();
-      if (cleanSentence.length < 3) return; // Skip very short sentences
+      if (cleanSentence.length < 3) {
+        console.log(`[TTS Effect] Skipping short sentence: "${cleanSentence}"`);
+        return;
+      }
       
       const sentenceHash = `${autoSpeakLang}_${cleanSentence.toLowerCase().replace(/[^\w\s]/g, '')}`;
       
       // Check if this exact sentence hasn't been spoken recently
       if (!spokenSentences.current.has(sentenceHash)) {
-        console.log(`[TTS] Queueing NEW sentence ${index + 1}/${sentences.length}: "${cleanSentence}"`);
+        console.log(`[TTS Effect] Queueing NEW sentence ${index + 1}/${sentences.length}: "${cleanSentence}"`);
         ttsQueue.current.push({ 
           text: cleanSentence, 
           lang: autoSpeakLang,
@@ -559,18 +693,26 @@ export default function BroadcastPage() {
         spokenSentences.current.add(sentenceHash);
         newSentencesQueued++;
       } else {
-        console.log(`[TTS] Skipping duplicate sentence: "${cleanSentence}"`);
+        console.log(`[TTS Effect] Skipping duplicate sentence: "${cleanSentence}"`);
       }
     });
     
     console.log(`[TTS Effect] Queued ${newSentencesQueued} new sentences. Total queue: ${ttsQueue.current.length}`);
+    console.log(`[TTS Effect] Current queue contents:`, ttsQueue.current.map(item => item.text.substring(0, 30)));
     
     // Start processing if we have new sentences
     if (newSentencesQueued > 0) {
       if (!isSpeaking.current && !isProcessingQueue.current) {
-        console.log(`[TTS Effect] Starting queue processing`);
-        setTimeout(() => processQueue(), 100);
+        console.log(`[TTS Effect] Starting queue processing immediately`);
+        setTimeout(() => {
+          console.log(`[TTS Effect] Executing processQueue`);
+          processQueue();
+        }, 100);
+      } else {
+        console.log(`[TTS Effect] Cannot start processing: isSpeaking=${isSpeaking.current}, isProcessing=${isProcessingQueue.current}`);
       }
+    } else {
+      console.log(`[TTS Effect] No new sentences to queue`);
     }
 
   }, [liveTranslations, autoSpeakLang, processQueue]);
