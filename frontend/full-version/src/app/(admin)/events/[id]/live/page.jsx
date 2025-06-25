@@ -194,9 +194,9 @@ export default function EventLivePage() {
         
         // AGGRESSIVE TIMEOUT SETTINGS for faster TTS response (like mobile Web Speech API)
         // Make Azure send final results much faster instead of waiting for long pauses
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, "300");  // Default: 2000ms -> 300ms
+        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, "200");  // Default: 2000ms -> 300ms
         speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "100");  // Default: 5000ms -> 300ms  
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, "500");  // Default: 15000ms -> 800ms
+        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, "300");  // Default: 15000ms -> 800ms
         
         console.log("[Azure Config] Applied aggressive timeout settings for faster TTS response");
         

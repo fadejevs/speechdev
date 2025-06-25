@@ -537,7 +537,7 @@ export default function BroadcastPage() {
       isSpeaking.current = false; // Release the lock
       
       // For Safari/iOS, add a longer pause and ensure audio context stays active
-      const pauseTime = (isSafari() || isIOS()) ? 400 : 100;
+      const pauseTime = (isSafari() || isIOS()) ? 800 : 250;
       
       setTimeout(() => {
         // Double-check queue isn't stuck
@@ -651,14 +651,7 @@ export default function BroadcastPage() {
 
   // Effect for socket connection and transcription handling
   useEffect(() => {
-    const socket = io(SOCKET_URL, { 
-      transports: ["websocket"],
-      forceNew: true, // Force new connection to prevent stale connections
-      timeout: 10000, // 10 second connection timeout
-      reconnection: true,
-      reconnectionAttempts: 3,
-      reconnectionDelay: 1000
-    });
+    const socket = io(SOCKET_URL, { transports: ["websocket"] });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -834,18 +827,9 @@ export default function BroadcastPage() {
 
     return () => {
       if (socketRef.current) {
-        try {
-          // Only disconnect if socket is connected or connecting
-          if (socketRef.current.connected || socketRef.current.connecting) {
-            socketRef.current.emit("leave_room", { room: id });
-            socketRef.current.disconnect();
-          }
-        } catch (error) {
-          // Silently handle socket cleanup errors that occur during hot reload/development
-          console.warn('[Socket Cleanup] Error during socket cleanup (likely due to hot reload):', error.message);
-        } finally {
-          socketRef.current = null;
-        }
+        socketRef.current.emit("leave_room", { room: id });
+        socketRef.current.disconnect();
+        socketRef.current = null;
       }
     };
   }, [id, translationLanguage, processQueue, autoSpeakLang]);
