@@ -17,97 +17,87 @@ export const AuthProvider = ({ children }) => {
   const router = useRouter();
 
   const fetchUser = async () => {
-    axios
-      .get('/api/auth/getUser')
-      .then((response) => {
-        // console.log('API user response:', response.data);
-        setUser(response.data || {});
-        setIsProcessing(false);
-      })
-      .catch(() => {
-        setIsProcessing(false);
-        localStorage.removeItem(AUTH_USER_KEY);
-        setUser(null);
-      });
+    try {
+      const response = await axios.get('/api/auth/getUser');
+      setUser(response.data || {});
+      setIsProcessing(false);
+    } catch (error) {
+      console.log('Failed to fetch user:', error);
+      setIsProcessing(false);
+      // Don't remove localStorage here - let Supabase manage it
+      setUser(null);
+    }
   };
 
   const refreshUser = async () => {
     await fetchUser();
   };
 
-  const manageUserData = (localStorageData) => {
-    const parsedAuthData = localStorageData ? JSON.parse(localStorageData) : null;
-    if (parsedAuthData?.access_token) {
-      fetchUser();
-    } else {
-      setIsProcessing(false);
-    }
-  };
-
+  // Simplified session management - let Supabase handle the heavy lifting
   useEffect(() => {
-    const localStorageData = typeof window !== 'undefined' ? localStorage.getItem(AUTH_USER_KEY) : null;
-    manageUserData(localStorageData);
+    let mounted = true;
 
-    const handleStorageEvent = (e) => {
-      if (e.storageArea === localStorage && e.key === AUTH_USER_KEY) {
-        manageUserData(e.newValue);
+    const initializeAuth = async () => {
+      try {
+        // Wait a bit for any pending auth operations to complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Get the current session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
+
+        if (session && !error) {
+          // Store session in localStorage for axios interceptor
+          localStorage.setItem(AUTH_USER_KEY, JSON.stringify(session));
+          await fetchUser();
+        } else {
+          // Try to refresh the session once
+          const { data: { session: refreshedSession } } = await supabase.auth.refreshSession();
+          
+          if (!mounted) return;
+          
+          if (refreshedSession) {
+            localStorage.setItem(AUTH_USER_KEY, JSON.stringify(refreshedSession));
+            await fetchUser();
+          } else {
+            localStorage.removeItem(AUTH_USER_KEY);
+            setUser(null);
+            setIsProcessing(false);
+          }
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        if (mounted) {
+          setIsProcessing(false);
+          setUser(null);
+        }
       }
     };
 
-    window.addEventListener('storage', handleStorageEvent);
+    initializeAuth();
 
-    return () => {
-      window.removeEventListener('storage', handleStorageEvent);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
 
-  useEffect(() => {
-    async function syncSession() {
-      const { data } = await supabase.auth.getSession();
-      if (data?.session) {
-        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.session));
-      }
-    }
-    syncSession();
-  }, []);
+      console.log('Auth state change:', event, session ? 'session exists' : 'no session');
 
-  useEffect(() => {
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
         localStorage.setItem(AUTH_USER_KEY, JSON.stringify(session));
         await fetchUser();
       } else {
         localStorage.removeItem(AUTH_USER_KEY);
         setUser(null);
+        setIsProcessing(false);
       }
     });
-    return () => {
-      listener.subscription.unsubscribe();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  // useEffect(() => {
-  //   const handleAuth = async () => {
-  //     const { data, error } = await supabase.auth.getSession();
-  //     if (data?.session) {
-  //       localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.session));
-  //       router.replace(APP_DEFAULT_PATH);
-  //     } else {
-  //       // fallback: try to refresh session
-  //       await supabase.auth.refreshSession();
-  //       const { data: refreshed } = await supabase.auth.getSession();
-  //       if (refreshed?.session) {
-  //         localStorage.setItem(AUTH_USER_KEY, JSON.stringify(refreshed.session));
-  //         router.replace(APP_DEFAULT_PATH);
-  //       } else {
-  //         router.replace('/login');
-  //       }
-  //     }
-  //   };
-  //   handleAuth();
-  // }, [router]);
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   return <AuthContext.Provider value={{ user, isProcessing, refreshUser }}>{children}</AuthContext.Provider>;
 };
