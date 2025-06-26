@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 // @mui
 import { useTheme } from '@mui/material/styles';
@@ -12,40 +13,80 @@ import ListItemText from '@mui/material/ListItemText';
 import ListSubheader from '@mui/material/ListSubheader';
 import OutlinedInput from '@mui/material/OutlinedInput';
 import Popper from '@mui/material/Popper';
+import Typography from '@mui/material/Typography';
+import Chip from '@mui/material/Chip';
 
 // @project
 import { ThemeDirection } from '@/config';
 import EmptySearch from '@/components/header/empty-state/EmptySearch';
 import MainCard from '@/components/MainCard';
-import NotificationItem from '@/components/NotificationItem';
+import { supabase } from '@/utils/supabase/client';
 import { AvatarSize } from '@/enum';
 
 // @assets
-import { IconCommand, IconSearch } from '@tabler/icons-react';
-
-/***************************  HEADER - SEARCH DATA  ***************************/
-
-const profileData = [
-  { alt: 'Aplican Warner', src: '/assets/images/users/avatar-1.png', title: 'Aplican Warner', subTitle: 'Admin' },
-  { alt: 'Apliaye Aweoa', src: '/assets/images/users/avatar-2.png', title: 'Apliaye Aweoa', subTitle: 'Admin' }
-];
-
-const listCotent = [
-  { title: 'Role', items: ['Applican', 'App User'] },
-  { title: 'Files', items: ['Applican', 'Applican'] }
-];
+import { IconCommand, IconSearch, IconCalendar, IconMapPin } from '@tabler/icons-react';
 
 /***************************  HEADER - SEARCH BAR  ***************************/
 
 export default function SearchBar() {
   const theme = useTheme();
+  const router = useRouter();
   const downSM = useMediaQuery(theme.breakpoints.down('sm'));
 
   const buttonStyle = { borderRadius: 2, p: 1 };
   const [anchorEl, setAnchorEl] = useState(null);
   const [isEmptySearch, setIsEmptySearch] = useState(true);
   const [isPopperOpen, setIsPopperOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [userEvents, setUserEvents] = useState([]);
+  const [filteredEvents, setFilteredEvents] = useState([]);
+  const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
+
+  // Fetch user events
+  useEffect(() => {
+    const fetchUserEvents = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data, error } = await supabase
+          .from('events')
+          .select('*')
+          .eq('created_by', user.id)
+          .order('timestamp', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching events:', error);
+          return;
+        }
+
+        setUserEvents(data || []);
+      } catch (error) {
+        console.error('Error fetching user events:', error);
+      }
+    };
+
+    fetchUserEvents();
+  }, []);
+
+  // Filter events based on search query
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredEvents([]);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase();
+    const filtered = userEvents.filter(event => 
+      (event.title && event.title.toLowerCase().includes(query)) ||
+      (event.description && event.description.toLowerCase().includes(query)) ||
+      (event.location && event.location.toLowerCase().includes(query)) ||
+      (event.type && event.type.toLowerCase().includes(query))
+    );
+
+    setFilteredEvents(filtered);
+  }, [searchQuery, userEvents]);
 
   // Function to open the popper
   const openPopper = (event) => {
@@ -64,7 +105,9 @@ export default function SearchBar() {
   };
 
   const handleInputChange = (event) => {
-    const isEmpty = event.target.value.trim() === '';
+    const value = event.target.value;
+    setSearchQuery(value);
+    const isEmpty = value.trim() === '';
     setIsEmptySearch(isEmpty);
 
     if (!isPopperOpen && !isEmpty) {
@@ -86,15 +129,108 @@ export default function SearchBar() {
     }
   };
 
-  const renderSubheader = (title, withMarginTop = false) => (
-    <ListSubheader sx={{ color: 'text.disabled', typography: 'caption', py: 0.5, px: 1, mb: 0.5, ...(withMarginTop && { mt: 1.5 }) }}>
-      {title}
-    </ListSubheader>
-  );
+  const handleEventClick = (eventData) => {
+    // Navigate to the event based on its status
+    if (eventData.status === "Live" || eventData.status === "Paused") {
+      router.push(`/events/${eventData.id}/live`);
+    } else if (eventData.status === "Completed") {
+      router.push(`/events/${eventData.id}/complete`);
+    } else {
+      router.push(`/events/${eventData.id}`);
+    }
+    // Close the popper
+    setIsPopperOpen(false);
+    setAnchorEl(null);
+    setSearchQuery('');
+    setIsEmptySearch(true);
+  };
 
-  const renderListItem = (item, index) => (
-    <ListItemButton key={index} sx={buttonStyle} onClick={handleActionClick}>
-      <ListItemText primary={item} />
+  const formatDate = (dateString) => {
+    if (!dateString || dateString === 'Not specified') return 'No date';
+    const date = new Date(dateString);
+    if (isNaN(date)) return 'No date';
+    return date.toLocaleDateString();
+  };
+
+  const getStatusChip = (status) => {
+    switch(status) {
+      case 'Draft event':
+        return <Chip 
+          label="Draft" 
+          size="small" 
+          sx={{ 
+            bgcolor: '#fff5f5',
+            color: '#ff4842',
+            fontSize: '0.75rem',
+            height: '20px'
+          }} 
+        />;
+      case 'Live':
+        return <Chip 
+          label="Live" 
+          size="small" 
+          sx={{ 
+            bgcolor: '#e8f5e9',
+            color: '#4caf50',
+            fontSize: '0.75rem',
+            height: '20px'
+          }} 
+        />;
+      case 'Completed':
+        return <Chip 
+          label="Completed" 
+          size="small" 
+          sx={{ 
+            bgcolor: '#e8f5e9',
+            color: '#4caf50',
+            fontSize: '0.75rem',
+            height: '20px'
+          }} 
+        />;
+      default:
+        return <Chip 
+          label={status || 'Draft'} 
+          size="small" 
+          sx={{ 
+            bgcolor: '#fff8e1',
+            color: '#ff9800',
+            fontSize: '0.75rem',
+            height: '20px'
+          }} 
+        />;
+    }
+  };
+
+  const renderEventItem = (event, index) => (
+    <ListItemButton 
+      key={event.id || index} 
+      sx={buttonStyle} 
+      onClick={() => handleEventClick(event)}
+    >
+      <div style={{ width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+          <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary' }}>
+            {event.title || 'Untitled Event'}
+          </Typography>
+          {getStatusChip(event.status)}
+        </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+          <IconCalendar size={14} color={theme.palette.text.secondary} />
+          <Typography variant="caption" color="text.secondary">
+            {formatDate(event.timestamp)}
+          </Typography>
+        </div>
+        
+        {event.location && event.location !== 'Not specified' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <IconMapPin size={14} color={theme.palette.text.secondary} />
+            <Typography variant="caption" color="text.secondary">
+              {event.location}
+            </Typography>
+          </div>
+        )}
+      </div>
     </ListItemButton>
   );
 
@@ -120,7 +256,8 @@ export default function SearchBar() {
     <>
       <OutlinedInput
         inputRef={inputRef}
-        placeholder="Search here"
+        placeholder="Search events..."
+        value={searchQuery}
         startAdornment={
           <InputAdornment position="start">
             <IconSearch />
@@ -132,7 +269,7 @@ export default function SearchBar() {
           </InputAdornment>
         }
         aria-describedby="Search"
-        inputProps={{ 'aria-label': 'search' }}
+        inputProps={{ 'aria-label': 'search events' }}
         onClick={handleActionClick}
         onKeyDown={handleKeyDown}
         onChange={handleInputChange}
@@ -168,24 +305,32 @@ export default function SearchBar() {
               >
                 {isEmptySearch ? (
                   <EmptySearch />
+                ) : filteredEvents.length === 0 ? (
+                  <div style={{ padding: '16px', textAlign: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No events found for "{searchQuery}"
+                    </Typography>
+                  </div>
                 ) : (
                   <List disablePadding>
-                    {renderSubheader('Users')}
-                    {profileData.map((user, index) => (
-                      <ListItemButton sx={buttonStyle} key={index} onClick={handleActionClick}>
-                        <NotificationItem
-                          avatar={{ alt: user.alt, src: user.src, size: AvatarSize.XS }}
-                          title={user.title}
-                          subTitle={user.subTitle}
-                        />
+                    <ListSubheader sx={{ color: 'text.disabled', typography: 'caption', py: 0.5, px: 1, mb: 0.5 }}>
+                      Events ({filteredEvents.length})
+                    </ListSubheader>
+                    {filteredEvents.slice(0, 5).map((event, index) => renderEventItem(event, index))}
+                    {filteredEvents.length > 5 && (
+                      <ListItemButton 
+                        sx={buttonStyle} 
+                        onClick={() => {
+                          router.push('/dashboard/analytics');
+                          setIsPopperOpen(false);
+                          setAnchorEl(null);
+                        }}
+                      >
+                        <Typography variant="caption" color="primary" sx={{ textAlign: 'center', width: '100%' }}>
+                          View all {filteredEvents.length} results
+                        </Typography>
                       </ListItemButton>
-                    ))}
-                    {listCotent.map((list, item) => (
-                      <Fragment key={item}>
-                        {renderSubheader(list.title, true)}
-                        {list.items.map((item, index) => renderListItem(item, index))}
-                      </Fragment>
-                    ))}
+                    )}
                   </List>
                 )}
               </ClickAwayListener>

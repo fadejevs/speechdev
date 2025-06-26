@@ -14,7 +14,7 @@ import { IconChevronRight, IconClock, IconHelp, IconKeyboard, IconStatusChange }
 
 const resourceData = [
   { id: 1, icon: <IconStatusChange />, title: 'Change Log', buttonLabel: 'View Change Log', buttonType: 'button' },
-  { id: 2, icon: <IconHelp />, title: 'SaasAble Help Center', buttonLabel: 'Get Help', buttonType: 'button' },
+  { id: 2, icon: <IconHelp />, title: 'Everspeak Help Center', buttonLabel: 'Get Help', buttonType: 'button' },
   { id: 3, icon: <IconKeyboard />, title: 'Keyboard Shortcut', buttonType: 'icon' },
   { id: 4, icon: <IconClock />, title: 'Activity log', buttonType: 'icon' }
 ];
