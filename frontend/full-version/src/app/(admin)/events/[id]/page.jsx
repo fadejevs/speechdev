@@ -98,6 +98,9 @@ const EditEventPage = () => {
     targetLanguages: [],
     recordEvent: false
   });
+  const [originalEventData, setOriginalEventData] = useState(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [unsavedChangesDialogOpen, setUnsavedChangesDialogOpen] = useState(false);
   const [sourceMenuAnchorEl, setSourceMenuAnchorEl] = useState(null);
   const [targetAnchorEl, setTargetAnchorEl] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -115,6 +118,48 @@ const EditEventPage = () => {
   const [locationLoading, setLocationLoading] = useState(false);
 
   console.log('Event id:', id);
+
+  // Function to compare if event data has changed
+  const hasDataChanged = (current, original) => {
+    if (!original) return false;
+    
+    // Helper function to safely format dates
+    const formatDate = (date) => {
+      if (!date) return null;
+      if (typeof date === 'string') return date;
+      if (dayjs.isDayjs(date)) return date.format('DD.MM.YYYY');
+      return null;
+    };
+
+    // Helper function to safely format times
+    const formatTime = (time) => {
+      if (!time) return null;
+      if (typeof time === 'string') return time;
+      if (dayjs.isDayjs(time)) return time.format('HH:mm');
+      return null;
+    };
+    
+    // Compare all fields that can be edited
+    return (
+      current.name !== original.name ||
+      current.description !== original.description ||
+      current.location !== original.location ||
+      current.type !== original.type ||
+      current.recordEvent !== original.recordEvent ||
+      formatDate(current.date) !== original.date ||
+      formatTime(current.startTime) !== original.startTime ||
+      formatTime(current.endTime) !== original.endTime ||
+      JSON.stringify(current.sourceLanguages) !== JSON.stringify(original.sourceLanguages) ||
+      JSON.stringify(current.targetLanguages) !== JSON.stringify(original.targetLanguages)
+    );
+  };
+
+  // Check for unsaved changes whenever eventData changes
+  useEffect(() => {
+    if (originalEventData) {
+      setHasUnsavedChanges(hasDataChanged(eventData, originalEventData));
+    }
+  }, [eventData, originalEventData]);
 
   useEffect(() => {
     // Fetch event data from Supabase
@@ -153,7 +198,7 @@ const EditEventPage = () => {
             }
           }
 
-          setEventData({
+          const fetchedEventData = {
             name: event.title === 'Not specified' ? '' : event.title,
             description: event.description === 'Not specified' ? '' : event.description,
             location: event.location === 'Not specified' ? '' : event.location,
@@ -165,7 +210,17 @@ const EditEventPage = () => {
             startTime: event.startTime ? dayjs(event.startTime, 'HH:mm') : null,
             endTime: event.endTime ? dayjs(event.endTime, 'HH:mm') : null,
             status: event.status || 'Draft event'
-          });
+          };
+
+          setEventData(fetchedEventData);
+          // Store original data for comparison - convert dayjs to strings for consistent comparison
+          const originalData = {
+            ...fetchedEventData,
+            date: fetchedEventData.date ? fetchedEventData.date.format('DD.MM.YYYY') : null,
+            startTime: fetchedEventData.startTime ? fetchedEventData.startTime.format('HH:mm') : null,
+            endTime: fetchedEventData.endTime ? fetchedEventData.endTime.format('HH:mm') : null
+          };
+          setOriginalEventData(originalData);
 
           console.log('Fetched event:', event);
         }
@@ -305,6 +360,17 @@ const EditEventPage = () => {
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
+      
+      // Update the original data after successful save - convert to same format
+      const updatedOriginalData = {
+        ...eventData,
+        date: eventData.date ? eventData.date.format('DD.MM.YYYY') : null,
+        startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
+        endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
+      };
+      setOriginalEventData(updatedOriginalData);
+      setHasUnsavedChanges(false);
+      
     } catch (error) {
       console.error('Error saving event data:', error);
     } finally {
@@ -383,6 +449,12 @@ const EditEventPage = () => {
   };
 
   const handleOpenStartDialog = () => {
+    // Check if there are unsaved changes
+    if (hasUnsavedChanges) {
+      setUnsavedChangesDialogOpen(true);
+      return;
+    }
+
     // Format languages before opening the start dialog
     const formattedSourceLanguages = eventData.sourceLanguages.map(lang => 
       formatForSpeechRecognition(lang)
@@ -404,6 +476,44 @@ const EditEventPage = () => {
 
   const handleCloseStartDialog = () => {
     setStartDialogOpen(false);
+  };
+
+  const handleSaveAndStart = async () => {
+    setUnsavedChangesDialogOpen(false);
+    await handleSaveChanges();
+    
+    // After saving, directly open the start dialog without checking for unsaved changes
+    // Format languages before opening the start dialog
+    const formattedSourceLanguages = eventData.sourceLanguages.map(lang => 
+      formatForSpeechRecognition(lang)
+    );
+    
+    const formattedTargetLanguages = eventData.targetLanguages.map(lang => 
+      formatForTranslationTarget(lang)
+    );
+    
+    // Update the event data with formatted languages
+    setEventData(prev => ({
+      ...prev,
+      sourceLanguages: formattedSourceLanguages,
+      targetLanguages: formattedTargetLanguages
+    }));
+    
+    // Small delay to ensure save completes and state updates
+    setTimeout(() => {
+      setStartDialogOpen(true);
+    }, 500);
+  };
+
+  const handleDiscardAndStart = () => {
+    setUnsavedChangesDialogOpen(false);
+    // Reset to original data
+    setEventData(JSON.parse(JSON.stringify(originalEventData)));
+    setHasUnsavedChanges(false);
+    // Small delay to ensure state updates
+    setTimeout(() => {
+      handleOpenStartDialog();
+    }, 100);
   };
 
   const handleCopyLink = () => {
@@ -512,38 +622,10 @@ const EditEventPage = () => {
             </Button>
             
             <Button
-              variant="outlined"
-              onClick={handleSaveChanges}
-              disabled={isSaving}
-              startIcon={saveSuccess ? <CheckIcon /> : null}
-              sx={{ 
-                borderColor: saveSuccess ? '#36B37E' : '#6366f1',
-                color: saveSuccess ? '#36B37E' : '#6366f1',
-                borderRadius: '8px',
-                textTransform: 'none',
-                fontWeight: 500,
-                px: 3,
-                py: 0,
-                height: '40px',
-                fontSize: '14px',
-                '&:hover': { 
-                  borderColor: saveSuccess ? '#36B37E' : '#4338ca', 
-                  bgcolor: saveSuccess ? 'rgba(54, 179, 126, 0.08)' : 'rgba(99, 102, 241, 0.08)'
-                },
-                '&.Mui-disabled': {
-                  borderColor: '#E5E8EB',
-                  color: '#B0B7C3'
-                }
-              }}
-            >
-              {isSaving ? 'Saving...' : (saveSuccess ? 'Saved!' : 'Save Changes')}
-            </Button>
-            
-            <Button
               variant="contained"
               onClick={handleOpenStartDialog}
               sx={{ 
-                bgcolor: '#6366f1',
+                bgcolor: hasUnsavedChanges ? '#ff9800' : '#6366f1',
                 borderRadius: '8px',
                 textTransform: 'none',
                 fontWeight: 500,
@@ -551,7 +633,24 @@ const EditEventPage = () => {
                 py: 0,
                 height: '40px',
                 fontSize: '14px',
-                '&:hover': { bgcolor: '#4338ca' }
+                position: 'relative',
+                '&:hover': { 
+                  bgcolor: hasUnsavedChanges ? '#f57c00' : '#4338ca' 
+                },
+                ...(hasUnsavedChanges && {
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    top: -2,
+                    right: -2,
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    backgroundColor: '#ff4842',
+                    border: '2px solid white',
+                    zIndex: 1
+                  }
+                })
               }}
             >
               Start Event
@@ -1279,6 +1378,122 @@ const EditEventPage = () => {
         >
           Start Broadcast
         </Button>
+      </Dialog>
+
+      {/* Unsaved Changes Dialog */}
+      <Dialog
+        open={unsavedChangesDialogOpen}
+        onClose={() => setUnsavedChangesDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            width: '420px',
+            margin: '0 auto',
+            boxShadow: '0px 20px 40px rgba(0, 0, 0, 0.1)',
+            overflow: 'visible'
+          }
+        }}
+      >
+        <Box sx={{ p: '24px' }}>
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'flex-start',
+            mb: 2
+          }}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '18px', color: '#212B36', mb: 0.5 }}>
+                Unsaved Changes
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#637381', fontSize: '14px' }}>
+                You have unsaved changes to your event settings.
+              </Typography>
+            </Box>
+            <IconButton 
+              onClick={() => setUnsavedChangesDialogOpen(false)} 
+              size="small"
+              sx={{ 
+                color: '#637381',
+                p: '4px',
+                '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
+              }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+          
+          <Typography variant="body2" sx={{ mb: 3, color: '#637381', fontSize: '14px', lineHeight: 1.5 }}>
+            Would you like to save your changes before starting the event, or discard them and continue?
+          </Typography>
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Button
+              fullWidth
+              variant="contained"
+              onClick={handleSaveAndStart}
+              disabled={isSaving}
+              sx={{
+                bgcolor: '#6366f1',
+                color: 'white',
+                borderRadius: '8px',
+                textTransform: 'none',
+                fontWeight: 500,
+                py: 1.5,
+                fontSize: '14px',
+                '&:hover': {
+                  bgcolor: '#4338ca'
+                },
+                '&.Mui-disabled': {
+                  bgcolor: '#B0B7C3',
+                  color: 'white'
+                }
+              }}
+            >
+              {isSaving ? 'Saving...' : 'Save Changes & Start Event'}
+            </Button>
+            
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={handleDiscardAndStart}
+              sx={{
+                borderColor: '#E5E8EB',
+                color: '#637381',
+                borderRadius: '8px',
+                textTransform: 'none',
+                fontWeight: 500,
+                py: 1.5,
+                fontSize: '14px',
+                '&:hover': {
+                  borderColor: '#B0B7C3',
+                  bgcolor: 'rgba(99, 115, 129, 0.08)',
+                  color: '#212B36'
+                }
+              }}
+            >
+              Discard Changes & Start Event
+            </Button>
+            
+            <Button
+              fullWidth
+              variant="text"
+              onClick={() => setUnsavedChangesDialogOpen(false)}
+              sx={{
+                color: '#637381',
+                textTransform: 'none',
+                fontWeight: 500,
+                py: 1,
+                fontSize: '14px',
+                '&:hover': {
+                  bgcolor: 'rgba(99, 115, 129, 0.08)',
+                  color: '#212B36'
+                }
+              }}
+            >
+              Cancel
+            </Button>
+          </Box>
+        </Box>
       </Dialog>
     </Box>
   );
