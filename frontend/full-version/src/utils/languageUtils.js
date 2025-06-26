@@ -54,8 +54,8 @@ const languageFormats = {
   translation: {
     // Source languages
     'en': 'EN',
-    'en-us': 'EN',
-    'en-gb': 'EN',
+    'en-us': 'EN-US',
+    'en-gb': 'EN-GB',
     'english': 'EN',
     
     'de': 'DE',
@@ -163,8 +163,41 @@ export const formatForTranslationSource = (languageCode) => {
  * @returns {string} - The formatted language code
  */
 export const formatForTranslationTarget = (languageCode) => {
-  // For target languages, we can use the same logic as source languages
-  return formatForTranslationSource(languageCode);
+  if (!languageCode) return 'EN';
+  
+  const normalized = languageCode.toLowerCase();
+  
+  // Check if we have a direct mapping
+  if (languageFormats.translation[normalized]) {
+    return languageFormats.translation[normalized];
+  }
+  
+  // Special handling for English variants that should be preserved
+  if (normalized === 'en-us' || languageCode === 'EN-US') {
+    return 'EN-US';
+  }
+  if (normalized === 'en-gb' || languageCode === 'EN-GB') {
+    return 'EN-GB';
+  }
+  
+  // If it's already in DeepL format (e.g., 'EN-US', 'EN-GB'), return as is
+  if (/^[A-Z]{2}(-[A-Z]{2})?$/.test(languageCode)) {
+    return languageCode;
+  }
+  
+  // If it's a two-letter code, uppercase it (DeepL format)
+  if (/^[a-z]{2}$/.test(normalized)) {
+    return normalized.toUpperCase();
+  }
+  
+  // If it's in the format 'en-US', convert to DeepL format
+  if (/^[a-z]{2}-[a-z]{2}$/i.test(languageCode)) {
+    return languageCode.toUpperCase();
+  }
+  
+  // Default fallback
+  console.warn(`No translation target mapping for language code: ${languageCode}, falling back to EN`);
+  return 'EN';
 };
 
 /**

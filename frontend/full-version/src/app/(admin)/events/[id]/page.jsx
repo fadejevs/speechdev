@@ -47,17 +47,70 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
 
 const languages = DEEPL_LANGUAGES.map(l => ({
-  code: l.azure || l.deepl, // Prefer Azure code, fallback to DeepL code
+  code: l.deepl, // Use DeepL code as primary for consistency
   name: l.name,
   deepl: l.deepl,
   azure: l.azure,
 }));
 
 const getLanguageName = (code) => {
+  // First try to find by exact code match
   const found = languages.find(
     l => l.code === code || l.deepl === code || l.azure === code
   );
-  return found ? found.name : code;
+  if (found) return found.name;
+  
+  // If not found and it's a formatted code, try to reverse-map it
+  if (code) {
+    // Handle DeepL formatted codes
+    const deeplLanguage = DEEPL_LANGUAGES.find(l => l.deepl === code);
+    if (deeplLanguage) return deeplLanguage.name;
+    
+    // Handle Azure formatted codes
+    const azureLanguage = DEEPL_LANGUAGES.find(l => l.azure === code);
+    if (azureLanguage) return azureLanguage.name;
+    
+    // Handle common cases where formatted codes need mapping back
+    const codeMap = {
+      'EN': 'English',
+      'EN-US': 'English (American)',
+      'EN-GB': 'English (British)',
+      'DE': 'German',
+      'FR': 'French',
+      'ES': 'Spanish',
+      'IT': 'Italian',
+      'NL': 'Dutch',
+      'PL': 'Polish',
+      'PT': 'Portuguese',
+      'PT-BR': 'Portuguese (Brazilian)', 
+      'PT-PT': 'Portuguese (European)',
+      'RU': 'Russian',
+      'JA': 'Japanese',
+      'ZH': 'Chinese',
+      'BG': 'Bulgarian',
+      'CS': 'Czech',
+      'DA': 'Danish',
+      'EL': 'Greek',
+      'ET': 'Estonian',
+      'FI': 'Finnish',
+      'HU': 'Hungarian',
+      'ID': 'Indonesian',
+      'KO': 'Korean',
+      'LT': 'Lithuanian',
+      'LV': 'Latvian',
+      'NB': 'Norwegian Bokmål',
+      'RO': 'Romanian',
+      'SK': 'Slovak',
+      'SL': 'Slovenian',
+      'SV': 'Swedish',
+      'TR': 'Turkish',
+      'UK': 'Ukrainian'
+    };
+    
+    if (codeMap[code]) return codeMap[code];
+  }
+  
+  return code; // fallback to showing the code
 };
 
 const GEOAPIFY_API_KEY = "a108fe26f510452dae47978e1619c895"; // <-- Use your real Geoapify API key
