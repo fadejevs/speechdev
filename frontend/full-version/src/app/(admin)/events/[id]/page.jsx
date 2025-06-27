@@ -720,9 +720,9 @@ const EditEventPage = () => {
                 <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5, color: '#212B36' }}>
                   General Settings
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                {/* <Typography variant="body2" color="text.secondary">
                   Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
-                </Typography>
+                </Typography> */}
               </Box>
               
               <Divider sx={{ mx: -3, mb: 3 }} />
@@ -883,9 +883,9 @@ const EditEventPage = () => {
                 <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5, color: '#212B36' }}>
                   Language Settings
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                {/* <Typography variant="body2" color="text.secondary">
                   Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
-                </Typography>
+                </Typography> */}
               </Box>
               
               <Divider sx={{ mx: -3, mb: 3 }} />
@@ -1171,9 +1171,9 @@ const EditEventPage = () => {
                 <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5, color: '#212B36' }}>
                   Features
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                {/* <Typography variant="body2" color="text.secondary">
                   Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
-                </Typography>
+                </Typography> */}
               </Box>
               
               <Divider sx={{ mx: -3, mb: 3 }} />

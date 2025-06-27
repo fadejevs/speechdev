@@ -207,12 +207,12 @@ const EventCompletionPage = () => {
         </Typography>
 
         {/* Description */}
-        <Typography variant="body2" sx={{ 
+        {/* <Typography variant="body2" sx={{ 
           color: '#637381',
           mb: 2
         }}>
           Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
-        </Typography>
+        </Typography> */}
       </Box>
 
       {/* Event Details Section */}
@@ -234,9 +234,9 @@ const EventCompletionPage = () => {
           <Typography variant="h5" sx={{ fontWeight: 600, mb: 2 }}>
             Event Details
           </Typography>
-          <Typography variant="body2" sx={{ color: "#637381" }}>
+          {/* <Typography variant="body2" sx={{ color: "#637381" }}>
             Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
-          </Typography>
+          </Typography> */}
         </Box>
 
         {/* Right column: Event fields */}
@@ -387,9 +387,9 @@ const EventCompletionPage = () => {
           Published Languages
         </Typography>
 
-        <Typography variant="body2" sx={{ color: '#637381', mb: 3 }}>
+        {/* <Typography variant="body2" sx={{ color: '#637381', mb: 3 }}>
           Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
-        </Typography>
+        </Typography> */}
 
         {/* Language List */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
