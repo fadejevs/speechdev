@@ -674,11 +674,11 @@ const CreateEventModal = ({
           sx: {
             borderRadius: { xs: '0px', sm: '8px' },
             boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
-            width: { xs: '100%', sm: '650px', md: '750px' },
-            maxWidth: { xs: '100%', sm: '95%' },
-            margin: { xs: 0, sm: 'auto' },
-            height: { xs: '100%', sm: 'auto' },
-            maxHeight: { xs: '100%', sm: '90vh' }
+            width: { xs: '300px', sm: '550px', md: '750px' },
+            maxWidth: { xs: '400px', sm: '95%' },
+            margin: { xs: '20px 40px', sm: '20px auto', md: 'auto' },
+            height: { xs: 'calc(100% - 40px)', sm: 'auto', md: 'auto' },
+            maxHeight: { xs: 'calc(100% - 40px)', sm: '90vh', md: '90vh' }
           }
         }}
       >
@@ -942,41 +942,45 @@ const CreateEventModal = ({
         onClose={() => setConfirmDialogOpen(false)}
         PaperProps={{
           sx: {
-            borderRadius: '8px',
+            borderRadius: { xs: '12px', sm: '8px' },
             boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
-            width: '400px',
-            maxWidth: '95%',
-            margin: { xs: 2, sm: 'auto' },
+            width: { xs: 'calc(100% - 40px)', sm: '400px' },
+            maxWidth: { xs: 'calc(100% - 40px)', sm: '95%' },
+            margin: { xs: '20px', sm: 'auto' },
             textAlign: 'center'
           }
         }}
       >
         <DialogContent sx={{ 
-          pt: 4, 
-          pb: 3,
+          pt: { xs: 3, sm: 4 }, 
+          pb: { xs: 2, sm: 3 },
           px: { xs: 2, sm: 3 }
         }}>
-          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
+          <Box sx={{ mb: { xs: 1.5, sm: 2 }, display: 'flex', justifyContent: 'center' }}>
             <Box sx={{ 
-              height: { xs: 140, sm: 172 }, 
-              width: { xs: 180, sm: 230 } 
+              height: { xs: 120, sm: 172 }, 
+              width: { xs: 150, sm: 230 } 
             }}>
               <PlantDoodle />
             </Box>
           </Box>
           <Typography variant="h6" sx={{ 
             mb: 1,
-            fontSize: { xs: '1.1rem', sm: '1.25rem' }
+            fontSize: { xs: '1rem', sm: '1.25rem' },
+            lineHeight: { xs: 1.3, sm: 1.2 },
+            px: { xs: 1, sm: 0 }
           }}>
             Are you sure you want to cancel event creation?
           </Typography>
         </DialogContent>
         <DialogActions sx={{ 
-          p: { xs: 1.5, sm: 2 }, 
+          p: { xs: 2, sm: 2 }, 
           flexDirection: { xs: 'column', sm: 'row' },
-          gap: { xs: 1, sm: 2 },
+          gap: { xs: 1.5, sm: 2 },
           '& > button': {
-            width: { xs: '100%', sm: 'auto' }
+            width: { xs: '100%', sm: 'auto' },
+            height: { xs: '44px', sm: 'auto' },
+            fontSize: { xs: '14px', sm: '14px' }
           }
         }}>
           <Button 
@@ -988,7 +992,9 @@ const CreateEventModal = ({
               '&:hover': { borderColor: '#b71c1c', bgcolor: 'rgba(211, 47, 47, 0.04)' },
               borderRadius: '8px',
               textTransform: 'none',
-              px: 3
+              px: 3,
+              fontWeight: 500,
+              order: { xs: 2, sm: 1 }
             }}
           >
             Discard
@@ -1001,7 +1007,10 @@ const CreateEventModal = ({
               '&:hover': { bgcolor: '#4338ca' },
               borderRadius: '8px',
               textTransform: 'none',
-              px: 3
+              px: 3,
+              fontWeight: 500,
+              order: { xs: 1, sm: 2 },
+              boxShadow: '0px 1px 3px rgba(99, 102, 241, 0.3)'
             }}
           >
             Save as Draft & Close
