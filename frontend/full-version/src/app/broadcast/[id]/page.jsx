@@ -274,7 +274,6 @@ export default function BroadcastPage() {
   // State for TTS with Safari/iOS workarounds
   const ttsQueue = useRef([]);
   const currentSynthesizerRef = useRef(null);
-  const isSpeaking = useRef(false); // Master lock for TTS
   const spokenSentences = useRef(new Set()); // Track spoken sentences to avoid duplicates
   const audioContextRef = useRef(null);
   const ttsErrorCount = useRef(0); // Track consecutive TTS errors
@@ -517,7 +516,7 @@ export default function BroadcastPage() {
 
   // Enhanced queue processor with Safari error handling
   const processQueue = useCallback(() => {
-    if (isSpeaking.current || ttsQueue.current.length === 0) {
+    if (currentSynthesizerRef.current || ttsQueue.current.length === 0) {
       return; // Exit if already speaking or nothing to speak
     }
 
@@ -527,21 +526,19 @@ export default function BroadcastPage() {
       return;
     }
 
-    isSpeaking.current = true; // Set the lock
     const item = ttsQueue.current.shift();
     
     console.log(`[TTS Queue] Processing item: "${item.text.substring(0, 30)}..." (${ttsQueue.current.length} remaining)`);
     
     speakText(item.text, item.lang, (success) => {
       console.log(`[TTS Queue] Item completed with success: ${success}`);
-      isSpeaking.current = false; // Release the lock
       
       // For Safari/iOS, add a longer pause and ensure audio context stays active
       const pauseTime = (isSafari() || isIOS()) ? 800 : 250;
       
       setTimeout(() => {
         // Double-check queue isn't stuck
-        if (ttsQueue.current.length > 0 && !isSpeaking.current) {
+        if (ttsQueue.current.length > 0 && !currentSynthesizerRef.current) {
           console.log(`[TTS Queue] Continuing with ${ttsQueue.current.length} items remaining`);
           processQueue(); // Process next item
         }
@@ -553,7 +550,7 @@ export default function BroadcastPage() {
   useEffect(() => {
     const watchdogInterval = setInterval(() => {
       // If there are items in queue but nothing is speaking, restart the queue
-      if (ttsQueue.current.length > 0 && !isSpeaking.current && autoSpeakLang) {
+      if (ttsQueue.current.length > 0 && !currentSynthesizerRef.current && autoSpeakLang) {
         console.log('[TTS Watchdog] Restarting stuck queue with', ttsQueue.current.length, 'items');
         processQueue();
       }
@@ -619,7 +616,6 @@ export default function BroadcastPage() {
       try { currentSynthesizerRef.current.close(); } catch(e) {}
       currentSynthesizerRef.current = null;
     }
-    isSpeaking.current = false;
     setTtsError(null);
     setShowTtsWarning(false);
   }, [autoSpeakLang]);
@@ -632,7 +628,6 @@ export default function BroadcastPage() {
         currentSynthesizerRef.current = null;
       }
       ttsQueue.current = [];
-      isSpeaking.current = false;
       spokenSentences.current.clear();
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         try {
@@ -1291,7 +1286,6 @@ export default function BroadcastPage() {
                               
                               // Clear current queue and reset state
                               ttsQueue.current = [];
-                              isSpeaking.current = false;
                               if (currentSynthesizerRef.current) {
                                 try { currentSynthesizerRef.current.close(); } catch(e) {}
                                 currentSynthesizerRef.current = null;
