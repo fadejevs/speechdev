@@ -5,6 +5,8 @@
  * and detect potential overlap scenarios that could occur in production.
  */
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 class TTSOverlapTester {
   constructor(speakTextFunction, spokenSentencesRef, currentSynthesizerRef) {
     this.speakText = speakTextFunction;

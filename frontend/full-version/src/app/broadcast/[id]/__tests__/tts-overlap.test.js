@@ -5,6 +5,8 @@
  * and handles various edge cases that could cause voice doubling.
  */
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 import TTSOverlapTester from '../test-utils';
 
 // Mock Azure Speech SDK
