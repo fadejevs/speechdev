@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-// Create a Supabase admin client with proper server-side configuration
+// Create a Supabase admin client with implicit flow
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -9,11 +9,19 @@ const supabaseAdmin = createClient(
     auth: {
       autoRefreshToken: false,
       persistSession: false,
-      flowType: 'pkce',
+      flowType: 'implicit', // Use implicit flow instead of PKCE
       detectSessionInUrl: false
     }
   }
 );
+
+// Get the correct redirect URL based on environment
+const getRedirectUrl = (path = '/auth/callback') => {
+  if (process.env.NODE_ENV === 'development') {
+    return `http://localhost:3000${path}`;
+  }
+  return `https://app.everspeak.ai${path}`;
+};
 
 export async function GET(request) {
   // Get the email from the URL
@@ -53,7 +61,7 @@ export async function GET(request) {
     const { error: signInError } = await supabaseAdmin.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${request.headers.get('origin')}/auth/callback`,
+        emailRedirectTo: getRedirectUrl('/auth/callback'),
         data: {
           redirectTo: '/dashboard/analytics'
         }

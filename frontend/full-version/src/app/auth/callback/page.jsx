@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/utils/supabase/client';
 
-export default function ClientCallback() {
+export default function AuthCallback() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState('Processing authentication...');
@@ -22,16 +22,17 @@ export default function ClientCallback() {
       const tokenType = hashParams.get('token_type');
       const authType = hashParams.get('type'); // 'signup' or 'recovery', etc.
       
-      console.log('Client callback: Processing authentication...');
-      console.log('Client callback: Has PKCE code:', !!code);
-      console.log('Client callback: Has access token:', !!accessToken);
-      console.log('Client callback: Auth type:', authType);
+      console.log('Auth callback: Processing authentication...');
+      console.log('Auth callback: Has PKCE code:', !!code);
+      console.log('Auth callback: Has access token:', !!accessToken);
+      console.log('Auth callback: Auth type:', authType);
+      console.log('Auth callback: Full URL:', window.location.href);
       
       // Handle implicit flow tokens (from URL hash)
       if (accessToken && tokenType) {
         try {
           setStatus('Setting up your session...');
-          console.log('Client callback: Processing implicit flow tokens');
+          console.log('Auth callback: Processing implicit flow tokens');
           
           // Set the session using the tokens from the URL
           const { data, error } = await supabase.auth.setSession({
@@ -40,8 +41,8 @@ export default function ClientCallback() {
           });
           
           if (!error && data?.session) {
-            console.log('Client callback: Implicit flow session set successfully');
-            console.log('Client callback: User email:', data.session.user?.email);
+            console.log('Auth callback: Implicit flow session set successfully');
+            console.log('Auth callback: User email:', data.session.user?.email);
             setStatus('Authentication successful! Redirecting...');
             
             // Small delay to ensure the session is properly set
@@ -49,7 +50,7 @@ export default function ClientCallback() {
               router.replace('/dashboard/analytics');
             }, 500);
           } else {
-            console.error('Client callback: Session setup failed:', error);
+            console.error('Auth callback: Session setup failed:', error);
             setStatus('Authentication failed. Redirecting to login...');
             
             setTimeout(() => {
@@ -57,7 +58,7 @@ export default function ClientCallback() {
             }, 2000);
           }
         } catch (error) {
-          console.error('Client callback: Exception setting session:', error);
+          console.error('Auth callback: Exception setting session:', error);
           setStatus('Authentication error. Redirecting to login...');
           
           setTimeout(() => {
@@ -74,17 +75,17 @@ export default function ClientCallback() {
           
           // Debug: Check if PKCE verifier exists
           const pkceVerifier = localStorage.getItem('supabase.auth.code_verifier');
-          console.log('Client callback: PKCE verifier exists:', !!pkceVerifier);
+          console.log('Auth callback: PKCE verifier exists:', !!pkceVerifier);
           
           // Exchange the code for a session using PKCE flow
-          console.log('Client callback: Attempting exchangeCodeForSession...');
+          console.log('Auth callback: Attempting exchangeCodeForSession...');
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
           
-          console.log('Client callback: PKCE exchange result - data:', !!data, 'error:', error);
+          console.log('Auth callback: PKCE exchange result - data:', !!data, 'error:', error);
           
           if (!error && data?.session) {
-            console.log('Client callback: PKCE session exchange successful');
-            console.log('Client callback: User email:', data.session.user?.email);
+            console.log('Auth callback: PKCE session exchange successful');
+            console.log('Auth callback: User email:', data.session.user?.email);
             setStatus('Authentication successful! Redirecting...');
             
             // Small delay to ensure the session is properly set
@@ -92,7 +93,7 @@ export default function ClientCallback() {
               router.replace('/dashboard/analytics');
             }, 500);
           } else {
-            console.error('Client callback: PKCE error:', error);
+            console.error('Auth callback: PKCE error:', error);
             setStatus('Authentication failed. Redirecting to login...');
             
             setTimeout(() => {
@@ -100,7 +101,7 @@ export default function ClientCallback() {
             }, 2000);
           }
         } catch (error) {
-          console.error('Client callback: PKCE exception:', error);
+          console.error('Auth callback: PKCE exception:', error);
           setStatus('Authentication error. Redirecting to login...');
           
           setTimeout(() => {
@@ -111,7 +112,7 @@ export default function ClientCallback() {
       }
       
       // No authentication parameters found
-      console.log('Client callback: No authentication parameters found');
+      console.log('Auth callback: No authentication parameters found');
       setStatus('No authentication data found. Redirecting to login...');
       
       setTimeout(() => {

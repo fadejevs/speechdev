@@ -3,12 +3,31 @@ import { NextResponse } from 'next/server';
 
 // @project
 // import { AuthRole } from '@/enum';
-import { createSupabaseClient } from '@/utils/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 
-// Use server-side Supabase client for API routes
-const supabase = createSupabaseClient();
+// Create server Supabase client without PKCE for auth operations
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      flowType: 'implicit', // Use implicit flow instead of PKCE
+      detectSessionInUrl: false,
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
 
 // const supabaseServer = createSupabaseClient();
+
+// Get the correct redirect URL based on environment
+const getRedirectUrl = (path = '/auth/callback') => {
+  if (process.env.NODE_ENV === 'development') {
+    return `http://localhost:3000${path}`;
+  }
+  return `https://app.everspeak.ai${path}`;
+};
 
 export async function login(request) {
   try {
@@ -17,8 +36,7 @@ export async function login(request) {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        // emailRedirectTo: 'http://localhost:3000/auth/callback',
-        emailRedirectTo: 'https://app.everspeak.ai/auth/callback',
+        emailRedirectTo: getRedirectUrl('/auth/callback'),
         data: {
           redirectTo: '/dashboard/analytics'
         }
@@ -75,7 +93,7 @@ export async function signUp(request) {
       email,
       options: {
         // Redirect back to the app after the user clicks the link in their inbox
-        emailRedirectTo: 'https://app.everspeak.ai/auth/callback',
+        emailRedirectTo: getRedirectUrl('/auth/callback'),
         // Persist any extra information that was collected during sign-up
         data: user_metadata,
         // Ensure a new user is created if one does not already exist
