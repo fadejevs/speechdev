@@ -3,8 +3,10 @@ import { NextResponse } from 'next/server';
 
 // @project
 // import { AuthRole } from '@/enum';
-// import { createSupabaseClient } from '@/utils/supabase/server';
-import { supabase } from '@/utils/supabase/client';
+import { createSupabaseClient } from '@/utils/supabase/server';
+
+// Use server-side Supabase client for API routes
+const supabase = createSupabaseClient();
 
 // const supabaseServer = createSupabaseClient();
 
@@ -66,6 +68,8 @@ export async function signUp(request) {
     const body = await request.json();
     const { email, ...user_metadata } = body;
 
+    console.log('SignUp attempt for:', email, 'with metadata:', user_metadata);
+
     // Send magic-link and create the user (password-less)
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -80,11 +84,14 @@ export async function signUp(request) {
     });
 
     if (error) {
+      console.error('SignUp error:', error);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    console.log('SignUp magic link sent successfully for:', email);
     return NextResponse.json({ status: 200 });
-  } catch {
+  } catch (error) {
+    console.error('SignUp server error:', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

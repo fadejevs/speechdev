@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-// Create a Supabase admin client
+// Create a Supabase admin client with proper server-side configuration
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -9,7 +9,8 @@ const supabaseAdmin = createClient(
     auth: {
       autoRefreshToken: false,
       persistSession: false,
-      flowType: 'pkce'
+      flowType: 'pkce',
+      detectSessionInUrl: false
     }
   }
 );
@@ -27,6 +28,8 @@ export async function GET(request) {
   }
 
   try {
+    console.log('Checking email:', email);
+    
     // First, check if the user exists using admin API
     const { data, error: adminError } = await supabaseAdmin.auth.admin.listUsers();
     
@@ -40,12 +43,13 @@ export async function GET(request) {
 
     // Check if a user with this email exists
     const userExists = data.users.some(user => user.email === email);
+    console.log('User exists:', userExists);
 
     if (!userExists) {
       return NextResponse.json({ exists: false });
     }
 
-    // User exists, now send the magic link
+    // User exists, now send the magic link for login (not signup)
     const { error: signInError } = await supabaseAdmin.auth.signInWithOtp({
       email,
       options: {
@@ -64,9 +68,10 @@ export async function GET(request) {
       );
     }
 
+    console.log('Magic link sent successfully for existing user:', email);
     return NextResponse.json({ exists: true });
   } catch (error) {
-    console.error('Server error:', error);
+    console.error('Server error in check-email:', error);
     return NextResponse.json(
       { error: error.message },
       { status: 500 }
