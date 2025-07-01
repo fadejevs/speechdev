@@ -65,13 +65,24 @@ export async function signUp(request) {
   try {
     const body = await request.json();
     const { email, ...user_metadata } = body;
-    const { error } = await supabase.auth.signUp({
+
+    // Send magic-link and create the user (password-less)
+    const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { data: user_metadata }
+      options: {
+        // Redirect back to the app after the user clicks the link in their inbox
+        emailRedirectTo: 'https://app.everspeak.ai/auth/callback',
+        // Persist any extra information that was collected during sign-up
+        data: user_metadata,
+        // Ensure a new user is created if one does not already exist
+        shouldCreateUser: true
+      }
     });
+
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
+
     return NextResponse.json({ status: 200 });
   } catch {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
