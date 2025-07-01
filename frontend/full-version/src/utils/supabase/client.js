@@ -8,6 +8,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     flowType: 'pkce',
     detectSessionInUrl: true,
     autoRefreshToken: true,
-    persistSession: true
+    persistSession: true,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storageKey: 'sb-auth-token'
   }
 });
