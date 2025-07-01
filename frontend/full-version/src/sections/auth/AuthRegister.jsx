@@ -84,7 +84,13 @@ export default function AuthRegister({ inputSx }) {
       })
       .catch((response) => {
         setIsProcessing(false);
-        setRegisterError(response.error || 'Something went wrong');
+        // TEMPORARY FOR TESTING: If rate limit error, still redirect to OTP page
+        if (response.error && response.error.includes('rate limit')) {
+          console.log('Rate limit hit, but redirecting anyway for testing...');
+          router.push(`/otp-verification?email=${formData.email}&verify=signup`);
+        } else {
+          setRegisterError(response.error || 'Something went wrong');
+        }
       });
   };
 
