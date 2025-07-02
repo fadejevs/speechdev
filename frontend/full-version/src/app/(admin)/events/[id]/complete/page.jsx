@@ -11,19 +11,40 @@ import IconButton from '@mui/material/IconButton';
 import SelfieDoodle from '@/images/illustration/SelfieDoodle';
 import TextField from '@mui/material/TextField';
 import DownloadIcon from '@mui/icons-material/Download';
+import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
 
-// ── 1) add this mapping under your imports ──────────────────────
-const languagesMap = {
-  en: "English",
-  lv: "Latvian",
-  lt: "Lithuanian",
-  et: "Estonian",
-  ru: "Russian",
-  fr: "French",
-  de: "German",
-  es: "Spanish",
+// Create a comprehensive language mapping from the DEEPL_LANGUAGES
+const createLanguageMap = () => {
+  const map = {};
+  DEEPL_LANGUAGES.forEach(lang => {
+    // Map DeepL codes
+    const deeplCode = lang.deepl.toLowerCase();
+    map[deeplCode] = lang.name;
+    
+    // Map Azure codes
+    if (lang.azure) {
+      const azureCode = lang.azure.toLowerCase();
+      const azureBase = azureCode.split('-')[0];
+      map[azureCode] = lang.name;
+      map[azureBase] = lang.name;
+    }
+    
+    // Map base codes
+    const baseCode = deeplCode.split('-')[0];
+    if (!map[baseCode]) {
+      map[baseCode] = lang.name;
+    }
+  });
+  return map;
 };
-const getFullLanguageName = (code) => languagesMap[code] || code;
+
+const languagesMap = createLanguageMap();
+
+const getFullLanguageName = (code) => {
+  if (!code) return code;
+  const lowerCode = code.toLowerCase();
+  return languagesMap[lowerCode] || code;
+};
 
 const getBaseLangCode = (code) => code?.split('-')[0]?.toLowerCase() || code;
 
