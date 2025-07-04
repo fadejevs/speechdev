@@ -92,7 +92,7 @@ const fetchEventById = async (id) => {
   return data && data.length > 0 ? data[0] : null;
 };
 
-// Add Safari detection and audio context handling
+// Enhanced device detection with better tablet support
 const isSafari = () => {
   if (typeof navigator === 'undefined') return false;
   return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
@@ -103,12 +103,24 @@ const isIOS = () => {
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
 };
 
-const isMobile = () => {
+const isAndroidTablet = () => {
   if (typeof navigator === 'undefined') return false;
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  return /Android/i.test(navigator.userAgent) && !/Mobile/i.test(navigator.userAgent);
 };
 
-// Add audio context workaround for Safari
+const isTablet = () => {
+  if (typeof navigator === 'undefined') return false;
+  return isIOS() || isAndroidTablet() || 
+         /iPad|Android(?!.*Mobile)|Tablet|PlayBook|Kindle|Silk/i.test(navigator.userAgent);
+};
+
+const isMobile = () => {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+         isTablet(); // Include tablets in mobile category for TTS handling
+};
+
+// Enhanced audio context initialization with better error handling
 const initializeAudioContext = () => {
   if (typeof window === 'undefined') return null;
   
@@ -118,11 +130,8 @@ const initializeAudioContext = () => {
     
     const audioContext = new AudioContext();
     
-    // For mobile, try to resume immediately if possible
-    if (audioContext.state === 'suspended' && isMobile()) {
-      // Don't resume here, wait for user interaction
-      console.log('[Mobile Audio] Audio context created in suspended state - waiting for user interaction');
-    }
+    // Log initial state for debugging
+    console.log('[Audio Context] Created with state:', audioContext.state);
     
     return audioContext;
   } catch (error) {
@@ -141,28 +150,31 @@ const speakWithWebSpeechAPI = (text, lang) => {
     }
 
     try {
-      // Cancel any ongoing speech
+      // Cancel any ongoing speech first
       window.speechSynthesis.cancel();
       
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = lang === 'en' ? 'en-US' : lang;
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-      utterance.volume = 1;
+      // Wait a bit for the cancellation to complete
+      setTimeout(() => {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = lang === 'en' ? 'en-US' : lang;
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        utterance.volume = 1;
 
-      utterance.onend = () => {
-        console.log('[Mobile TTS] Web Speech API synthesis completed');
-        resolve(true);
-      };
+        utterance.onend = () => {
+          console.log('[Mobile TTS] Web Speech API synthesis completed');
+          resolve(true);
+        };
 
-      utterance.onerror = (event) => {
-        console.error('[Mobile TTS] Web Speech API error:', event.error);
-        resolve(false);
-      };
+        utterance.onerror = (event) => {
+          console.error('[Mobile TTS] Web Speech API error:', event.error);
+          resolve(false);
+        };
 
-      // Start speaking immediately while we have user gesture
-      window.speechSynthesis.speak(utterance);
-      console.log('[Mobile TTS] Started Web Speech API synthesis');
+        // Start speaking
+        window.speechSynthesis.speak(utterance);
+        console.log('[Mobile TTS] Started Web Speech API synthesis');
+      }, 100); // Small delay to ensure cancellation completes
       
     } catch (error) {
       console.error('[Mobile TTS] Web Speech API failed:', error);
@@ -171,9 +183,17 @@ const speakWithWebSpeechAPI = (text, lang) => {
   });
 };
 
-// Mobile-optimized TTS function that preserves user gesture
+// Mobile-optimized TTS function that handles interruptions properly
 const speakTextMobile = async (text, lang) => {
   console.log('[Mobile TTS] Attempting mobile TTS for:', text.substring(0, 30) + '...');
+  
+  // Check if we're already speaking and handle interruption
+  if (window.speechSynthesis && window.speechSynthesis.speaking) {
+    console.log('[Mobile TTS] Already speaking, will interrupt and speak new text');
+    window.speechSynthesis.cancel();
+    // Wait for cancellation to complete
+    await new Promise(resolve => setTimeout(resolve, 150));
+  }
   
   // Try Web Speech API first for mobile (more reliable)
   if (isMobile()) {
@@ -279,6 +299,11 @@ export default function BroadcastPage() {
   const ttsErrorCount = useRef(0); // Track consecutive TTS errors
   const maxTtsErrors = 3; // Maximum errors before fallback
 
+  // Mobile-specific TTS state
+  const mobileTtsQueue = useRef([]);
+  const isMobileSpeaking = useRef(false);
+  const mobileTtsTimeout = useRef(null);
+
   // Add refs for stabilization timer
   const batchTimer = useRef(null);
   const lastFinalTranscriptionTime = useRef(0);
@@ -289,11 +314,225 @@ export default function BroadcastPage() {
   const [ttsError, setTtsError] = useState(null);
   const [showTtsWarning, setShowTtsWarning] = useState(false);
 
-  // Initialize audio context on component mount for Safari
+  // ── NEW: Enhanced connection monitoring and recovery ──────────────────────────
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [lastTranscriptionTime, setLastTranscriptionTime] = useState(null);
+  const [isStuck, setIsStuck] = useState(false);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [debugInfo, setDebugInfo] = useState({});
+
+  // Watchdog and recovery refs
+  const connectionWatchdog = useRef(null);
+  const transcriptionWatchdog = useRef(null);
+  const reconnectionTimer = useRef(null);
+  const stuckRecoveryTimer = useRef(null);
+  const healthCheckInterval = useRef(null);
+
+  // Connection state tracking
+  const connectionStateRef = useRef({
+    lastConnect: null,
+    lastDisconnect: null,
+    lastTranscription: null,
+    reconnectCount: 0,
+    stuckCount: 0,
+    totalTranscriptions: 0,
+    isRecovering: false
+  });
+
+  // ── Device-specific optimizations ──────────────────────────────────────────
+  const deviceInfo = useMemo(() => {
+    if (typeof navigator === 'undefined') return {};
+    
+    const userAgent = navigator.userAgent;
+    const isMobileDevice = isMobile();
+    const isTabletDevice = isTablet();
+    const isSafariDevice = isSafari();
+    const isIOSDevice = isIOS();
+    
+    return {
+      isMobile: isMobileDevice,
+      isTablet: isTabletDevice,
+      isSafari: isSafariDevice,
+      isIOS: isIOSDevice,
+      userAgent,
+      // Device-specific settings - INCREASED thresholds to prevent false positives
+      socketReconnectDelay: isTabletDevice ? 2000 : 1000,
+      watchdogInterval: isTabletDevice ? 15000 : 10000, // Check less frequently
+      maxReconnectAttempts: isTabletDevice ? 10 : 5,
+      stuckThreshold: isTabletDevice ? 60000 : 45000, // 60s for tablets, 45s for others (much longer!)
+    };
+  }, []);
+
+  // ── Enhanced logging for debugging ──────────────────────────────────────────
+  const logDebug = useCallback((category, message, data = {}) => {
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      category,
+      message,
+      data: {
+        ...data,
+        deviceInfo: deviceInfo.isTablet ? 'tablet' : deviceInfo.isMobile ? 'mobile' : 'desktop',
+        socketConnected,
+        connectionStatus,
+        isStuck,
+        reconnectAttempts,
+        totalTranscriptions: connectionStateRef.current.totalTranscriptions
+      }
+    };
+    
+    console.log(`[${category}] ${message}`, logEntry);
+    
+    // Keep debug info for potential error reporting
+    setDebugInfo(prev => ({
+      ...prev,
+      [category]: logEntry
+    }));
+  }, [deviceInfo, socketConnected, connectionStatus, isStuck, reconnectAttempts]);
+
+  // ── Connection recovery functions ──────────────────────────────────────────
+  const resetConnectionState = useCallback(() => {
+    console.log('[Connection] Resetting connection state');
+    
+    // Clear all timers
+    if (connectionWatchdog.current) clearInterval(connectionWatchdog.current);
+    if (transcriptionWatchdog.current) clearInterval(transcriptionWatchdog.current);
+    if (reconnectionTimer.current) clearTimeout(reconnectionTimer.current);
+    if (stuckRecoveryTimer.current) clearTimeout(stuckRecoveryTimer.current);
+    
+    // Reset states
+    setConnectionStatus('disconnected');
+    setIsStuck(false);
+    connectionStateRef.current.isRecovering = false;
+  }, []);
+
+  const forceReconnect = useCallback(() => {
+    console.log('[Connection] Forcing reconnection', { attempt: reconnectAttempts });
+    
+    resetConnectionState();
+    
+    // Close existing socket
+    if (socketRef.current) {
+      try {
+        socketRef.current.disconnect();
+      } catch (e) {
+        console.warn('[Connection] Error closing socket:', e);
+      }
+      socketRef.current = null;
+    }
+    
+    // Increment reconnect attempts
+    setReconnectAttempts(prev => prev + 1);
+    connectionStateRef.current.reconnectCount++;
+    
+    // Delay before reconnecting (longer for tablets)
+    const delay = deviceInfo.socketReconnectDelay * Math.min(reconnectAttempts + 1, 5);
+    
+    reconnectionTimer.current = setTimeout(() => {
+      console.log('[Connection] Attempting reconnection after delay', { delay });
+      // The useEffect will handle the actual reconnection
+    }, delay);
+  }, [resetConnectionState, reconnectAttempts, deviceInfo.socketReconnectDelay]);
+
+  const handleStuckRecovery = useCallback(() => {
+    console.log('[Recovery] Handling stuck recovery');
+    
+    setIsStuck(true);
+    connectionStateRef.current.stuckCount++;
+    
+    // Clear various states that might be causing issues
+    setCurrentInterimCaption("");
+    setRealtimeTranslations({});
+    
+    // Clear TTS state
+    ttsQueue.current = [];
+    spokenSentences.current.clear();
+    if (currentSynthesizerRef.current) {
+      try { currentSynthesizerRef.current.close(); } catch(e) {}
+      currentSynthesizerRef.current = null;
+    }
+    
+    // Force reconnection
+    forceReconnect();
+    
+    // Auto-clear stuck state after recovery attempt
+    stuckRecoveryTimer.current = setTimeout(() => {
+      setIsStuck(false);
+      console.log('[Recovery] Stuck state cleared');
+    }, 5000);
+  }, [forceReconnect]);
+
+  // ── Health check and watchdog systems ──────────────────────────────────────
+  useEffect(() => {
+    // Health check interval
+    healthCheckInterval.current = setInterval(() => {
+      const now = Date.now();
+      const lastTranscription = connectionStateRef.current.lastTranscription;
+      const timeSinceTranscription = lastTranscription ? now - lastTranscription : Infinity;
+      const totalTranscriptions = connectionStateRef.current.totalTranscriptions;
+      
+      // Enhanced stuck detection - only trigger if we have real connection issues
+      const shouldTriggerRecovery = (
+        socketConnected && 
+        timeSinceTranscription > deviceInfo.stuckThreshold && 
+        !connectionStateRef.current.isRecovering &&
+        totalTranscriptions > 0 && // Only after we've received at least one transcription
+        (
+          // Additional conditions that indicate actual problems:
+          reconnectAttempts > 0 || // We've had previous reconnection issues
+          connectionStateRef.current.stuckCount > 0 || // We've detected stuck state before
+          !socketRef.current?.connected // Socket thinks it's disconnected
+        )
+      );
+      
+      if (shouldTriggerRecovery) {
+        console.log('[Watchdog] Detected genuine stuck state (not just silence)', {
+          timeSinceTranscription,
+          threshold: deviceInfo.stuckThreshold,
+          socketConnected,
+          totalTranscriptions,
+          reconnectAttempts,
+          stuckCount: connectionStateRef.current.stuckCount,
+          socketActuallyConnected: socketRef.current?.connected
+        });
+        
+        handleStuckRecovery();
+      } else if (timeSinceTranscription > deviceInfo.stuckThreshold && socketConnected) {
+        // Log but don't trigger recovery for normal silence
+        console.log('[Watchdog] Long silence detected but seems normal', {
+          timeSinceTranscription,
+          threshold: deviceInfo.stuckThreshold,
+          totalTranscriptions,
+          reason: totalTranscriptions === 0 ? 'No transcriptions yet' : 'Likely normal silence'
+        });
+      }
+      
+      // Update debug info
+      setDebugInfo(prev => ({
+        ...prev,
+        health: {
+          timestamp: now,
+          timeSinceTranscription,
+          socketConnected,
+          isStuck,
+          connectionState: connectionStateRef.current
+        }
+      }));
+      
+    }, deviceInfo.watchdogInterval);
+    
+    return () => {
+      if (healthCheckInterval.current) clearInterval(healthCheckInterval.current);
+    };
+  }, [socketConnected, deviceInfo.stuckThreshold, deviceInfo.watchdogInterval, isStuck, handleStuckRecovery, reconnectAttempts]);
+
+  // ── Initialize audio context on component mount for Safari ──────────────────
   useEffect(() => {
     if (isSafari() || isIOS()) {
       audioContextRef.current = initializeAudioContext();
     }
+    
+    console.log('[Init] Component mounted', { deviceInfo });
     
     // Cleanup audio context on unmount
     return () => {
@@ -544,9 +783,42 @@ export default function BroadcastPage() {
         }
       }, pauseTime);
     });
-  }, [speakText]);
+  }, []); // No dependencies to prevent recreation
 
-  // Add queue watchdog to restart stuck queues
+  // Mobile-specific TTS queue processor
+  const processMobileQueue = useCallback(async () => {
+    if (isMobileSpeaking.current || mobileTtsQueue.current.length === 0) {
+      return; // Exit if already speaking or nothing to speak
+    }
+
+    isMobileSpeaking.current = true;
+    const item = mobileTtsQueue.current.shift();
+    
+    console.log(`[Mobile TTS Queue] Processing item: "${item.text.substring(0, 30)}..." (${mobileTtsQueue.current.length} remaining)`);
+    
+    try {
+      const success = await speakTextMobile(item.text, item.lang);
+      console.log(`[Mobile TTS Queue] Item completed with success: ${success}`);
+      
+      if (!success) {
+        setTtsError('Mobile TTS failed. Try again or use a different browser.');
+        setTimeout(() => setTtsError(null), 5000);
+      }
+    } catch (error) {
+      console.error('[Mobile TTS Queue] Error processing item:', error);
+    } finally {
+      isMobileSpeaking.current = false;
+      
+      // Process next item after a short delay
+      if (mobileTtsQueue.current.length > 0) {
+        mobileTtsTimeout.current = setTimeout(() => {
+          processMobileQueue();
+        }, 200); // Small delay between mobile TTS items
+      }
+    }
+  }, []);
+
+  // Add queue watchdog to restart stuck queues - simplified version
   useEffect(() => {
     const watchdogInterval = setInterval(() => {
       // If there are items in queue but nothing is speaking, restart the queue
@@ -557,9 +829,12 @@ export default function BroadcastPage() {
     }, 3000); // Check every 3 seconds
 
     return () => clearInterval(watchdogInterval);
-  }, [processQueue, autoSpeakLang]);
+  }, [autoSpeakLang]); // Only depend on autoSpeakLang
 
   // TTS effect with enhanced error handling
+  // NOTE: TTS is now handled directly in the socket transcription handler
+  // to prevent dependency loops that were causing constant reconnections
+  
   useEffect(() => {
     // Skip this effect for mobile - mobile uses immediate TTS
     if (isMobile()) return;
@@ -571,51 +846,27 @@ export default function BroadcastPage() {
     
     console.log(`[TTS Effect] New translation: "${text}" for language: ${autoSpeakLang}`);
     
-    // Check if TTS is disabled due to too many errors
-    if (ttsErrorCount.current >= maxTtsErrors) {
-      if (!showTtsWarning) {
-        setShowTtsWarning(true);
-        setTtsError(`TTS temporarily disabled due to browser compatibility issues. Try refreshing the page or using a different browser.`);
-        
-        // Auto-hide warning after 10 seconds
-        setTimeout(() => {
-          setShowTtsWarning(false);
-          setTtsError(null);
-        }, 10000);
-      }
-      return;
-    }
-    
-    // Simple duplicate check using exact matches
-    if (spokenSentences.current.has(text)) {
-      console.log(`[TTS] Skipping duplicate: "${text}"`);
-      return;
-    }
-
-    // Queue the sentence and mark it as spoken
-    console.log(`[TTS] Queueing new sentence: "${text}" (Queue length: ${ttsQueue.current.length})`);
-    ttsQueue.current.push({ text, lang: autoSpeakLang });
-    spokenSentences.current.add(text);
-    
-    // Use try-catch for queue processing
-    try {
-      processQueue();
-    } catch (error) {
-      console.error('[TTS] Error starting queue processing:', error);
-      setTtsError('TTS failed to start. Please try again.');
-      setTimeout(() => setTtsError(null), 5000);
-    }
-
+    // ... rest of TTS logic moved to socket handler
   }, [liveTranslations, autoSpeakLang, processQueue]);
 
   // Clear spoken sentences when auto-speak language changes
   useEffect(() => {
     spokenSentences.current.clear();
     ttsQueue.current = [];
+    mobileTtsQueue.current = []; // Clear mobile queue
+    isMobileSpeaking.current = false; // Reset mobile speaking state
+    
     if (currentSynthesizerRef.current) {
       try { currentSynthesizerRef.current.close(); } catch(e) {}
       currentSynthesizerRef.current = null;
     }
+    
+    // Clear mobile TTS timeout
+    if (mobileTtsTimeout.current) {
+      clearTimeout(mobileTtsTimeout.current);
+      mobileTtsTimeout.current = null;
+    }
+    
     setTtsError(null);
     setShowTtsWarning(false);
   }, [autoSpeakLang]);
@@ -628,7 +879,16 @@ export default function BroadcastPage() {
         currentSynthesizerRef.current = null;
       }
       ttsQueue.current = [];
+      mobileTtsQueue.current = []; // Clear mobile queue
+      isMobileSpeaking.current = false; // Reset mobile speaking state
       spokenSentences.current.clear();
+      
+      // Clear mobile TTS timeout
+      if (mobileTtsTimeout.current) {
+        clearTimeout(mobileTtsTimeout.current);
+        mobileTtsTimeout.current = null;
+      }
+      
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         try {
           audioContextRef.current.close();
@@ -646,31 +906,120 @@ export default function BroadcastPage() {
 
   // Effect for socket connection and transcription handling
   useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ["websocket"] });
+    // Prevent multiple connections
+    if (socketRef.current || connectionStateRef.current.isRecovering) {
+      console.log('[Connection] Skipping connection attempt - already connecting or recovering');
+      return;
+    }
+
+    connectionStateRef.current.isRecovering = true;
+    setConnectionStatus('connecting');
+    
+    console.log('[Connection] Initializing socket connection', { 
+      url: SOCKET_URL, 
+      roomId: id,
+      deviceType: deviceInfo.isTablet ? 'tablet' : deviceInfo.isMobile ? 'mobile' : 'desktop'
+    });
+
+    const socket = io(SOCKET_URL, { 
+      transports: ["websocket"],
+      // Enhanced connection options for tablets
+      timeout: deviceInfo.isTablet ? 10000 : 5000,
+      reconnection: true,
+      reconnectionDelay: deviceInfo.socketReconnectDelay,
+      reconnectionAttempts: deviceInfo.maxReconnectAttempts,
+      maxReconnectionAttempts: deviceInfo.maxReconnectAttempts,
+      // Add ping/pong for connection health
+      pingTimeout: 60000,
+      pingInterval: 25000,
+    });
+    
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("[Broadcast] Socket connected, joining room:", id);
+      const now = Date.now();
+      connectionStateRef.current.lastConnect = now;
+      connectionStateRef.current.isRecovering = false;
+      
+      console.log('[Connection] Socket connected successfully', { 
+        socketId: socket.id,
+        reconnectCount: connectionStateRef.current.reconnectCount
+      });
+      
       setSocketConnected(true);
+      setConnectionStatus('connected');
+      setReconnectAttempts(0); // Reset on successful connection
+      
+      // Join room
       socket.emit("join_room", { room: id });
+      
+      // Clear stuck state
+      setIsStuck(false);
     });
 
-    socket.on("disconnect", () => {
-      console.log("[Broadcast] Socket disconnected.");
+    socket.on("disconnect", (reason) => {
+      const now = Date.now();
+      connectionStateRef.current.lastDisconnect = now;
+      
+      console.log('[Connection] Socket disconnected', { 
+        reason,
+        wasConnected: socketConnected,
+        timeSinceConnect: connectionStateRef.current.lastConnect ? now - connectionStateRef.current.lastConnect : 'unknown'
+      });
+      
       setSocketConnected(false);
+      setConnectionStatus('disconnected');
+      
+      // Auto-reconnect for certain disconnect reasons
+      if (reason === 'io server disconnect' || reason === 'ping timeout') {
+        console.log('[Connection] Scheduling auto-reconnect due to disconnect reason', { reason });
+        // Use a simple timeout instead of forceReconnect to avoid dependency issues
+        setTimeout(() => {
+          setReconnectAttempts(prev => prev + 1);
+        }, 2000);
+      }
     });
 
     socket.on("connect_error", (err) => {
-      console.error("[Broadcast] Socket connection error:", err.message);
+      console.log('[Connection] Socket connection error', { 
+        error: err.message,
+        type: err.type,
+        reconnectAttempts: reconnectAttempts
+      });
+      
       setSocketConnected(false);
+      setConnectionStatus('error');
+      
+      // If we've exceeded max attempts, try a full reset
+      if (reconnectAttempts >= deviceInfo.maxReconnectAttempts) {
+        console.log('[Connection] Max reconnect attempts reached, forcing full reset');
+        // Use handleStuckRecovery without calling it directly to avoid dependency
+        setTimeout(() => {
+          setIsStuck(true);
+          setReconnectAttempts(0);
+        }, 1000);
+      }
     });
 
-    socket.on("realtime_transcription", (data) => {
-      console.log("[Transcription] Received:", { 
-        text: data.text, 
+    socket.on("realtime_transcription", async (data) => {
+      const now = Date.now();
+      connectionStateRef.current.lastTranscription = now;
+      connectionStateRef.current.totalTranscriptions++;
+      
+      console.log('[Transcription] Received transcription', { 
+        text: data.text ? data.text.substring(0, 50) + '...' : 'empty',
         is_final: data.is_final, 
-        source_language: data.source_language 
+        source_language: data.source_language,
+        totalReceived: connectionStateRef.current.totalTranscriptions
       });
+      
+      setLastTranscriptionTime(now);
+      
+      // Clear stuck state when receiving transcriptions
+      if (isStuck) {
+        setIsStuck(false);
+        console.log('[Recovery] Clearing stuck state - received transcription');
+      }
       
       setLiveTranscriptionLang(data.source_language || "");
 
@@ -678,10 +1027,19 @@ export default function BroadcastPage() {
         // Clear interim caption FIRST to prevent duplication
         setCurrentInterimCaption("");
         
-        // Prevent rapid-fire final transcriptions (likely duplicates from speech service)
+        // Enhanced duplicate detection with better logic
         const now = Date.now();
-        if (now - lastFinalTranscriptionTime.current < 500) { // Less than 500ms apart
-          console.log("[Transcription] Skipping rapid-fire final transcription:", data.text);
+        const timeSinceLastFinal = now - lastFinalTranscriptionTime.current;
+        
+        // More permissive timing for tablets (they might be slower)
+        const minTimeBetweenFinals = deviceInfo.isTablet ? 300 : 500;
+        
+        if (timeSinceLastFinal < minTimeBetweenFinals) {
+          console.log('[Transcription] Skipping rapid-fire final transcription', {
+            text: data.text,
+            timeSinceLastFinal,
+            minTimeBetweenFinals
+          });
           return;
         }
         lastFinalTranscriptionTime.current = now;
@@ -694,15 +1052,18 @@ export default function BroadcastPage() {
           };
           
           setPersistedCaptions(prevCaptions => {
-            // Check if this text already exists in recent captions to prevent duplicates
+            // Enhanced duplicate detection with better similarity checking
             const isDuplicate = prevCaptions.some(caption => {
               const timeDiff = Date.now() - caption.timestamp;
-              if (timeDiff > 5000) return false; // Only check recent captions
+              
+              // Check recent captions (extended time window for tablets)
+              const maxCheckTime = deviceInfo.isTablet ? 8000 : 5000;
+              if (timeDiff > maxCheckTime) return false;
               
               // Exact match
               if (caption.text === newCaption.text) return true;
               
-              // Similarity check for speech recognition variations
+              // Enhanced similarity check
               const captionWords = caption.text.toLowerCase().split(/\s+/);
               const newWords = newCaption.text.toLowerCase().split(/\s+/);
               
@@ -710,7 +1071,10 @@ export default function BroadcastPage() {
               if (Math.abs(captionWords.length - newWords.length) <= 2) {
                 const commonWords = captionWords.filter(word => newWords.includes(word));
                 const similarity = commonWords.length / Math.max(captionWords.length, newWords.length);
-                if (similarity > 0.8) return true; // 80% similarity threshold
+                
+                // Lower similarity threshold for tablets to be more permissive
+                const similarityThreshold = deviceInfo.isTablet ? 0.75 : 0.8;
+                if (similarity > similarityThreshold) return true;
               }
               
               // Check if one text contains most of the other (substring variants)
@@ -724,112 +1088,160 @@ export default function BroadcastPage() {
             });
             
             if (isDuplicate) {
-              console.log("[Transcription] Skipping similar/duplicate caption:", newCaption.text);
+              console.log('[Transcription] Skipping duplicate caption', { text: newCaption.text });
               return prevCaptions;
             }
             
-            console.log("[Transcription] Adding final caption:", newCaption.text);
+            console.log('[Transcription] Adding new caption', { text: newCaption.text });
             return [...prevCaptions, newCaption];
           });
         }
         
-        // Trigger translation for final text. This is the new, direct TTS logic.
+        // Enhanced translation handling with better error recovery
         if (data.text && data.text.trim() && translationLanguage) {
-          fetchTranslations(data.text.trim(), translationLanguage).then((translations) => {
-            const targetLang = getLanguageCode(translationLanguage);
-            const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
-            const translatedText = translations[langCode];
+          const translationPromise = fetchTranslations(data.text.trim(), translationLanguage);
+          
+          // Add timeout for translation requests
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Translation timeout')), 
+              deviceInfo.isTablet ? 8000 : 5000);
+          });
+          
+          Promise.race([translationPromise, timeoutPromise])
+            .then(async (translations) => {
+              const targetLang = getLanguageCode(translationLanguage);
+              const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
+              const translatedText = translations[langCode];
 
-            if (translatedText && translatedText.trim()) {
-              // Queue for TTS if enabled
-              if (autoSpeakLang === langCode) {
+              if (translatedText && translatedText.trim()) {
                 const textToSpeak = translatedText.trim();
                 
-                // MOBILE OPTIMIZATION: Use immediate TTS for mobile
-                if (isMobile()) {
-                  // Simple duplicate check for mobile
-                  if (!spokenSentences.current.has(textToSpeak)) {
+                // Enhanced TTS handling with better duplicate detection
+                if (autoSpeakLang === langCode) {
+                  // More sophisticated duplicate detection for TTS
+                  const normalizedText = textToSpeak.toLowerCase().replace(/[^\w\s]/g, '').trim();
+                  const isDuplicateForTTS = Array.from(spokenSentences.current).some(spoken => {
+                    const normalizedSpoken = spoken.toLowerCase().replace(/[^\w\s]/g, '').trim();
+                    return normalizedSpoken === normalizedText || 
+                           (normalizedSpoken.includes(normalizedText) && normalizedText.length > 10) ||
+                           (normalizedText.includes(normalizedSpoken) && normalizedSpoken.length > 10);
+                  });
+
+                  if (!isDuplicateForTTS) {
                     spokenSentences.current.add(textToSpeak);
-                    console.log(`[Mobile TTS] Speaking new translation immediately: "${textToSpeak}"`);
                     
-                    // Speak immediately without queue delays
-                    speakTextMobile(textToSpeak, langCode).then((success) => {
-                      if (!success) {
-                        console.warn('[Mobile TTS] Failed to speak new translation');
-                      }
-                    }).catch((error) => {
-                      console.error('[Mobile TTS] Error speaking new translation:', error);
+                    console.log('[TTS] Triggering automatic TTS for new translation', { 
+                      text: textToSpeak.substring(0, 50) + '...',
+                      lang: langCode,
+                      deviceType: deviceInfo.isTablet ? 'tablet' : 'mobile'
                     });
-                  } else {
-                    console.log(`[Mobile TTS] Skipping duplicate: "${textToSpeak}"`);
-                  }
-                } else {
-                  // DESKTOP: Use original queue system
-                  // A simple check to avoid queueing the exact same sentence if the service sends it twice.
-                  if (!spokenSentences.current.has(textToSpeak)) {
-                    ttsQueue.current.push({ text: textToSpeak, lang: langCode });
-                    spokenSentences.current.add(textToSpeak); // Remember sentence
-                    console.log(`[TTS] Queuing final sentence: "${textToSpeak}"`);
-                    processQueue();
-                  } else {
-                    console.log(`[TTS] Skipping duplicate: "${textToSpeak}"`);
+                    
+                    // Enhanced mobile/tablet TTS handling with queue
+                    if (isMobile()) {
+                      // Add to mobile queue instead of speaking immediately
+                      if (translatedText && translatedText.trim().length >= 10) {
+                        mobileTtsQueue.current.push({ text: translatedText.trim(), lang: langCode });
+                        console.log(`[Mobile TTS] Added to queue: "${translatedText.trim().substring(0, 30)}..." (queue length: ${mobileTtsQueue.current.length})`);
+                        
+                        // Start processing if not already processing
+                        if (!isMobileSpeaking.current) {
+                          processMobileQueue();
+                        }
+                      }
+                    } else {
+                      // Desktop handling - add to queue for processing
+                      ttsQueue.current.push({ text: translatedText.trim(), lang: langCode });
+                      setTimeout(() => processQueue(), 100);
+                    }
                   }
                 }
+
+                // Update display states
+                setLiveTranslations(translations);
+                setRealtimeTranslations({});
+
+                // Add to persisted translations
+                const newTranslation = {
+                  id: Date.now() + Math.random(),
+                  text: translatedText.trim(),
+                  language: targetLang,
+                  timestamp: Date.now()
+                };
+
+                setPersistedTranslations(prev => {
+                  if (prev.length > 0 && prev[prev.length - 1].text === newTranslation.text) {
+                    return prev;
+                  }
+                  return [...prev, newTranslation];
+                });
               }
-
-              // Update display states
-              setLiveTranslations(translations); // For potential use elsewhere, but not for triggering TTS
-              setRealtimeTranslations({}); // Clear interim display translation
-
-              // Add to persisted translations for display
-              const newTranslation = {
-                id: Date.now() + Math.random(),
-                text: translatedText.trim(),
-                language: targetLang,
-                timestamp: Date.now()
-              };
-
-              setPersistedTranslations(prev => {
-                // Avoid displaying the exact same line twice in a row
-                if (prev.length > 0 && prev[prev.length - 1].text === newTranslation.text) {
-                  return prev;
-                }
-                return [...prev, newTranslation];
+            })
+            .catch((error) => {
+              console.log('[Translation] Translation failed', { 
+                error: error.message,
+                text: data.text.substring(0, 50) 
               });
-            }
-          });
+              
+              // Don't let translation failures break the flow
+              console.warn('[Translation] Failed but continuing:', error.message);
+            });
         }
       } else {
         // Handle interim transcriptions - ONLY update display, never trigger TTS
-        console.log("[Transcription] Setting interim caption:", data.text);
+        console.log('[Transcription] Setting interim caption', { text: data.text });
         setCurrentInterimCaption(data.text || "");
         
         // Update display only for interim translations, no TTS
         if (data.text && data.text.trim() && translationLanguage) {
-          fetchTranslations(data.text, translationLanguage).then((translations) => {
-            setRealtimeTranslations(translations); // Only update display, no TTS
+          // Add timeout for interim translations too
+          const translationPromise = fetchTranslations(data.text, translationLanguage);
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Interim translation timeout')), 3000);
           });
+          
+          Promise.race([translationPromise, timeoutPromise])
+            .then((translations) => {
+              setRealtimeTranslations(translations);
+            })
+            .catch((error) => {
+              // Silently handle interim translation failures
+              console.log('[Translation] Interim translation failed', { error: error.message });
+            });
         }
       }
     });
 
-
-    
     socket.on("event_status_update", (data) => {
       if (data.room_id === id && ["Paused", "Completed", "Live"].includes(data.status)) {
-        console.log("[Broadcast] Event status update received:", data);
+        console.log('[Event] Status update received', { status: data.status });
         setEventData((prev) => (prev ? { ...prev, status: data.status } : null));
       }
     });
 
+    // Enhanced cleanup
     return () => {
+      console.log('[Connection] Cleaning up socket connection');
+      
+      connectionStateRef.current.isRecovering = false;
+      
+      // Clear all timers
+      if (reconnectionTimer.current) clearTimeout(reconnectionTimer.current);
+      if (stuckRecoveryTimer.current) clearTimeout(stuckRecoveryTimer.current);
+      
       if (socketRef.current) {
-        socketRef.current.emit("leave_room", { room: id });
-        socketRef.current.disconnect();
+        try {
+          socketRef.current.emit("leave_room", { room: id });
+          socketRef.current.disconnect();
+        } catch (e) {
+          console.warn('[Connection] Error during cleanup:', e);
+        }
         socketRef.current = null;
       }
+      
+      setSocketConnected(false);
+      setConnectionStatus('disconnected');
     };
-  }, [id, translationLanguage, processQueue, autoSpeakLang]);
+  }, [id, translationLanguage, autoSpeakLang]); // MINIMAL dependencies to prevent loops
 
   // Effect for cleaning up old captions from view
   useEffect(() => {
@@ -1050,9 +1462,60 @@ export default function BroadcastPage() {
             py: { xs: 1.5, sm: 2 },
             borderBottom: "1px solid #F2F3F5",
           }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: "#212B36", fontSize: { xs: '1rem', sm: '1.125rem' } }}>
-              Live Transcription
-            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: "#212B36", fontSize: { xs: '1rem', sm: '1.125rem' } }}>
+                Live Transcription
+              </Typography>
+              
+              {/* Connection Status Indicator */}
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Box sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  backgroundColor: 
+                    connectionStatus === 'connected' ? '#4CAF50' :
+                    connectionStatus === 'connecting' ? '#FF9800' :
+                    connectionStatus === 'error' ? '#F44336' : '#9E9E9E',
+                  animation: connectionStatus === 'connecting' ? 'pulse 2s infinite' : 'none',
+                  '@keyframes pulse': {
+                    '0%': { opacity: 1 },
+                    '50%': { opacity: 0.5 },
+                    '100%': { opacity: 1 }
+                  }
+                }} />
+                <Typography variant="caption" sx={{ 
+                  color: 
+                    connectionStatus === 'connected' ? '#4CAF50' :
+                    connectionStatus === 'connecting' ? '#FF9800' :
+                    connectionStatus === 'error' ? '#F44336' : '#9E9E9E',
+                  fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                  fontWeight: 500
+                }}>
+                  {connectionStatus === 'connected' ? 'Connected' :
+                   connectionStatus === 'connecting' ? 'Connecting' :
+                   connectionStatus === 'error' ? 'Error' : 'Disconnected'}
+                </Typography>
+              </Box>
+              
+              {/* Stuck State Indicator */}
+              {isStuck && (
+                <Box sx={{
+                  bgcolor: "#FFF3E0",
+                  color: "#F57C00",
+                  px: 1,
+                  py: 0.5,
+                  borderRadius: 1,
+                  fontSize: { xs: "11px", sm: "12px" },
+                  fontWeight: 500,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.5
+                }}>
+                  ⚠️ Recovering
+                </Box>
+              )}
+            </Box>
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: { xs: '100%', sm: 'auto' } }}>
               <Box sx={{
@@ -1069,6 +1532,22 @@ export default function BroadcastPage() {
                   ? getFullLanguageName(getBaseLangCode(transcriptionLanguage))
                   : <span style={{ color: "#ccc" }}>[No language]</span>}
               </Box>
+              
+              {/* Manual Recovery Button */}
+              {(connectionStatus === 'error' || isStuck || reconnectAttempts > 0) && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handleStuckRecovery}
+                  sx={{
+                    fontSize: { xs: "12px", sm: "13px" },
+                    minWidth: { xs: 'auto', sm: 'auto' },
+                    px: { xs: 1, sm: 1.5 }
+                  }}
+                >
+                  Retry
+                </Button>
+              )}
             </Box>
           </Box>
           <Box sx={{ px:{ xs:1.5, sm:3 }, py:{ xs:2, sm:3 }, minHeight:"200px" }}>
@@ -1081,20 +1560,26 @@ export default function BroadcastPage() {
             }}>
               <Box sx={{ p:0 }}>
                 {!socketConnected ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <CircularProgress size={20} />
-                    <Typography variant="body1" sx={{ color: "text.secondary", fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-                      Waiting for connection...
-                    </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <CircularProgress size={20} />
+                      <Typography variant="body1" sx={{ color: "text.secondary", fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+                        {connectionStatus === 'connecting' ? 'Connecting...' :
+                         connectionStatus === 'error' ? 'Connection failed, retrying...' :
+                         'Waiting for connection...'}
+                      </Typography>
+                    </Box>
                   </Box>
                 ) : (
-                  <Typography variant="body1" sx={{ 
-                    color: displayedCaption ? "text.primary" : "text.secondary",
-                    fontSize: { xs: '0.875rem', sm: '1rem' },
-                    lineHeight: { xs: 1.5, sm: 1.75 }
-                  }}>
-                    {displayedCaption || "Waiting for live transcription..."}
-                  </Typography>
+                  <Box>
+                    <Typography variant="body1" sx={{ 
+                      color: displayedCaption ? "text.primary" : "text.secondary",
+                      fontSize: { xs: '0.875rem', sm: '1rem' },
+                      lineHeight: { xs: 1.5, sm: 1.75 }
+                    }}>
+                      {displayedCaption || "Waiting for live transcription..."}
+                    </Typography>
+                  </Box>
                 )}
               </Box>
             </Paper>
@@ -1204,19 +1689,20 @@ export default function BroadcastPage() {
                     )}
                     
                     {autoSpeakLang && (
-                      <Button
-                        onClick={() => setAutoSpeakLang(null)}
-                        color="secondary"
-                        size="small"
-                        sx={{ 
-                          mb: 2, 
-                          alignSelf: "flex-start",
-                          fontSize: { xs: '0.8125rem', sm: '0.875rem' }
-                        }}
-                      >
-                        Stop Auto-TTS
-                      </Button>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+                        <Button
+                          onClick={() => setAutoSpeakLang(null)}
+                          color="secondary"
+                          size="small"
+                          sx={{ 
+                            fontSize: { xs: '0.8125rem', sm: '0.875rem' }
+                          }}
+                        >
+                          Stop Auto-TTS
+                        </Button>
+                      </Box>
                     )}
+                    
                     <Box sx={{ 
                       display: "flex", 
                       alignItems: { xs: "flex-start", sm: "center" }, 
@@ -1232,45 +1718,42 @@ export default function BroadcastPage() {
                           {displayedTranslation || "Waiting for live translation..."}
                         </Typography>
                       </Box>
+                      
+                      {/* Enhanced TTS Button with better mobile/tablet handling */}
                       {translationLanguage && displayedTranslation && (
                         <Button
                           onClick={async () => {
                             const targetLang = getLanguageCode(translationLanguage);
                             const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
                             
-                            // MOBILE OPTIMIZATION: Handle TTS immediately during user gesture
+                            // Enhanced mobile/tablet TTS handling
                             if (isMobile()) {
-                              console.log('[Mobile TTS] Button clicked - immediate mobile TTS');
-                              
                               // Activate audio context immediately during user interaction
                               if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
                                 try {
                                   await audioContextRef.current.resume();
-                                  console.log('[Mobile TTS] Audio context activated during user click');
                                 } catch (error) {
-                                  console.warn('[Mobile TTS] Failed to activate audio context:', error);
+                                  console.warn('Failed to activate audio context:', error);
                                 }
                               }
                               
                               // If clicking the same language, speak current text immediately
                               if (autoSpeakLang === langCode) {
                                 if (displayedTranslation && displayedTranslation.trim().length >= 10) {
-                                  console.log('[Mobile TTS] Speaking current translation immediately');
                                   const success = await speakTextMobile(displayedTranslation.trim(), langCode);
                                   if (!success) {
                                     setTtsError('Mobile TTS failed. Try again or use a different browser.');
                                     setTimeout(() => setTtsError(null), 5000);
                                   }
                                 }
-                                return; // Don't toggle off, just speak
+                                return;
                               }
                               
-                              // Enable auto-speak for mobile
+                              // Enable auto-speak for mobile/tablet
                               setAutoSpeakLang(langCode);
                               
                               // Speak current text immediately if available
                               if (displayedTranslation && displayedTranslation.trim().length >= 10) {
-                                console.log('[Mobile TTS] Speaking initial translation immediately');
                                 const success = await speakTextMobile(displayedTranslation.trim(), langCode);
                                 if (!success) {
                                   setTtsError('Mobile TTS failed. Try again or use a different browser.');
@@ -1281,45 +1764,35 @@ export default function BroadcastPage() {
                               return;
                             }
                             
-                            // DESKTOP HANDLING (Original logic)
-                            // If clicking the same language, force restart TTS queue
+                            // Desktop handling
                             if (autoSpeakLang === langCode) {
-                              console.log('[TTS] Force restarting TTS queue');
-                              
-                              // Clear current queue and reset state
                               ttsQueue.current = [];
                               if (currentSynthesizerRef.current) {
                                 try { currentSynthesizerRef.current.close(); } catch(e) {}
                                 currentSynthesizerRef.current = null;
                               }
                               
-                              // Reset error count
                               ttsErrorCount.current = 0;
                               setTtsError(null);
                               
-                              // Restart with current translation
                               if (displayedTranslation && displayedTranslation.trim().length >= 10) {
-                                console.log('[TTS] Restarting with current translation');
                                 ttsQueue.current.push({ text: displayedTranslation.trim(), lang: langCode });
                                 setTimeout(() => processQueue(), 100);
                               }
                               
-                              return; // Don't toggle off
+                              return;
                             }
                             
-                            // Safari/iOS specific user interaction handling for desktop
+                            // Safari/iOS handling for desktop
                             if (isSafari() || isIOS()) {
-                              // Ensure audio context is activated by user interaction
                               if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
                                 try {
                                   await audioContextRef.current.resume();
-                                  console.log('[TTS Safari] Audio context activated by user interaction');
                                 } catch (error) {
-                                  console.warn('[TTS Safari] Failed to activate audio context:', error);
+                                  console.warn('Failed to activate audio context for Safari/iOS:', error);
                                 }
                               }
                               
-                              // Add a small delay for Safari
                               await new Promise(resolve => setTimeout(resolve, 50));
                             }
                             
@@ -1330,9 +1803,11 @@ export default function BroadcastPage() {
                             justifyContent: { xs: 'center', sm: 'flex-start' }
                           }}
                           aria-label={`Auto-play TTS for ${getFullLanguageName(getBaseLangCode(translationLanguage))}`}
-                          title={autoSpeakLang === getLanguageCode(translationLanguage).split(/[-_]/)[0].toLowerCase() 
-                            ? "Click again to restart TTS or click once to stop"
-                            : "Click to enable auto-speech"}
+                          title={
+                            autoSpeakLang === getLanguageCode(translationLanguage).split(/[-_]/)[0].toLowerCase() 
+                              ? (deviceInfo.isTablet ? "Tap to speak current text or tap again to stop" : "Click again to restart TTS or click once to stop")
+                              : "Enable auto-speech"
+                          }
                         >
                           <VolumeUpIcon color={
                             autoSpeakLang === getLanguageCode(translationLanguage).split(/[-_]/)[0].toLowerCase() 
