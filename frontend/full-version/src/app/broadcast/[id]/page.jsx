@@ -813,8 +813,8 @@ export default function BroadcastPage() {
       }
     });
 
-    
 
+    
     socket.on("event_status_update", (data) => {
       if (data.room_id === id && ["Paused", "Completed", "Live"].includes(data.status)) {
         console.log("[Broadcast] Event status update received:", data);
