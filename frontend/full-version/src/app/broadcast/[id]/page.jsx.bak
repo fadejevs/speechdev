@@ -12,7 +12,8 @@ import {
   Switch,
   Button,
   Menu,
-  MenuItem
+  MenuItem,
+  Chip
 } from "@mui/material";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
@@ -20,6 +21,8 @@ import apiService from "@/services/apiService";
 import SelfieDoodle from "@/images/illustration/SelfieDoodle";
 import io from "socket.io-client";
 import branding from '@/branding.json';
+import DeviceDiagnostics from './diagnostics/DeviceDiagnostics';
+import AutomatedTestRunner from './diagnostics/AutomatedTestRunner';
 
 // ISO‐code ↔ human name
 const languageMap = {
@@ -299,12 +302,6 @@ export default function BroadcastPage() {
   const ttsErrorCount = useRef(0); // Track consecutive TTS errors
   const maxTtsErrors = 3; // Maximum errors before fallback
 
-  // Enhanced TTS state management for overlap prevention
-  const ttsLock = useRef(false);
-  const ttsPromiseRef = useRef(null);
-  const ttsDebounceTimer = useRef(null);
-  const lastTtsText = useRef('');
-
   // Mobile-specific TTS state
   const mobileTtsQueue = useRef([]);
   const isMobileSpeaking = useRef(false);
@@ -320,6 +317,11 @@ export default function BroadcastPage() {
   const [ttsError, setTtsError] = useState(null);
   const [showTtsWarning, setShowTtsWarning] = useState(false);
 
+  // New diagnostic state
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showTestRunner, setShowTestRunner] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
+  const [realTimeStats, setRealTimeStats] = useState({});
 
   // ── NEW: Enhanced connection monitoring and recovery ──────────────────────────
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
@@ -760,138 +762,6 @@ export default function BroadcastPage() {
     // Execute the synthesis
     performSynthesis();
   }, []);
-
-  // Enhanced TTS function with proper semaphore locking
-  const speakTextDesktop = useCallback(async (text, lang) => {
-    // Basic validation
-    if (!text || !process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-      return false;
-    }
-
-    // Wait for any ongoing TTS to complete
-    if (ttsPromiseRef.current) {
-      try {
-        await ttsPromiseRef.current;
-      } catch (e) {
-        console.log('[TTS] Previous TTS failed, continuing');
-      }
-    }
-
-    // Create new TTS promise with proper locking
-    ttsPromiseRef.current = new Promise(async (resolve, reject) => {
-      try {
-        // Safari/iOS specific workarounds
-        const safariMode = isSafari() || isIOS();
-        
-        if (safariMode) {
-          // Ensure audio context is active for Safari before each synthesis
-          if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-            try {
-              await audioContextRef.current.resume();
-              console.log('[TTS Desktop] Audio context resumed for synthesis');
-            } catch (error) {
-              console.warn('[TTS Desktop] Failed to resume audio context:', error);
-            }
-          }
-          
-          // Add small delay for Safari to prevent rapid-fire issues
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-
-        const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-          process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-          process.env.NEXT_PUBLIC_AZURE_REGION
-        );
-        
-        const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
-        speechConfig.speechSynthesisVoiceName = voice;
-        
-        const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
-        const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
-        
-        // Store synthesizer reference
-        currentSynthesizerRef.current = synthesizer;
-        
-        console.log(`[TTS Desktop] Starting synthesis for: "${text.substring(0, 30)}..."`);
-
-        synthesizer.speakTextAsync(
-          text,
-          (result) => {
-            if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-              // Reset error count on success
-              ttsErrorCount.current = 0;
-              
-              // Wait for audio to actually finish playing
-              const audioDurationMs = result.audioDuration / 10000; // Convert to ms
-              const waitTime = safariMode ? Math.min(audioDurationMs, 3000) : audioDurationMs;
-              
-              console.log(`[TTS Desktop] Synthesis complete. Waiting ${waitTime}ms for playback to finish.`);
-              
-              setTimeout(() => {
-                try { synthesizer.close(); } catch(e) {}
-                currentSynthesizerRef.current = null;
-                console.log(`[TTS Desktop] Playback finished for: "${text.substring(0, 30)}..."`);
-                resolve(true);
-              }, waitTime);
-            } else {
-              console.warn(`[TTS Desktop] Synthesis failed. Reason: ${result.reason}`);
-              try { synthesizer.close(); } catch(e) {}
-              currentSynthesizerRef.current = null;
-              resolve(false);
-            }
-          },
-          (error) => {
-            console.error(`[TTS Desktop] Error during synthesis: ${error}`);
-            ttsErrorCount.current++;
-            try { synthesizer.close(); } catch(e) {}
-            currentSynthesizerRef.current = null;
-            reject(error);
-          }
-        );
-      } catch (error) {
-        console.error(`[TTS Desktop] Critical error: ${error.message}`);
-        ttsErrorCount.current++;
-        reject(error);
-      }
-    });
-
-    return ttsPromiseRef.current;
-  }, []);
-
-  // Debounced TTS function to prevent rapid-fire overlaps
-  const debouncedTTS = useCallback((text, lang) => {
-    // Clear previous timer
-    if (ttsDebounceTimer.current) {
-      clearTimeout(ttsDebounceTimer.current);
-    }
-    
-    // If text is very similar to last one, debounce longer
-    const similarity = lastTtsText.current && text.includes(lastTtsText.current) ? 500 : 200;
-    
-    console.log(`[TTS Debounce] Scheduling TTS with ${similarity}ms delay for: "${text.substring(0, 30)}..."`);
-    
-    ttsDebounceTimer.current = setTimeout(async () => {
-      lastTtsText.current = text;
-      
-      // Add to spoken sentences BEFORE starting TTS to prevent duplicates
-      spokenSentences.current.add(text);
-      
-      try {
-        console.log(`[TTS Debounce] Starting TTS for: "${text.substring(0, 30)}..."`);
-        const success = await speakTextDesktop(text, lang);
-        
-        if (!success) {
-          console.warn(`[TTS Debounce] TTS failed for: "${text.substring(0, 30)}..."`);
-          // Remove from spoken sentences if TTS failed
-          spokenSentences.current.delete(text);
-        }
-      } catch (error) {
-        console.error('[TTS Debounce] Error during debounced TTS:', error);
-        // Remove from spoken sentences if TTS failed
-        spokenSentences.current.delete(text);
-      }
-    }, similarity);
-  }, [speakTextDesktop]);
 
   // Enhanced queue processor with Safari error handling
   const processQueue = useCallback(() => {
@@ -1457,6 +1327,34 @@ export default function BroadcastPage() {
     return fullTranslation.trim();
   }, [persistedTranslations, realtimeTranslations, translationLanguage]);
 
+  // New diagnostic state
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showTestRunner, setShowTestRunner] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
+  const [realTimeStats, setRealTimeStats] = useState({});
+
+  // Add debug key listener
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      // Enable debug mode with Ctrl+Shift+D
+      if (event.ctrlKey && event.shiftKey && event.key === 'D') {
+        setDebugMode(prev => !prev);
+        console.log('[Debug] Debug mode:', !debugMode);
+      }
+      // Show diagnostics with Ctrl+Shift+T
+      if (event.ctrlKey && event.shiftKey && event.key === 'T') {
+        setShowDiagnostics(true);
+      }
+      // Show test runner with Ctrl+Shift+R
+      if (event.ctrlKey && event.shiftKey && event.key === 'R') {
+        setShowTestRunner(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [debugMode]);
+
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -1562,6 +1460,34 @@ export default function BroadcastPage() {
             style={{ height: 40, display: "block" }}
           />
         </Link>
+        
+        {/* Debug Controls */}
+        {debugMode && (
+          <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setShowDiagnostics(true)}
+              sx={{ fontSize: '11px' }}
+            >
+              Diagnostics
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setShowTestRunner(true)}
+              sx={{ fontSize: '11px' }}
+            >
+              Test Runner
+            </Button>
+            <Chip
+              label={`${deviceInfo.isTablet ? 'Tablet' : deviceInfo.isMobile ? 'Mobile' : 'Desktop'}`}
+              size="small"
+              color="primary"
+              sx={{ fontSize: '10px' }}
+            />
+          </Box>
+        )}
       </Box>
 
       {/* Main Content */}
@@ -1581,6 +1507,19 @@ export default function BroadcastPage() {
           <Typography variant="body2" sx={{ color:"#637381", fontSize: { xs: '0.875rem', sm: '0.9375rem' } }}>
             {eventData.description}
           </Typography>
+          
+          {/* Debug Info */}
+          {debugMode && (
+            <Box sx={{ mt: 2, p: 1, bgcolor: '#f5f5f5', borderRadius: 1, fontSize: '12px' }}>
+              <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
+                Debug Info: Connection: {connectionStatus} | Reconnects: {reconnectAttempts} | 
+                Transcriptions: {connectionStateRef.current.totalTranscriptions}
+              </Typography>
+              <Typography variant="caption" sx={{ display: 'block' }}>
+                Device: {deviceInfo.userAgent?.substring(0, 50)}...
+              </Typography>
+            </Box>
+          )}
         </Box>
 
         {/* Live Transcription */}
@@ -1866,40 +1805,6 @@ export default function BroadcastPage() {
                             const targetLang = getLanguageCode(translationLanguage);
                             const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
                             
-                            // Desktop handling - restore original logic
-                            if (autoSpeakLang === langCode) {
-                              ttsQueue.current = [];
-                              if (currentSynthesizerRef.current) {
-                                try { currentSynthesizerRef.current.close(); } catch(e) {}
-                                currentSynthesizerRef.current = null;
-                              }
-                              
-                              ttsErrorCount.current = 0;
-                              setTtsError(null);
-                              
-                              if (displayedTranslation && displayedTranslation.trim().length >= 10) {
-                                // Use debounced TTS for button clicks too
-                                debouncedTTS(displayedTranslation.trim(), langCode);
-                              }
-                              
-                              return;
-                            }
-                            
-                            // Safari/iOS handling for desktop
-                            if (isSafari() || isIOS()) {
-                              if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-                                try {
-                                  await audioContextRef.current.resume();
-                                } catch (error) {
-                                  console.warn('Failed to activate audio context for Safari/iOS:', error);
-                                }
-                              }
-                              
-                              await new Promise(resolve => setTimeout(resolve, 50));
-                            }
-                            
-                            setAutoSpeakLang(autoSpeakLang === langCode ? null : langCode);
-                            
                             // Enhanced mobile/tablet TTS handling
                             if (isMobile()) {
                               // Activate audio context immediately during user interaction
@@ -1938,17 +1843,39 @@ export default function BroadcastPage() {
                               return;
                             }
                             
-                            // Desktop handling - use debounced TTS to prevent overlaps
-                            console.log('[TTS] Using debounced TTS for desktop', { 
-                              text: displayedTranslation.trim().substring(0, 50) + '...',
-                              lang: langCode
-                            });
+                            // Desktop handling
+                            if (autoSpeakLang === langCode) {
+                              ttsQueue.current = [];
+                              if (currentSynthesizerRef.current) {
+                                try { currentSynthesizerRef.current.close(); } catch(e) {}
+                                currentSynthesizerRef.current = null;
+                              }
+                              
+                              ttsErrorCount.current = 0;
+                              setTtsError(null);
+                              
+                              if (displayedTranslation && displayedTranslation.trim().length >= 10) {
+                                ttsQueue.current.push({ text: displayedTranslation.trim(), lang: langCode });
+                                setTimeout(() => processQueue(), 100);
+                              }
+                              
+                              return;
+                            }
                             
-                            // Remove from spoken sentences first since debouncedTTS will add it back
-                            spokenSentences.current.delete(displayedTranslation);
+                            // Safari/iOS handling for desktop
+                            if (isSafari() || isIOS()) {
+                              if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+                                try {
+                                  await audioContextRef.current.resume();
+                                } catch (error) {
+                                  console.warn('Failed to activate audio context for Safari/iOS:', error);
+                                }
+                              }
+                              
+                              await new Promise(resolve => setTimeout(resolve, 50));
+                            }
                             
-                            // Use debounced TTS instead of queue to prevent overlaps
-                            debouncedTTS(displayedTranslation.trim(), langCode);
+                            setAutoSpeakLang(autoSpeakLang === langCode ? null : langCode);
                           }}
                           sx={{ 
                             minWidth: { xs: '100%', sm: 0 },
@@ -1984,6 +1911,56 @@ export default function BroadcastPage() {
           </Box>
         </Box>
       </Box>
+
+      {/* Diagnostic Tools */}
+      {showDiagnostics && (
+        <DeviceDiagnostics
+          socketRef={socketRef}
+          eventId={id}
+          availableSourceLanguages={availableSourceLanguages}
+          availableTargetLanguages={availableTargetLanguages}
+          onClose={() => setShowDiagnostics(false)}
+        />
+      )}
+
+      {showTestRunner && (
+        <AutomatedTestRunner
+          socketRef={socketRef}
+          eventId={id}
+          availableSourceLanguages={availableSourceLanguages}
+          availableTargetLanguages={availableTargetLanguages}
+          onClose={() => setShowTestRunner(false)}
+        />
+      )}
+
+      {/* Debug floating help */}
+      {debugMode && (
+        <Box sx={{
+          position: 'fixed',
+          bottom: 20,
+          right: 20,
+          bgcolor: 'rgba(0,0,0,0.8)',
+          color: 'white',
+          p: 2,
+          borderRadius: 2,
+          fontSize: '12px',
+          zIndex: 1000,
+          maxWidth: 300
+        }}>
+          <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block', mb: 1 }}>
+            Debug Mode Active
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block' }}>
+            • Ctrl+Shift+D: Toggle debug mode
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block' }}>
+            • Ctrl+Shift+T: Show diagnostics
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block' }}>
+            • Ctrl+Shift+R: Show test runner
+          </Typography>
+        </Box>
+      )}
     </Box>
   );
 }
