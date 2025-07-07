@@ -12,10 +12,17 @@ import {
   Switch,
   Button,
   Menu,
-  MenuItem
+  MenuItem,
+  IconButton,
+  useMediaQuery,
+  useTheme,
+  Fab
 } from "@mui/material";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import MenuIcon from "@mui/icons-material/Menu";
+import PauseIcon from "@mui/icons-material/Pause";
 import apiService from "@/services/apiService";
 import SelfieDoodle from "@/images/illustration/SelfieDoodle";
 import io from "socket.io-client";
@@ -41,6 +48,53 @@ const getLanguageCode     = (full = "") => {
 };
 const getBaseLangCode = (code) =>
   code ? code.split(/[-_]/)[0].toLowerCase() : code;
+
+// Placeholder text for each language
+const placeholderText = {
+  en: "Waiting for live translation...",
+  lv: "Gaida tiešraides tulkojumu...",
+  lt: "Laukiama tiesioginės transliacijos...",
+  ru: "Ожидание прямого перевода...",
+  de: "Warten auf Live-Übersetzung...",
+  fr: "En attente de traduction en direct...",
+  es: "Esperando traducción en vivo...",
+  it: "In attesa di traduzione dal vivo...",
+  zh: "等待实时翻译...",
+  ja: "ライブ翻訳を待っています...",
+  ko: "실시간 번역을 기다리는 중...",
+  ar: "في انتظار الترجمة المباشرة...",
+  hi: "लाइव अनुवाद की प्रतीक्षा में...",
+  pt: "Aguardando tradução ao vivo...",
+  nl: "Wachten op live vertaling...",
+  sv: "Väntar på direktöversättning...",
+  fi: "Odotetaan reaaliaikaista käännöstä...",
+  da: "Venter på direkte oversættelse...",
+  no: "Venter på direkteoversettelse...",
+  pl: "Oczekiwanie na tłumaczenie na żywo...",
+  tr: "Canlı çeviri bekleniyor...",
+  cs: "Čekání na živý překlad...",
+  hu: "Várakozás az élő fordításra...",
+  ro: "Se așteaptă traducerea în direct...",
+  bg: "Изчакване на превод на живо...",
+  el: "Αναμονή για ζωντανή μετάφραση...",
+  he: "ממתין לתרגום חי...",
+  th: "รอการแปลสด...",
+  vi: "Đang chờ bản dịch trực tiếp...",
+  id: "Menunggu terjemahan langsung...",
+  ms: "Menunggu terjemahan langsung...",
+  uk: "Очікування прямого перекладу...",
+  sk: "Čaká sa na živý preklad...",
+  sl: "Čakanje na živ prevod...",
+  sr: "Čekanje na uživo prevod...",
+  hr: "Čekanje na uživo prijevod...",
+  et: "Ootame reaalajas tõlget..."
+};
+
+const getPlaceholderText = (translationLanguage) => {
+  if (!translationLanguage) return placeholderText.en; // Default to English
+  const langCode = getBaseLangCode(getLanguageCode(translationLanguage));
+  return placeholderText[langCode] || placeholderText.en; // Fallback to English
+};
 
 const voiceMap = {
   'en': 'en-US-JennyNeural',
@@ -161,23 +215,46 @@ const speakWithWebSpeechAPI = (text, lang) => {
         utterance.pitch = 1;
         utterance.volume = 1;
 
+        utterance.onstart = () => {
+          console.log('[Mobile TTS] ✅ Web Speech API started successfully');
+        };
+
         utterance.onend = () => {
-          console.log('[Mobile TTS] Web Speech API synthesis completed');
+          console.log('[Mobile TTS] ✅ Web Speech API synthesis completed');
           resolve(true);
         };
 
         utterance.onerror = (event) => {
-          console.error('[Mobile TTS] Web Speech API error:', event.error);
+          console.error('[Mobile TTS] ❌ Web Speech API error:', {
+            error: event.error,
+            message: event.message,
+            userAgent: navigator.userAgent
+          });
           resolve(false);
         };
 
+        // Check if voices are available
+        const voices = window.speechSynthesis.getVoices();
+        console.log('[Mobile TTS] Available voices:', voices.length, voices.map(v => `${v.name} (${v.lang})`));
+        
         // Start speaking
         window.speechSynthesis.speak(utterance);
-        console.log('[Mobile TTS] Started Web Speech API synthesis');
+        console.log('[Mobile TTS] Started Web Speech API synthesis for:', text.substring(0, 30) + '...');
+        
+        // Fallback timeout in case Web Speech API hangs
+        setTimeout(() => {
+          if (window.speechSynthesis.speaking) {
+            console.log('[Mobile TTS] Web Speech API is still active after 15s');
+          } else {
+            console.warn('[Mobile TTS] Web Speech API may have failed silently');
+            resolve(false);
+          }
+        }, 15000);
+        
       }, 100); // Small delay to ensure cancellation completes
       
     } catch (error) {
-      console.error('[Mobile TTS] Web Speech API failed:', error);
+      console.error('[Mobile TTS] ❌ Web Speech API setup failed:', error);
       resolve(false);
     }
   });
@@ -187,80 +264,179 @@ const speakWithWebSpeechAPI = (text, lang) => {
 const speakTextMobile = async (text, lang) => {
   console.log('[Mobile TTS] Attempting mobile TTS for:', text.substring(0, 30) + '...');
   
-  // Check if we're already speaking and handle interruption
-  if (window.speechSynthesis && window.speechSynthesis.speaking) {
-    console.log('[Mobile TTS] Already speaking, will interrupt and speak new text');
-    window.speechSynthesis.cancel();
-    // Wait for cancellation to complete
-    await new Promise(resolve => setTimeout(resolve, 150));
-  }
-  
-  // Try Web Speech API first for mobile (more reliable)
-  if (isMobile()) {
-    const webSpeechSuccess = await speakWithWebSpeechAPI(text, lang);
-    if (webSpeechSuccess) {
-      return true;
-    }
-    console.log('[Mobile TTS] Web Speech API failed, falling back to Azure');
-  }
-
-  // Fallback to Azure TTS with mobile-optimized config
-  if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-    console.warn('[Mobile TTS] Azure credentials missing');
+  // Simple overlap prevention for mobile
+  if (window.mobileTtsLock) {
+    console.log('[Mobile TTS] ⚠️ Already locked, preventing overlap');
     return false;
   }
-
+  
+  // Set mobile lock
+  window.mobileTtsLock = true;
+  
   try {
-    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-      process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-      process.env.NEXT_PUBLIC_AZURE_REGION
-    );
+    // Check if we're already speaking and handle interruption
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+      console.log('[Mobile TTS] 🔄 Interrupting current speech for new text');
+      window.speechSynthesis.cancel();
+      // Wait for cancellation to complete
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
     
-    const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
-    speechConfig.speechSynthesisVoiceName = voice;
-    
-    // Mobile-specific audio configuration - use default audio output without explicit config
-    const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, null);
+    // Try Web Speech API first for mobile (more reliable)
+    if (isMobile()) {
+      console.log('[Mobile TTS] 🎯 Trying Web Speech API first...');
+      const webSpeechSuccess = await speakWithWebSpeechAPI(text, lang);
+      if (webSpeechSuccess) {
+        console.log('[Mobile TTS] ✅ Web Speech API succeeded');
+        return true;
+      }
+      console.log('[Mobile TTS] 🔄 Web Speech API failed, falling back to Azure TTS');
+    }
 
-    return new Promise((resolve) => {
-      const timeoutId = setTimeout(() => {
-        console.warn('[Mobile TTS] Azure synthesis timeout');
-        try { synthesizer.close(); } catch (e) {}
-        resolve(false);
-      }, 10000); // Shorter timeout for mobile
+    // Fallback to Azure TTS with mobile-optimized config
+    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+      console.warn('[Mobile TTS] ❌ Azure credentials missing');
+      return false;
+    }
 
-      synthesizer.speakTextAsync(
-        text,
-        (result) => {
-          clearTimeout(timeoutId);
-          
-          try { synthesizer.close(); } catch (e) {}
-          
-          if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-            console.log('[Mobile TTS] Azure synthesis completed');
-            resolve(true);
-          } else {
-            console.warn('[Mobile TTS] Azure synthesis failed:', result.reason);
-            resolve(false);
-          }
-        },
-        (error) => {
-          clearTimeout(timeoutId);
-          console.error('[Mobile TTS] Azure synthesis error:', error);
+    try {
+      console.log('[Mobile TTS] 🔄 Starting Azure TTS fallback...');
+      const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
+        process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+        process.env.NEXT_PUBLIC_AZURE_REGION
+      );
+      
+      const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
+      speechConfig.speechSynthesisVoiceName = voice;
+      console.log('[Mobile TTS] 🎵 Using Azure voice:', voice);
+      
+      // Mobile-specific audio configuration - use default audio output without explicit config
+      const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, null);
+
+      return new Promise((resolve) => {
+        const timeoutId = setTimeout(() => {
+          console.warn('[Mobile TTS] ⏰ Azure synthesis timeout after 10s');
           try { synthesizer.close(); } catch (e) {}
           resolve(false);
-        }
-      );
-    });
+        }, 10000); // Shorter timeout for mobile
 
+        synthesizer.speakTextAsync(
+          text,
+          (result) => {
+            clearTimeout(timeoutId);
+            
+            try { synthesizer.close(); } catch (e) {}
+            
+            if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+              console.log('[Mobile TTS] ✅ Azure TTS synthesis completed');
+              resolve(true);
+            } else {
+              console.warn('[Mobile TTS] ❌ Azure synthesis failed:', result.reason);
+              resolve(false);
+            }
+          },
+          (error) => {
+            clearTimeout(timeoutId);
+            console.error('[Mobile TTS] ❌ Azure synthesis error:', error);
+            try { synthesizer.close(); } catch (e) {}
+            resolve(false);
+          }
+        );
+      });
+
+    } catch (error) {
+      console.error('[Mobile TTS] ❌ Azure TTS setup failed:', error);
+      return false;
+    }
+  } finally {
+    // Always release mobile lock
+    window.mobileTtsLock = false;
+    console.log('[Mobile TTS] 🔓 Released mobile TTS lock');
+  }
+};
+
+// 🎯 NEW: Queue-based mobile TTS (for auto-speak) - NO LOCK NEEDED
+const speakTextMobileQueued = async (text, lang) => {
+  console.log('[Mobile TTS Queue] Speaking:', text.substring(0, 30) + '...');
+  
+  // NO LOCK - queue system handles overlap prevention via isMobileSpeaking.current
+  
+  try {
+    // Try Web Speech API first for mobile (more reliable)
+    if (isMobile()) {
+      console.log('[Mobile TTS Queue] 🎯 Trying Web Speech API first...');
+      const webSpeechSuccess = await speakWithWebSpeechAPI(text, lang);
+      if (webSpeechSuccess) {
+        console.log('[Mobile TTS Queue] ✅ Web Speech API succeeded');
+        return true;
+      }
+      console.log('[Mobile TTS Queue] 🔄 Web Speech API failed, falling back to Azure TTS');
+    }
+
+    // Fallback to Azure TTS with mobile-optimized config
+    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+      console.warn('[Mobile TTS Queue] ❌ Azure credentials missing');
+      return false;
+    }
+
+    try {
+      console.log('[Mobile TTS Queue] 🔄 Starting Azure TTS fallback...');
+      const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
+        process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+        process.env.NEXT_PUBLIC_AZURE_REGION
+      );
+      
+      const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
+      speechConfig.speechSynthesisVoiceName = voice;
+      console.log('[Mobile TTS Queue] 🎵 Using Azure voice:', voice);
+      
+      // Mobile-specific audio configuration
+      const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, null);
+
+      return new Promise((resolve) => {
+        const timeoutId = setTimeout(() => {
+          console.warn('[Mobile TTS Queue] ⏰ Azure synthesis timeout after 10s');
+          try { synthesizer.close(); } catch (e) {}
+          resolve(false);
+        }, 10000);
+
+        synthesizer.speakTextAsync(
+          text,
+          (result) => {
+            clearTimeout(timeoutId);
+            try { synthesizer.close(); } catch (e) {}
+            
+            if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+              console.log('[Mobile TTS Queue] ✅ Azure TTS synthesis completed');
+              resolve(true);
+            } else {
+              console.warn('[Mobile TTS Queue] ❌ Azure synthesis failed:', result.reason);
+              resolve(false);
+            }
+          },
+          (error) => {
+            clearTimeout(timeoutId);
+            console.error('[Mobile TTS Queue] ❌ Azure synthesis error:', error);
+            try { synthesizer.close(); } catch (e) {}
+            resolve(false);
+          }
+        );
+      });
+
+    } catch (error) {
+      console.error('[Mobile TTS Queue] ❌ Azure TTS setup failed:', error);
+      return false;
+    }
   } catch (error) {
-    console.error('[Mobile TTS] Azure TTS setup failed:', error);
+    console.error('[Mobile TTS Queue] ❌ Critical error:', error);
     return false;
   }
 };
 
 export default function BroadcastPage() {
   const { id } = useParams();
+  const theme = useTheme();
+  const isMobileView = useMediaQuery(theme.breakpoints.down('md')); // Now includes tablets/iPads (up to 900px)
 
   // ── 1) Load event & init langs ─────────────────────────────────────────────
   const [eventData, setEventData] = useState(null);
@@ -937,7 +1113,8 @@ export default function BroadcastPage() {
     console.log(`[Mobile TTS Queue] Processing item: "${item.text.substring(0, 30)}..." (${mobileTtsQueue.current.length} remaining)`);
     
     try {
-      const success = await speakTextMobile(item.text, item.lang);
+      // 🎯 Use the new queued function that doesn't conflict with button locks
+      const success = await speakTextMobileQueued(item.text, item.lang);
       console.log(`[Mobile TTS Queue] Item completed with success: ${success}`);
       
       if (!success) {
@@ -1547,6 +1724,49 @@ export default function BroadcastPage() {
     );
   }
 
+  // Mobile-specific handlers
+  const handleMobilePlayToggle = async () => {
+    if (!translationLanguage || !displayedTranslation) return;
+    
+    const targetLang = getLanguageCode(translationLanguage);
+    const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
+    
+    // Activate audio context immediately during user interaction
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      try {
+        await audioContextRef.current.resume();
+        console.log('[Mobile Play] 🔊 Audio context resumed');
+      } catch (error) {
+        console.warn('[Mobile Play] ⚠️ Audio context failed:', error);
+      }
+    }
+    
+    // Toggle auto-speak
+    if (autoSpeakLang === langCode) {
+      console.log('[Mobile Play] 🛑 Disabling auto-speak');
+      setAutoSpeakLang(null);
+      
+      // Stop any current speech
+      if (window.speechSynthesis && window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+      }
+      window.mobileTtsLock = false;
+    } else {
+      console.log('[Mobile Play] ▶️ Enabling auto-speak');
+      setAutoSpeakLang(langCode);
+      
+      // Speak current text immediately if available
+      if (displayedTranslation && displayedTranslation.trim().length >= 10) {
+        console.log('[Mobile Play] 🎤 Speaking current text immediately');
+        const success = await speakTextMobile(displayedTranslation.trim(), langCode);
+        if (!success) {
+          setTtsError('Mobile TTS failed. Try again or check browser permissions.');
+          setTimeout(() => setTtsError(null), 5000);
+        }
+      }
+    }
+  };
+
   return (
     <Box sx={{ display:"flex", flexDirection:"column", minHeight:"100vh" }}>
       {/* Header */}
@@ -1564,24 +1784,233 @@ export default function BroadcastPage() {
         </Link>
       </Box>
 
-      {/* Main Content */}
-      <Box sx={{ flex:1, maxWidth:"1200px", width:"100%", mx:"auto", p:{ xs:1.5, sm:2, md:3 } }}>
-        {/* Event Header */}
-        <Box sx={{
-          mb:{ xs:2, sm:3 }, 
-          p:{ xs:2, sm:3 }, 
-          borderRadius:2,
-          bgcolor:"white", 
-          boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
-          border:"1px solid #F2F3F5"
+      {/* Main Content - Responsive Layout */}
+      {isMobileView ? (
+        /* MOBILE & TABLET LAYOUT */
+        <Box sx={{ 
+          flex: 1, 
+          display: "flex", 
+          flexDirection: "column", 
+          bgcolor: "#f8f9fa",
+          pb: { xs: 10, sm: 12 } // More space for taller control bar on tablets
         }}>
-          <Typography variant="h6" sx={{ fontWeight:600, color:"#212B36", mb:1, fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
-            {eventData.title}
-          </Typography>
-          <Typography variant="body2" sx={{ color:"#637381", fontSize: { xs: '0.875rem', sm: '0.9375rem' } }}>
-            {eventData.description}
-          </Typography>
+          {/* Mobile/Tablet Event Header */}
+          <Box sx={{ p: { xs: 3, sm: 4 }, bgcolor: "white" }}>
+            <Typography variant="h4" sx={{ 
+              fontWeight: 700, 
+              color: "#212B36", 
+              mb: 1,
+              fontSize: { xs: "1.5rem", sm: "1.75rem" } // Larger on tablets
+            }}>
+              {eventData.title}
+            </Typography>
+            <Typography variant="body2" sx={{ 
+              color: "#637381",
+              fontSize: { xs: "0.875rem", sm: "1rem" } // Larger on tablets
+            }}>
+              {eventData.description}
+            </Typography>
+          </Box>
+
+          {/* Mobile/Tablet Live Interpretation Section */}
+          <Box sx={{ flex: 1, p: { xs: 3, sm: 4 }, bgcolor: "white", mt: 2 }}>
+            {/* Header with Language Selection */}
+            <Box sx={{ 
+              display: "flex", 
+              justifyContent: "space-between", 
+              alignItems: "center",
+              mb: { xs: 3, sm: 4 } // More space on tablets
+            }}>
+              <Typography variant="h5" sx={{ 
+                fontWeight: 600, 
+                color: "#212B36",
+                fontSize: { xs: "1.25rem", sm: "1.5rem" } // Larger on tablets
+              }}>
+                Live Interpretation
+              </Typography>
+              
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Box sx={{
+                  bgcolor: "#8B5CF6",
+                  color: "white",
+                  px: { xs: 2, sm: 2.5 },
+                  py: { xs: 0.75, sm: 1 },
+                  borderRadius: 3,
+                  fontSize: { xs: "14px", sm: "16px" }, // Larger on tablets
+                  fontWeight: 600
+                }}>
+                  {translationLanguage
+                    ? getFullLanguageName(getBaseLangCode(translationLanguage))
+                    : "No Language"}
+                </Box>
+                <Button
+                  size="small"
+                  endIcon={<ArrowDropDownIcon />}
+                  onClick={(e) => setTranslationMenuAnchor(e.currentTarget)}
+                  sx={{
+                    textTransform: "none",
+                    fontSize: { xs: "14px", sm: "16px" }, // Larger on tablets
+                    color: "#637381",
+                    fontWeight: 500
+                  }}
+                >
+                  Change Language
+                </Button>
+                <Menu
+                  anchorEl={translationMenuAnchor}
+                  open={Boolean(translationMenuAnchor)}
+                  onClose={() => setTranslationMenuAnchor(null)}
+                >
+                  {availableTargetLanguages.map((lang) => (
+                    <MenuItem
+                      key={lang}
+                      onClick={() => {
+                        setTranslationLanguage(lang);
+                        setTranslationMenuAnchor(null);
+                      }}
+                    >
+                      {getFullLanguageName(getBaseLangCode(lang))}
+                    </MenuItem>
+                  ))}
+                </Menu>
+              </Box>
+            </Box>
+
+            {/* Translation Content */}
+            <Box sx={{ 
+              minHeight: { xs: "300px", sm: "400px" }, // Taller on tablets
+              display: "flex", 
+              alignItems: "flex-start",
+              pt: { xs: 2, sm: 3 } // More padding on tablets
+            }}>
+              {!socketConnected ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <CircularProgress size={24} />
+                  <Typography variant="body1" sx={{ 
+                    color: "text.secondary",
+                    fontSize: { xs: "1rem", sm: "1.125rem" } // Larger on tablets
+                  }}>
+                    {connectionStatus === 'connecting' ? 'Connecting...' :
+                     connectionStatus === 'error' ? 'Connection failed, retrying...' :
+                     'Waiting for connection...'}
+                  </Typography>
+                </Box>
+              ) : (
+                <Typography variant="body1" sx={{ 
+                  color: displayedTranslation ? "text.primary" : "text.secondary",
+                  fontSize: { xs: "1.1rem", sm: "1.25rem" }, // Larger on tablets
+                  lineHeight: 1.6,
+                  fontWeight: 400
+                }}>
+                  {displayedTranslation || getPlaceholderText(translationLanguage)}
+                </Typography>
+              )}
+            </Box>
+
+            {/* TTS Error Notification for Mobile */}
+            {ttsError && (
+              <Box sx={{ 
+                mt: 2,
+                p: 2, 
+                bgcolor: "#fff3cd", 
+                border: "1px solid #ffeaa7", 
+                borderRadius: 2,
+                fontSize: "0.875rem",
+                color: "#856404"
+              }}>
+                ⚠️ {ttsError}
+              </Box>
+            )}
+          </Box>
+
+          {/* Floating Play/Pause Button */}
+          <Fab
+            onClick={handleMobilePlayToggle}
+            sx={{
+              position: "fixed",
+              bottom: { xs: 50, sm: 50 }, // Just above the control bar
+              left: "50%",
+              transform: "translateX(-50%)",
+              bgcolor: "white",
+              color: "#8B5CF6",
+              width: { xs: 74, sm: 84 }, // Larger on tablets
+              height: { xs: 74, sm: 84 },
+              border: "2px solid #8B5CF6", // Purple stroke matching the container
+              zIndex: 1001, // Above the control bar
+              boxShadow: "0px 4px 20px rgba(139, 92, 246, 0.3)",
+              '&:hover': {
+                bgcolor: "#f8f9fa",
+                boxShadow: "0px 6px 25px rgba(139, 92, 246, 0.4)",
+                borderColor: "#8B5CF6" // Keep purple border on hover
+              }
+            }}
+          >
+            {autoSpeakLang && translationLanguage && autoSpeakLang === getLanguageCode(translationLanguage).split(/[-_]/)[0].toLowerCase() ? 
+              <PauseIcon sx={{ fontSize: { xs: 28, sm: 32 } }} /> : 
+              <PlayArrowIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
+            }
+          </Fab>
+
+          {/* Mobile/Tablet Bottom Control Bar */}
+          <Box sx={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            bgcolor: "#8B5CF6",
+            height: { xs: 80, sm: 90 }, // Slightly taller on tablets
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            px: { xs: 4, sm: 6 }, // More padding on tablets
+            zIndex: 1000,
+            borderRadius: "20px 20px 0 0"
+          }}>
+            {/* Menu Button */}
+            <IconButton 
+              sx={{ 
+                color: "white",
+                width: { xs: 48, sm: 56 }, // Larger on tablets
+                height: { xs: 48, sm: 56 }
+              }}
+            >
+              <MenuIcon sx={{ fontSize: { xs: 24, sm: 28 } }} />
+            </IconButton>
+
+            {/* Empty space where play button was */}
+            <Box sx={{ width: { xs: 64, sm: 72 } }} />
+
+            {/* Speaker Button */}
+            <IconButton 
+              sx={{ 
+                color: "white",
+                width: { xs: 48, sm: 56 }, // Larger on tablets
+                height: { xs: 48, sm: 56 }
+              }}
+            >
+              <VolumeUpIcon sx={{ fontSize: { xs: 24, sm: 28 } }} />
+            </IconButton>
+          </Box>
         </Box>
+      ) : (
+        /* DESKTOP LAYOUT - Keep existing */
+        <Box sx={{ flex:1, maxWidth:"1200px", width:"100%", mx:"auto", p:{ xs:1.5, sm:2, md:3 } }}>
+          {/* Event Header */}
+          <Box sx={{
+            mb:{ xs:2, sm:3 }, 
+            p:{ xs:2, sm:3 }, 
+            borderRadius:2,
+            bgcolor:"white", 
+            boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
+            border:"1px solid #F2F3F5"
+          }}>
+            <Typography variant="h6" sx={{ fontWeight:600, color:"#212B36", mb:1, fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
+              {eventData.title}
+            </Typography>
+            <Typography variant="body2" sx={{ color:"#637381", fontSize: { xs: '0.875rem', sm: '0.9375rem' } }}>
+              {eventData.description}
+            </Typography>
+          </Box>
 
         {/* Live Transcription */}
         <Box sx={{
@@ -1855,7 +2284,7 @@ export default function BroadcastPage() {
                           fontSize: { xs: '0.875rem', sm: '1rem' },
                           lineHeight: { xs: 1.5, sm: 1.75 }
                         }}>
-                          {displayedTranslation || "Waiting for live translation..."}
+                          {displayedTranslation || getPlaceholderText(translationLanguage)}
                         </Typography>
                       </Box>
                       
@@ -1866,7 +2295,51 @@ export default function BroadcastPage() {
                             const targetLang = getLanguageCode(translationLanguage);
                             const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
                             
-                            // Desktop handling - restore original logic
+                            // 🎯 SIMPLIFIED MOBILE/TABLET HANDLING - ONE TAP TO START/STOP
+                            if (isMobile()) {
+                              console.log('[Mobile TTS Button] 📱 Mobile button pressed');
+                              
+                              // Activate audio context immediately during user interaction
+                              if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+                                try {
+                                  await audioContextRef.current.resume();
+                                  console.log('[Mobile TTS Button] 🔊 Audio context resumed');
+                                } catch (error) {
+                                  console.warn('[Mobile TTS Button] ⚠️ Audio context failed:', error);
+                                }
+                              }
+                              
+                              // Simple toggle: if already enabled, disable; if disabled, enable
+                              if (autoSpeakLang === langCode) {
+                                // STOP auto-speak
+                                console.log('[Mobile TTS Button] 🛑 Disabling auto-speak');
+                                setAutoSpeakLang(null);
+                                
+                                // Stop any current speech
+                                if (window.speechSynthesis && window.speechSynthesis.speaking) {
+                                  window.speechSynthesis.cancel();
+                                }
+                                window.mobileTtsLock = false;
+                                
+                              } else {
+                                // START auto-speak
+                                console.log('[Mobile TTS Button] ▶️ Enabling auto-speak');
+                                setAutoSpeakLang(langCode);
+                                
+                                // Speak current text immediately if available
+                                if (displayedTranslation && displayedTranslation.trim().length >= 10) {
+                                  console.log('[Mobile TTS Button] 🎤 Speaking current text immediately');
+                                  const success = await speakTextMobile(displayedTranslation.trim(), langCode);
+                                  if (!success) {
+                                    setTtsError('Mobile TTS failed. Try again or check browser permissions.');
+                                    setTimeout(() => setTtsError(null), 5000);
+                                  }
+                                }
+                              }
+                              return;
+                            }
+                            
+                            // 🖥️ DESKTOP HANDLING - KEEP EXISTING LOGIC  
                             if (autoSpeakLang === langCode) {
                               ttsQueue.current = [];
                               if (currentSynthesizerRef.current) {
@@ -1900,44 +2373,6 @@ export default function BroadcastPage() {
                             
                             setAutoSpeakLang(autoSpeakLang === langCode ? null : langCode);
                             
-                            // Enhanced mobile/tablet TTS handling
-                            if (isMobile()) {
-                              // Activate audio context immediately during user interaction
-                              if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-                                try {
-                                  await audioContextRef.current.resume();
-                                } catch (error) {
-                                  console.warn('Failed to activate audio context:', error);
-                                }
-                              }
-                              
-                              // If clicking the same language, speak current text immediately
-                              if (autoSpeakLang === langCode) {
-                                if (displayedTranslation && displayedTranslation.trim().length >= 10) {
-                                  const success = await speakTextMobile(displayedTranslation.trim(), langCode);
-                                  if (!success) {
-                                    setTtsError('Mobile TTS failed. Try again or use a different browser.');
-                                    setTimeout(() => setTtsError(null), 5000);
-                                  }
-                                }
-                                return;
-                              }
-                              
-                              // Enable auto-speak for mobile/tablet
-                              setAutoSpeakLang(langCode);
-                              
-                              // Speak current text immediately if available
-                              if (displayedTranslation && displayedTranslation.trim().length >= 10) {
-                                const success = await speakTextMobile(displayedTranslation.trim(), langCode);
-                                if (!success) {
-                                  setTtsError('Mobile TTS failed. Try again or use a different browser.');
-                                  setTimeout(() => setTtsError(null), 5000);
-                                }
-                              }
-                              
-                              return;
-                            }
-                            
                             // Desktop handling - use debounced TTS to prevent overlaps
                             console.log('[TTS] Using debounced TTS for desktop', { 
                               text: displayedTranslation.trim().substring(0, 50) + '...',
@@ -1957,8 +2392,8 @@ export default function BroadcastPage() {
                           aria-label={`Auto-play TTS for ${getFullLanguageName(getBaseLangCode(translationLanguage))}`}
                           title={
                             autoSpeakLang === getLanguageCode(translationLanguage).split(/[-_]/)[0].toLowerCase() 
-                              ? (deviceInfo.isTablet ? "Tap to speak current text or tap again to stop" : "Click again to restart TTS or click once to stop")
-                              : "Enable auto-speech"
+                              ? "🛑 Tap to stop auto-speech"
+                              : "▶️ Tap to enable auto-speech"
                           }
                         >
                           <VolumeUpIcon color={
@@ -1983,7 +2418,8 @@ export default function BroadcastPage() {
             </Paper>
           </Box>
         </Box>
-      </Box>
+        </Box>
+      )}
     </Box>
   );
 }
