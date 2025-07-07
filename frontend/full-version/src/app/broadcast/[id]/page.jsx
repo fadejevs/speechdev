@@ -194,6 +194,39 @@ const initializeAudioContext = () => {
   }
 };
 
+// Function to wait for voices to load on iOS
+const waitForVoicesToLoad = () => {
+  return new Promise((resolve) => {
+    const voices = speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      console.log('[Voice Loading] ✅ Voices already loaded:', voices.length);
+      resolve(voices);
+      return;
+    }
+    
+    console.log('[Voice Loading] ⏳ Waiting for voices to load...');
+    
+    // Set up voice loading listener
+    const onVoicesChanged = () => {
+      const loadedVoices = speechSynthesis.getVoices();
+      if (loadedVoices.length > 0) {
+        console.log('[Voice Loading] ✅ Voices loaded:', loadedVoices.length);
+        speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged);
+        resolve(loadedVoices);
+      }
+    };
+    
+    speechSynthesis.addEventListener('voiceschanged', onVoicesChanged);
+    
+    // Timeout after 5 seconds
+    setTimeout(() => {
+      console.log('[Voice Loading] ⏰ Voice loading timeout, proceeding anyway');
+      speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged);
+      resolve(speechSynthesis.getVoices());
+    }, 5000);
+  });
+};
+
 // Add mobile-specific TTS function using Web Speech API as fallback
 const speakWithWebSpeechAPI = (text, lang) => {
   return new Promise((resolve) => {
@@ -225,12 +258,18 @@ const speakWithWebSpeechAPI = (text, lang) => {
         };
 
         utterance.onerror = (event) => {
-          console.error('[Mobile TTS] ❌ Web Speech API error:', {
-            error: event.error,
-            message: event.message,
-            userAgent: navigator.userAgent
-          });
-          resolve(false);
+          // Don't treat "interrupted" as an error - it's expected when pausing
+          if (event.error === 'interrupted') {
+            console.log('[Mobile TTS] 🛑 Web Speech API interrupted (paused)');
+            resolve(true); // Still consider it successful
+          } else {
+            console.error('[Mobile TTS] ❌ Web Speech API error:', {
+              error: event.error,
+              message: event.message,
+              userAgent: navigator.userAgent
+            });
+            resolve(false);
+          }
         };
 
         // Check if voices are available
@@ -495,6 +534,9 @@ export default function BroadcastPage() {
   // Add fallback for when TTS fails completely
   const [ttsError, setTtsError] = useState(null);
   const [showTtsWarning, setShowTtsWarning] = useState(false);
+  
+  // TTS Loading state for mobile
+  const [ttsLoading, setTtsLoading] = useState(false);
 
 
   // ── NEW: Enhanced connection monitoring and recovery ──────────────────────────
@@ -1726,36 +1768,48 @@ export default function BroadcastPage() {
 
   // Mobile-specific handlers
   const handleMobilePlayToggle = async () => {
-    if (!translationLanguage || !displayedTranslation) return;
+    if (!translationLanguage) return;
     
     const targetLang = getLanguageCode(translationLanguage);
     const langCode = targetLang.split(/[-_]/)[0].toLowerCase();
     
-    // Activate audio context immediately during user interaction
-    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-      try {
-        await audioContextRef.current.resume();
-        console.log('[Mobile Play] 🔊 Audio context resumed');
-      } catch (error) {
-        console.warn('[Mobile Play] ⚠️ Audio context failed:', error);
-      }
-    }
-    
-    // Toggle auto-speak
+    // If already enabled, just disable
     if (autoSpeakLang === langCode) {
       console.log('[Mobile Play] 🛑 Disabling auto-speak');
       setAutoSpeakLang(null);
+      setTtsLoading(false);
       
       // Stop any current speech
       if (window.speechSynthesis && window.speechSynthesis.speaking) {
         window.speechSynthesis.cancel();
       }
       window.mobileTtsLock = false;
-    } else {
-      console.log('[Mobile Play] ▶️ Enabling auto-speak');
+      return;
+    }
+    
+    // Start loading state
+    setTtsLoading(true);
+    console.log('[Mobile Play] ⏳ Starting TTS initialization...');
+    
+    try {
+      // Activate audio context immediately during user interaction
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        try {
+          await audioContextRef.current.resume();
+          console.log('[Mobile Play] 🔊 Audio context resumed');
+        } catch (error) {
+          console.warn('[Mobile Play] ⚠️ Audio context failed:', error);
+        }
+      }
+      
+      // Wait for voices to load (important for iOS)
+      await waitForVoicesToLoad();
+      
+      // Enable auto-speak
+      console.log('[Mobile Play] ▶️ TTS ready, enabling auto-speak');
       setAutoSpeakLang(langCode);
       
-      // Speak current text immediately if available
+      // Auto-speak current text if available, or provide feedback
       if (displayedTranslation && displayedTranslation.trim().length >= 10) {
         console.log('[Mobile Play] 🎤 Speaking current text immediately');
         const success = await speakTextMobile(displayedTranslation.trim(), langCode);
@@ -1763,7 +1817,21 @@ export default function BroadcastPage() {
           setTtsError('Mobile TTS failed. Try again or check browser permissions.');
           setTimeout(() => setTtsError(null), 5000);
         }
+      } else {
+        console.log('[Mobile Play] ✅ TTS ready - will speak as content arrives');
+        // Show brief success message
+        setTtsError('✅ TTS ready - will start speaking as content arrives');
+        setTimeout(() => setTtsError(null), 3000);
       }
+      
+    } catch (error) {
+      console.error('[Mobile Play] ❌ TTS initialization failed:', error);
+      setTtsError('Failed to initialize TTS. Please try again.');
+      setTimeout(() => setTtsError(null), 5000);
+      setAutoSpeakLang(null);
+    } finally {
+      // Always clear loading state
+      setTtsLoading(false);
     }
   };
 
@@ -1907,18 +1975,18 @@ export default function BroadcastPage() {
               )}
             </Box>
 
-            {/* TTS Error Notification for Mobile */}
+            {/* TTS Error/Success Notification for Mobile */}
             {ttsError && (
               <Box sx={{ 
                 mt: 2,
                 p: 2, 
-                bgcolor: "#fff3cd", 
-                border: "1px solid #ffeaa7", 
+                bgcolor: ttsError.startsWith('✅') ? "#d4edda" : "#fff3cd", 
+                border: ttsError.startsWith('✅') ? "1px solid #c3e6cb" : "1px solid #ffeaa7", 
                 borderRadius: 2,
                 fontSize: "0.875rem",
-                color: "#856404"
+                color: ttsError.startsWith('✅') ? "#155724" : "#856404"
               }}>
-                ⚠️ {ttsError}
+                {ttsError.startsWith('✅') ? ttsError : `⚠️ ${ttsError}`}
               </Box>
             )}
           </Box>
@@ -1926,30 +1994,70 @@ export default function BroadcastPage() {
           {/* Floating Play/Pause Button */}
           <Fab
             onClick={handleMobilePlayToggle}
+            disabled={ttsLoading}
             sx={{
               position: "fixed",
               bottom: { xs: 50, sm: 50 }, // Just above the control bar
               left: "50%",
               transform: "translateX(-50%)",
-              bgcolor: "white",
-              color: "#8B5CF6",
+              bgcolor: ttsLoading ? "#f5f5f5" : "white",
+              color: ttsLoading ? "#8B5CF6" : "#8B5CF6",
               width: { xs: 74, sm: 84 }, // Larger on tablets
               height: { xs: 74, sm: 84 },
               border: "2px solid #8B5CF6", // Purple stroke matching the container
               zIndex: 1001, // Above the control bar
               boxShadow: "0px 4px 20px rgba(139, 92, 246, 0.3)",
               '&:hover': {
-                bgcolor: "#f8f9fa",
+                bgcolor: ttsLoading ? "#f5f5f5" : "#f8f9fa",
                 boxShadow: "0px 6px 25px rgba(139, 92, 246, 0.4)",
                 borderColor: "#8B5CF6" // Keep purple border on hover
+              },
+              '&:disabled': {
+                bgcolor: "#f5f5f5",
+                color: "#8B5CF6",
+                borderColor: "#8B5CF6",
+                opacity: 0.8
               }
             }}
           >
-            {autoSpeakLang && translationLanguage && autoSpeakLang === getLanguageCode(translationLanguage).split(/[-_]/)[0].toLowerCase() ? 
-              <PauseIcon sx={{ fontSize: { xs: 28, sm: 32 } }} /> : 
-              <PlayArrowIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
-            }
+            {ttsLoading ? (
+              <CircularProgress 
+                size={28} 
+                sx={{ 
+                  color: "#8B5CF6",
+                  fontSize: { xs: 28, sm: 32 }
+                }} 
+              />
+            ) : (
+              autoSpeakLang && translationLanguage && autoSpeakLang === getLanguageCode(translationLanguage).split(/[-_]/)[0].toLowerCase() ? 
+                <PauseIcon sx={{ fontSize: { xs: 28, sm: 32 } }} /> : 
+                <PlayArrowIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
+            )}
           </Fab>
+
+          {/* TTS Loading Indicator */}
+          {ttsLoading && (
+            <Box sx={{
+              position: "fixed",
+              bottom: { xs: 10, sm: 15 }, // Below the floating button
+              left: "50%",
+              transform: "translateX(-50%)",
+              bgcolor: "rgba(139, 92, 246, 0.9)",
+              color: "white",
+              px: 2,
+              py: 0.5,
+              borderRadius: 2,
+              fontSize: { xs: "0.75rem", sm: "0.8125rem" },
+              fontWeight: 500,
+              zIndex: 1002, // Above everything
+              whiteSpace: "nowrap"
+            }}>
+              {!translationLanguage ? 'Loading...' : 
+               displayedTranslation && displayedTranslation.trim().length >= 10 ? 
+               'Preparing to speak...' : 
+               'Setting up TTS...'}
+            </Box>
+          )}
 
           {/* Mobile/Tablet Bottom Control Bar */}
           <Box sx={{
@@ -1994,23 +2102,23 @@ export default function BroadcastPage() {
         </Box>
       ) : (
         /* DESKTOP LAYOUT - Keep existing */
-        <Box sx={{ flex:1, maxWidth:"1200px", width:"100%", mx:"auto", p:{ xs:1.5, sm:2, md:3 } }}>
-          {/* Event Header */}
-          <Box sx={{
-            mb:{ xs:2, sm:3 }, 
-            p:{ xs:2, sm:3 }, 
-            borderRadius:2,
-            bgcolor:"white", 
-            boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
-            border:"1px solid #F2F3F5"
-          }}>
-            <Typography variant="h6" sx={{ fontWeight:600, color:"#212B36", mb:1, fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
-              {eventData.title}
-            </Typography>
-            <Typography variant="body2" sx={{ color:"#637381", fontSize: { xs: '0.875rem', sm: '0.9375rem' } }}>
-              {eventData.description}
-            </Typography>
-          </Box>
+      <Box sx={{ flex:1, maxWidth:"1200px", width:"100%", mx:"auto", p:{ xs:1.5, sm:2, md:3 } }}>
+        {/* Event Header */}
+        <Box sx={{
+          mb:{ xs:2, sm:3 }, 
+          p:{ xs:2, sm:3 }, 
+          borderRadius:2,
+          bgcolor:"white", 
+          boxShadow:"0px 1px 2px rgba(0,0,0,0.06)",
+          border:"1px solid #F2F3F5"
+        }}>
+          <Typography variant="h6" sx={{ fontWeight:600, color:"#212B36", mb:1, fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
+            {eventData.title}
+          </Typography>
+          <Typography variant="body2" sx={{ color:"#637381", fontSize: { xs: '0.875rem', sm: '0.9375rem' } }}>
+            {eventData.description}
+          </Typography>
+        </Box>
 
         {/* Live Transcription */}
         <Box sx={{
@@ -2418,7 +2526,7 @@ export default function BroadcastPage() {
             </Paper>
           </Box>
         </Box>
-        </Box>
+      </Box>
       )}
     </Box>
   );
