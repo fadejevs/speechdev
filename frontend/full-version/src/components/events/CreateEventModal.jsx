@@ -82,6 +82,7 @@ const CreateEventModal = ({
   initialData = null,
   isEditing = false 
 }) => {
+  const [isCreating, setIsCreating] = useState(false);
   const [eventData, setEventData] = useState({
     name: '',
     description: '',
@@ -133,6 +134,7 @@ const CreateEventModal = ({
         recordEvent: false,
       });
       setSearchTerm('');
+      setIsCreating(false); // Reset creating state when modal closes
     }
   }, [open, initialData]);
 
@@ -168,24 +170,43 @@ const CreateEventModal = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // Create a properly formatted event object
-    const newEvent = {
-      title: eventData.name || 'Not specified',
-      description: eventData.description || 'Not specified',
-      location: eventData.location || 'Not specified',
-      timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : 'Not specified',
-      type: eventData.eventType || 'Not specified',
-      sourceLanguages: eventData.sourceLanguages || [],
-      targetLanguages: eventData.targetLanguages || [],
-      recordEvent: eventData.recordEvent,
-      status: eventData.status || "Scheduled",
-      startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
-      endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
-    };
+    
+    // Start loading state for new events
+    if (!isEditing) {
+      setIsCreating(true);
+    }
+    
+    try {
+      // Create a properly formatted event object
+      const newEvent = {
+        title: eventData.name || 'Not specified',
+        description: eventData.description || 'Not specified',
+        location: eventData.location || 'Not specified',
+        timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : 'Not specified',
+        type: eventData.eventType || 'Not specified',
+        sourceLanguages: eventData.sourceLanguages || [],
+        targetLanguages: eventData.targetLanguages || [],
+        recordEvent: eventData.recordEvent,
+        status: eventData.status || "Scheduled",
+        startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
+        endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
+      };
 
-    // Call the parent handler (which will save to Supabase)
-    handleCreate(newEvent);
-    handleClose();
+      // Call the parent handler (which will save to Supabase and handle navigation)
+      await handleCreate(newEvent);
+      
+      // Only close the modal if we're editing (not creating new event)
+      // For new events, the parent component handles closing and navigation
+      if (isEditing) {
+        handleClose();
+      }
+      // For new events, the modal will stay open with loading state until parent navigates
+      
+    } catch (error) {
+      console.error('Error creating event:', error);
+      // Reset loading state on error
+      setIsCreating(false);
+    }
   };
 
   const handleLanguageToggle = (language, field) => {
@@ -699,7 +720,12 @@ const CreateEventModal = ({
           <IconButton 
             onClick={handleCloseWithConfirmation} 
             size="small"
-            sx={{ position: 'absolute', right: { xs: 4, sm: 8 } }}
+            disabled={isCreating}
+            sx={{ 
+              position: 'absolute', 
+              right: { xs: 4, sm: 8 },
+              opacity: isCreating ? 0.5 : 1
+            }}
           >
             <CloseIcon />
           </IconButton>
@@ -912,9 +938,11 @@ const CreateEventModal = ({
             onClick={handleCloseWithConfirmation} 
             variant="text"
             fullWidth={true}
+            disabled={isCreating}
             sx={{ 
               color: '#637381',
-              display: { xs: 'block', sm: 'inline-flex' }
+              display: { xs: 'block', sm: 'inline-flex' },
+              opacity: isCreating ? 0.5 : 1
             }}
           >
             Cancel
@@ -928,11 +956,27 @@ const CreateEventModal = ({
               '&:hover': { bgcolor: '#4338ca' },
               borderRadius: '8px',
               textTransform: 'none',
-              display: { xs: 'block', sm: 'inline-flex' }
+              display: { xs: 'block', sm: 'inline-flex' },
+              position: 'relative'
             }}
-            disabled={!isFormValid()}
+            disabled={!isFormValid() || isCreating}
           >
-            {isEditing ? 'Save Changes' : 'Create Event'}
+            {isCreating && (
+              <CircularProgress 
+                size={20} 
+                sx={{ 
+                  color: 'white',
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
+                  marginLeft: '-10px',
+                  marginTop: '-10px'
+                }} 
+              />
+            )}
+            <span style={{ opacity: isCreating ? 0 : 1 }}>
+              {isEditing ? 'Save Changes' : 'Create Event'}
+            </span>
           </Button>
         </DialogActions>
       </Dialog>

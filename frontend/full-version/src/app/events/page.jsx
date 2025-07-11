@@ -125,6 +125,9 @@ const EventsPage = () => {
     
     // Add the new event to the list
     setTranscripts([newEvent, ...transcripts]);
+    
+    // Close the modal since this page doesn't navigate anywhere
+    setIsModalOpen(false);
   };
 
   return (

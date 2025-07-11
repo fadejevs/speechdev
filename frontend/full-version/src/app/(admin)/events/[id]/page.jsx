@@ -149,7 +149,8 @@ const EditEventPage = () => {
     type: 'Online',
     sourceLanguages: [],
     targetLanguages: [],
-    recordEvent: false
+    recordEvent: false,
+    ttsVoice: 'female'
   });
   const [originalEventData, setOriginalEventData] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -199,6 +200,7 @@ const EditEventPage = () => {
       current.location !== original.location ||
       current.type !== original.type ||
       current.recordEvent !== original.recordEvent ||
+      current.ttsVoice !== original.ttsVoice ||
       formatDate(current.date) !== original.date ||
       formatTime(current.startTime) !== original.startTime ||
       formatTime(current.endTime) !== original.endTime ||
@@ -260,6 +262,7 @@ const EditEventPage = () => {
             sourceLanguages: event.sourceLanguages || [],
             targetLanguages: event.targetLanguages || [],
             recordEvent: event.recordEvent ?? false,
+            ttsVoice: event.ttsVoice || 'female',
             startTime: event.startTime ? dayjs(event.startTime, 'HH:mm') : null,
             endTime: event.endTime ? dayjs(event.endTime, 'HH:mm') : null,
             status: event.status || 'Draft event'
@@ -386,6 +389,7 @@ const EditEventPage = () => {
         sourceLanguages: formattedSourceLanguages,
         targetLanguages: formattedTargetLanguages,
         recordEvent: eventData.recordEvent ?? false,
+        ttsVoice: eventData.ttsVoice || 'female',
         startTime: validStartTime,
         endTime: validEndTime,
         status: eventData.status || 'Draft event'
@@ -1204,6 +1208,45 @@ const EditEventPage = () => {
                     },
                   }}
                 />
+              </Box>
+
+              {/* TTS Voice Selection */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Box sx={{ flex: 1, pr: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 500, color: '#212B36', mb: 0.5 }}>
+                    Text-to-Speech Voice
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#637381' }}>
+                    Choose the voice type for automatic speech playback
+                  </Typography>
+                </Box>
+                <Box sx={{ minWidth: 140 }}>
+                  <Select
+                    fullWidth
+                    value={eventData.ttsVoice || 'female'}
+                    onChange={(e) => setEventData(prev => ({ ...prev, ttsVoice: e.target.value }))}
+                    size="small"
+                    IconComponent={KeyboardArrowDownIcon}
+                    sx={{ 
+                      borderRadius: '8px',
+                      height: '40px',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderRadius: '8px',
+                      }
+                    }}
+                  >
+                    <MenuItem value="female">
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        👩 Female
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="male">
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        👨 Male
+                      </Box>
+                    </MenuItem>
+                  </Select>
+                </Box>
               </Box>
             </Box>
           </Paper>

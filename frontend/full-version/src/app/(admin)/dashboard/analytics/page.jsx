@@ -124,15 +124,32 @@ const AnalyticsDashboard = () => {
   };
 
   const handleCreateEvent = async (eventData) => {
-    const { data, error } = await supabase
-      .from('events')
-      .insert([eventData])
-      .select();
-    if (error) {
-      console.error('Error creating event:', error);
-      return;
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .insert([eventData])
+        .select();
+      if (error) {
+        console.error('Error creating event:', error);
+        throw error; // Throw error to trigger catch block in modal
+      }
+      
+      // Update local state
+      setTranscripts(prev => [data[0], ...prev]);
+      
+      // Navigate to the event edit page for the newly created event
+      const newEventId = data[0].id;
+      
+      // Small delay to ensure smooth transition, then navigate and close modal
+      setTimeout(() => {
+        setIsModalOpen(false);
+        router.push(`/events/${newEventId}`);
+      }, 500);
+      
+    } catch (error) {
+      console.error('Error in handleCreateEvent:', error);
+      throw error; // Re-throw to be caught by modal
     }
-    setTranscripts(prev => [data[0], ...prev]);
   };
 
   // 1. Fetch events from Supabase

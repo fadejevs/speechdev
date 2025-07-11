@@ -300,8 +300,175 @@ const speakWithWebSpeechAPI = (text, lang) => {
 };
 
 // Mobile-optimized TTS function that handles interruptions properly
-const speakTextMobile = async (text, lang) => {
-  console.log('[Mobile TTS] Attempting mobile TTS for:', text.substring(0, 30) + '...');
+// Global audio state for overlap prevention
+let currentAudioRef = null;
+let isAudioPlaying = false;
+let openAITTSQueue = [];
+let isProcessingOpenAIQueue = false;
+
+// Queue processor to ensure sequential playback
+const processOpenAITTSQueue = async () => {
+  if (isProcessingOpenAIQueue || openAITTSQueue.length === 0) {
+    return;
+  }
+  
+  isProcessingOpenAIQueue = true;
+  console.log('[OpenAI TTS Queue] Starting queue processing, items:', openAITTSQueue.length);
+  
+  while (openAITTSQueue.length > 0) {
+    const { text, lang, resolve, eventData } = openAITTSQueue.shift();
+    console.log('[OpenAI TTS Queue] Processing:', text.substring(0, 30) + '...');
+    
+    try {
+      const success = await speakWithOpenAIImmediate(text, lang, eventData);
+      resolve(success);
+    } catch (error) {
+      console.error('[OpenAI TTS Queue] Error processing item:', error);
+      resolve(false);
+    }
+    
+    // Small delay between items to ensure clean separation
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  isProcessingOpenAIQueue = false;
+  console.log('[OpenAI TTS Queue] Queue processing completed');
+};
+
+// Queue-based OpenAI TTS function (public interface)
+const speakWithOpenAI = async (text, lang, eventData = null) => {
+  return new Promise((resolve) => {
+    console.log('[OpenAI TTS] Adding to queue:', text.substring(0, 30) + '...');
+    
+    // Add to queue
+    openAITTSQueue.push({ text, lang, resolve, eventData });
+    
+    // Start processing if not already processing
+    processOpenAITTSQueue();
+  });
+};
+
+// Immediate OpenAI TTS function (internal use only)
+const speakWithOpenAIImmediate = async (text, lang, eventData = null) => {
+  try {
+    console.log('[OpenAI TTS] Generating speech for:', text.substring(0, 30) + '...');
+    
+    // Set playing state immediately
+    isAudioPlaying = true;
+    
+    // Voice selection based on admin preference
+    const getVoiceForLanguage = (langCode, voiceType = 'female') => {
+      // OpenAI voices: alloy (neutral), echo (male), fable (British), nova (female), onyx (male), shimmer (female)
+      const voiceMap = {
+        female: {
+          'en': 'nova',
+          'es': 'nova', 
+          'fr': 'shimmer',
+          'de': 'shimmer',
+          'it': 'nova',
+          'pt': 'nova',
+          'zh': 'nova',
+          'ja': 'nova',
+          'ko': 'nova',
+          'ru': 'shimmer',
+          'ar': 'nova',
+          'hi': 'shimmer',
+          'default': 'nova'
+        },
+        male: {
+          'en': 'echo',
+          'es': 'onyx',
+          'fr': 'echo', 
+          'de': 'onyx',
+          'it': 'echo',
+          'pt': 'onyx',
+          'zh': 'echo',
+          'ja': 'echo',
+          'ko': 'echo',
+          'ru': 'onyx',
+          'ar': 'echo',
+          'hi': 'onyx',
+          'default': 'echo'
+        }
+      };
+      
+      return voiceMap[voiceType]?.[langCode] || voiceMap[voiceType]?.default || 'alloy';
+    };
+    
+    // Get voice type from event data or default to female
+    const voiceType = eventData?.ttsVoice || 'female';
+    const voice = getVoiceForLanguage(lang, voiceType);
+    
+    console.log(`[OpenAI TTS] Using ${voiceType} voice: ${voice} for language: ${lang}`);
+    
+    // Call our OpenAI TTS API
+    const response = await fetch('/api/openai-tts', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: text,
+        voice: voice,
+        speed: 1.0
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('[OpenAI TTS] API Error:', response.status, errorData);
+      isAudioPlaying = false; // Reset on error
+      return false;
+    }
+
+    // Create audio from the response
+    const audioBlob = await response.blob();
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    
+    // Store reference to current audio
+    currentAudioRef = audio;
+    
+    // Play the audio with overlap prevention
+    return new Promise((resolve) => {
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        isAudioPlaying = false;
+        console.log('[OpenAI TTS] ✅ Playback completed');
+        resolve(true);
+      };
+      
+      audio.onerror = (error) => {
+        URL.revokeObjectURL(audioUrl);
+        isAudioPlaying = false;
+        console.error('[OpenAI TTS] ❌ Playback error:', error);
+        resolve(false);
+      };
+      
+      audio.onpause = () => {
+        isAudioPlaying = false;
+        console.log('[OpenAI TTS] ⏸️ Audio paused');
+      };
+      
+      audio.play().then(() => {
+        console.log('[OpenAI TTS] ▶️ Started playback');
+      }).catch((error) => {
+        console.error('[OpenAI TTS] ❌ Failed to start playback:', error);
+        URL.revokeObjectURL(audioUrl);
+        isAudioPlaying = false;
+        resolve(false);
+      });
+    });
+
+  } catch (error) {
+    console.error('[OpenAI TTS] ❌ Error:', error);
+    isAudioPlaying = false; // Reset on error
+    return false;
+  }
+};
+
+const speakTextMobile = async (text, lang, eventData = null) => {
+  console.log('[Mobile TTS] 🎯 Attempting PROFESSIONAL mobile TTS for:', text.substring(0, 30) + '...');
   
   // Simple overlap prevention for mobile
   if (window.mobileTtsLock) {
@@ -313,26 +480,35 @@ const speakTextMobile = async (text, lang) => {
   window.mobileTtsLock = true;
   
   try {
+    // Stop any existing audio first
+    if (currentAudioRef && !currentAudioRef.paused) {
+      console.log('[Mobile TTS] 🔄 Stopping existing OpenAI audio');
+      currentAudioRef.pause();
+      currentAudioRef.currentTime = 0;
+      isAudioPlaying = false;
+    }
+    
     // Check if we're already speaking and handle interruption
     if (window.speechSynthesis && window.speechSynthesis.speaking) {
-      console.log('[Mobile TTS] 🔄 Interrupting current speech for new text');
+      console.log('[Mobile TTS] 🔄 Interrupting any remaining speech');
       window.speechSynthesis.cancel();
-      // Wait for cancellation to complete
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     
-    // Try Web Speech API first for mobile (more reliable)
-    if (isMobile()) {
-      console.log('[Mobile TTS] 🎯 Trying Web Speech API first...');
-      const webSpeechSuccess = await speakWithWebSpeechAPI(text, lang);
-      if (webSpeechSuccess) {
-        console.log('[Mobile TTS] ✅ Web Speech API succeeded');
+    // 🎯 PRIMARY METHOD: OpenAI TTS (PROFESSIONAL QUALITY)
+    console.log('[Mobile TTS] 🚀 Trying OpenAI TTS first (professional quality)...');
+    try {
+      const openAISuccess = await speakWithOpenAIImmediate(text, lang, eventData);
+      if (openAISuccess) {
+        console.log('[Mobile TTS] ✅ OpenAI TTS succeeded (professional quality)');
         return true;
       }
-      console.log('[Mobile TTS] 🔄 Web Speech API failed, falling back to Azure TTS');
+      console.log('[Mobile TTS] 🔄 OpenAI TTS failed, falling back to Azure TTS');
+    } catch (error) {
+      console.log('[Mobile TTS] 🔄 OpenAI TTS error, falling back:', error.message);
     }
 
-    // Fallback to Azure TTS with mobile-optimized config
+    // FALLBACK: Azure TTS with mobile-optimized config
     if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
       console.warn('[Mobile TTS] ❌ Azure credentials missing');
       return false;
@@ -349,8 +525,9 @@ const speakTextMobile = async (text, lang) => {
       speechConfig.speechSynthesisVoiceName = voice;
       console.log('[Mobile TTS] 🎵 Using Azure voice:', voice);
       
-      // Mobile-specific audio configuration - use default audio output without explicit config
-      const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, null);
+      // Mobile-specific audio configuration - FORCE audio output to speakers
+      const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
+      const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
 
       return new Promise((resolve) => {
         const timeoutId = setTimeout(() => {
@@ -367,7 +544,7 @@ const speakTextMobile = async (text, lang) => {
             try { synthesizer.close(); } catch (e) {}
             
             if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-              console.log('[Mobile TTS] ✅ Azure TTS synthesis completed');
+              console.log('[Mobile TTS] ✅ Azure TTS synthesis completed AND should be playing audio');
               resolve(true);
             } else {
               console.warn('[Mobile TTS] ❌ Azure synthesis failed:', result.reason);
@@ -394,25 +571,35 @@ const speakTextMobile = async (text, lang) => {
   }
 };
 
-// 🎯 NEW: Queue-based mobile TTS (for auto-speak) - NO LOCK NEEDED
-const speakTextMobileQueued = async (text, lang) => {
-  console.log('[Mobile TTS Queue] Speaking:', text.substring(0, 30) + '...');
+// 🎯 NEW: Queue-based mobile TTS (for auto-speak) - PROFESSIONAL QUALITY
+const speakTextMobileQueued = async (text, lang, eventData = null) => {
+  console.log('[Mobile TTS Queue] 🚀 Speaking with PROFESSIONAL quality:', text.substring(0, 30) + '...');
   
   // NO LOCK - queue system handles overlap prevention via isMobileSpeaking.current
   
   try {
-    // Try Web Speech API first for mobile (more reliable)
-    if (isMobile()) {
-      console.log('[Mobile TTS Queue] 🎯 Trying Web Speech API first...');
-      const webSpeechSuccess = await speakWithWebSpeechAPI(text, lang);
-      if (webSpeechSuccess) {
-        console.log('[Mobile TTS Queue] ✅ Web Speech API succeeded');
+    // Stop any existing audio first
+    if (currentAudioRef && !currentAudioRef.paused) {
+      console.log('[Mobile TTS Queue] 🔄 Stopping existing OpenAI audio');
+      currentAudioRef.pause();
+      currentAudioRef.currentTime = 0;
+      isAudioPlaying = false;
+    }
+    
+    // 🎯 PRIMARY METHOD: OpenAI TTS (PROFESSIONAL QUALITY)
+    console.log('[Mobile TTS Queue] 🚀 Trying OpenAI TTS first (professional quality)...');
+    try {
+      const openAISuccess = await speakWithOpenAIImmediate(text, lang, eventData);
+      if (openAISuccess) {
+        console.log('[Mobile TTS Queue] ✅ OpenAI TTS succeeded (professional quality)');
         return true;
       }
-      console.log('[Mobile TTS Queue] 🔄 Web Speech API failed, falling back to Azure TTS');
+      console.log('[Mobile TTS Queue] 🔄 OpenAI TTS failed, falling back to Azure TTS');
+    } catch (error) {
+      console.log('[Mobile TTS Queue] 🔄 OpenAI TTS error, falling back:', error.message);
     }
 
-    // Fallback to Azure TTS with mobile-optimized config
+    // FALLBACK: Azure TTS with mobile-optimized config
     if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
       console.warn('[Mobile TTS Queue] ❌ Azure credentials missing');
       return false;
@@ -429,8 +616,9 @@ const speakTextMobileQueued = async (text, lang) => {
       speechConfig.speechSynthesisVoiceName = voice;
       console.log('[Mobile TTS Queue] 🎵 Using Azure voice:', voice);
       
-      // Mobile-specific audio configuration
-      const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, null);
+      // Mobile-specific audio configuration - FORCE audio output to speakers
+      const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
+      const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
 
       return new Promise((resolve) => {
         const timeoutId = setTimeout(() => {
@@ -446,7 +634,7 @@ const speakTextMobileQueued = async (text, lang) => {
             try { synthesizer.close(); } catch (e) {}
             
             if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-              console.log('[Mobile TTS Queue] ✅ Azure TTS synthesis completed');
+              console.log('[Mobile TTS Queue] ✅ Azure TTS synthesis completed AND should be playing audio');
               resolve(true);
             } else {
               console.warn('[Mobile TTS Queue] ❌ Azure synthesis failed:', result.reason);
@@ -803,7 +991,17 @@ export default function BroadcastPage() {
       });
   }, [id]);
 
-  // Add this function for translation (using your API or Azure)
+  // Global translation management with circuit breaker
+  const translationCache = useRef(new Map());
+  const translationRequestQueue = useRef([]);
+  const isProcessingTranslations = useRef(false);
+  const lastTranslationRequest = useRef(0);
+  const activeTranslationRequests = useRef(new Set());
+  const translationErrorCount = useRef(0);
+  const lastTranslationError = useRef(0);
+  const translationCircuitOpen = useRef(false);
+
+  // Global translation request manager with circuit breaker
   const fetchTranslations = async (text, langOverride) => {
     const out = {};
     const raw = getLanguageCode(langOverride);
@@ -812,43 +1010,234 @@ export default function BroadcastPage() {
       return out;
     }
     const toCode = raw.split(/[-_]/)[0].toLowerCase();
+    
+    // Circuit breaker: Stop making requests if too many failures
+    const currentTime = Date.now();
+    if (translationCircuitOpen.current) {
+      if (currentTime - lastTranslationError.current < 30000) { // 30 second cooldown
+        console.log("[Translation] Circuit breaker open, skipping request");
+        return out;
+      } else {
+        // Reset circuit breaker after cooldown
+        translationCircuitOpen.current = false;
+        translationErrorCount.current = 0;
+        console.log("[Translation] Circuit breaker reset");
+      }
+    }
+    
+    // Create cache key
+    const cacheKey = `${text}_${toCode}`;
+    
+    // Check cache first
+    if (translationCache.current.has(cacheKey)) {
+      console.log("[Translation] Using cached translation for:", text.substring(0, 30) + '...');
+      const cachedTranslation = translationCache.current.get(cacheKey);
+      out[toCode] = cachedTranslation;
+      return out;
+    }
+
+    // Check if this exact request is already in progress
+    if (activeTranslationRequests.current.has(cacheKey)) {
+      console.log("[Translation] Request already in progress, waiting:", text.substring(0, 30) + '...');
+      
+      // Wait for the active request to complete and then check cache
+      return new Promise((resolve) => {
+        const checkCache = () => {
+          if (translationCache.current.has(cacheKey)) {
+            const cachedTranslation = translationCache.current.get(cacheKey);
+            resolve({ [toCode]: cachedTranslation });
+          } else if (!activeTranslationRequests.current.has(cacheKey)) {
+            // Request completed but no cache entry - request failed
+            resolve({});
+          } else {
+            // Still processing, check again
+            setTimeout(checkCache, 100);
+          }
+        };
+        setTimeout(checkCache, 100);
+      });
+    }
+
+    // Rate limiting - prevent too many requests
+    const requestTime = Date.now();
+    if (requestTime - lastTranslationRequest.current < 300) { // Increased to 300ms for more stability
+      console.log("[Translation] Rate limited, queuing request:", text.substring(0, 30) + '...');
+      
+      return new Promise((resolve) => {
+        translationRequestQueue.current.push({ text, toCode, cacheKey, resolve });
+        processTranslationQueue();
+      });
+    }
+
+    lastTranslationRequest.current = requestTime;
+    
+    // Mark request as active
+    activeTranslationRequests.current.add(cacheKey);
+    
     try {
-      // Add debugging logs
-      console.log("[Translation Debug] API Key length:", process.env.NEXT_PUBLIC_DEEPL_AUTH_KEY?.length || 0);
-      console.log("[Translation Debug] API Key starts with:", process.env.NEXT_PUBLIC_DEEPL_AUTH_KEY?.substring(0, 4));
+      console.log("[Translation] Making API request for:", text.substring(0, 30) + '...');
       
       const res = await fetch("/api/translate", {
         method: "POST",
-        headers:{ "Content-Type":"application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           text: text,
           target_lang: toCode.toUpperCase()
         }),
       });
       
-      
-      // Add more debugging
       if (!res.ok) {
         const err = await res.text();
-        console.error("[Translation Debug] Error details:", {
+        console.error("[Translation] API Error:", {
           status: res.status,
           statusText: res.statusText,
           error: err
         });
+        
+        // Track errors for circuit breaker
+        translationErrorCount.current++;
+        lastTranslationError.current = Date.now();
+        
+        // Open circuit breaker after 3 consecutive errors
+        if (translationErrorCount.current >= 3) {
+          translationCircuitOpen.current = true;
+          console.warn("[Translation] Circuit breaker opened due to repeated failures");
+        }
+        
         return out;
       }
+      
       const { translation } = await res.json();
+      
+      // Cache the translation
+      translationCache.current.set(cacheKey, translation);
+      
+      // Limit cache size to prevent memory issues
+      if (translationCache.current.size > 100) {
+        const firstKey = translationCache.current.keys().next().value;
+        translationCache.current.delete(firstKey);
+      }
+      
       out[toCode] = translation;
+      console.log("[Translation] ✅ Success and cached:", text.substring(0, 30) + '...');
+      
+      // Reset error count on success
+      translationErrorCount.current = 0;
+      
     } catch (e) {
-      console.error("[Translation Debug] Full error:", e);
+      console.error("[Translation] Request failed:", e);
+      
+      // Track errors for circuit breaker
+      translationErrorCount.current++;
+      lastTranslationError.current = Date.now();
+      
+      if (translationErrorCount.current >= 3) {
+        translationCircuitOpen.current = true;
+        console.warn("[Translation] Circuit breaker opened due to repeated failures");
+      }
+    } finally {
+      // Always remove from active requests
+      activeTranslationRequests.current.delete(cacheKey);
     }
+    
     return out;
   };
 
-  // Enhanced speakText function with Safari/iOS workarounds
-  const speakText = useCallback((text, lang, onDone) => {
+  // Process queued translation requests
+  const processTranslationQueue = useCallback(async () => {
+    if (isProcessingTranslations.current || translationRequestQueue.current.length === 0) {
+      return;
+    }
+
+    isProcessingTranslations.current = true;
+    
+    while (translationRequestQueue.current.length > 0) {
+      const { text, toCode, cacheKey, resolve } = translationRequestQueue.current.shift();
+      
+      try {
+        // Check cache again (might have been added while waiting)
+        if (translationCache.current.has(cacheKey)) {
+          const cachedTranslation = translationCache.current.get(cacheKey);
+          resolve({ [toCode]: cachedTranslation });
+          continue;
+        }
+
+        // Check if already in progress
+        if (activeTranslationRequests.current.has(cacheKey)) {
+          console.log("[Translation Queue] Request already active, skipping:", text.substring(0, 30) + '...');
+          resolve({});
+          continue;
+        }
+
+        console.log("[Translation Queue] Processing:", text.substring(0, 30) + '...');
+        
+        // Mark as active
+        activeTranslationRequests.current.add(cacheKey);
+        
+        const res = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            text: text,
+            target_lang: toCode.toUpperCase()
+          }),
+        });
+        
+        if (!res.ok) {
+          console.error("[Translation Queue] API Error:", res.status);
+          resolve({});
+          continue;
+        }
+        
+        const { translation } = await res.json();
+        
+        // Cache the translation
+        translationCache.current.set(cacheKey, translation);
+        
+        resolve({ [toCode]: translation });
+        console.log("[Translation Queue] ✅ Success:", text.substring(0, 30) + '...');
+        
+      } catch (error) {
+        console.error("[Translation Queue] Error:", error);
+        resolve({});
+      } finally {
+        // Always remove from active requests
+        activeTranslationRequests.current.delete(cacheKey);
+      }
+      
+      // Small delay between requests to prevent API overwhelming
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    isProcessingTranslations.current = false;
+  }, []);
+
+  // Enhanced speakText function with OpenAI primary and Azure fallback
+  const speakText = useCallback(async (text, lang, onDone) => {
     // Basic validation
-    if (!text || !process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+    if (!text) {
+      if (onDone) onDone(false);
+      return;
+    }
+
+    console.log('[TTS] Starting with OpenAI primary method...');
+    
+    // Try OpenAI TTS first for desktop
+    try {
+      const openAISuccess = await speakWithOpenAI(text, lang, eventData);
+      if (openAISuccess) {
+        console.log('[TTS] ✅ OpenAI TTS successful');
+        if (onDone) onDone(true);
+        return;
+      }
+      console.log('[TTS] ⚠️ OpenAI TTS failed, falling back to Azure...');
+    } catch (error) {
+      console.warn('[TTS] ⚠️ OpenAI TTS error, falling back to Azure:', error);
+    }
+
+    // Fallback to Azure TTS
+    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+      console.error('[TTS] ❌ Azure TTS credentials not available');
       if (onDone) onDone(false);
       return;
     }
@@ -979,10 +1368,30 @@ export default function BroadcastPage() {
     performSynthesis();
   }, []);
 
-  // Enhanced TTS function with proper semaphore locking
+  // Enhanced TTS function with OpenAI primary and Azure fallback
   const speakTextDesktop = useCallback(async (text, lang) => {
     // Basic validation
-    if (!text || !process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+    if (!text) {
+      return false;
+    }
+
+    console.log('[Desktop TTS] Starting TTS with OpenAI primary method...');
+    
+    // Try OpenAI TTS first
+    try {
+      const openAISuccess = await speakWithOpenAI(text, lang, eventData);
+      if (openAISuccess) {
+        console.log('[Desktop TTS] ✅ OpenAI TTS successful');
+        return true;
+      }
+      console.log('[Desktop TTS] ⚠️ OpenAI TTS failed, falling back to Azure...');
+    } catch (error) {
+      console.warn('[Desktop TTS] ⚠️ OpenAI TTS error, falling back to Azure:', error);
+    }
+
+    // Fallback to Azure TTS
+    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+      console.error('[Desktop TTS] ❌ Azure TTS credentials not available');
       return false;
     }
 
@@ -1076,30 +1485,44 @@ export default function BroadcastPage() {
     return ttsPromiseRef.current;
   }, []);
 
-  // Debounced TTS function to prevent rapid-fire overlaps
-  const debouncedTTS = useCallback((text, lang) => {
+  // Debounced TTS function with OpenAI primary method and overlap prevention
+  const debouncedTTS = useCallback((text, lang, eventDataParam = null) => {
     // Clear previous timer
     if (ttsDebounceTimer.current) {
       clearTimeout(ttsDebounceTimer.current);
     }
     
-    // If text is very similar to last one, debounce longer
-    const similarity = lastTtsText.current && text.includes(lastTtsText.current) ? 500 : 200;
+    // Check if audio is currently playing - if so, wait a bit longer (OPTIMIZED FOR SPEED)
+    const baseDelay = isAudioPlaying ? 300 : 100;  // Reduced: 500→300, 200→100
+    const similarity = lastTtsText.current && text.includes(lastTtsText.current) ? baseDelay + 150 : baseDelay; // Reduced: 300→150
     
-    console.log(`[TTS Debounce] Scheduling TTS with ${similarity}ms delay for: "${text.substring(0, 30)}..."`);
+    console.log(`[TTS Debounce] Scheduling OpenAI TTS with ${similarity}ms delay for: "${text.substring(0, 30)}..." (audio playing: ${isAudioPlaying})`);
     
     ttsDebounceTimer.current = setTimeout(async () => {
+      // Double-check if we should skip due to audio still playing
+      if (isAudioPlaying) {
+        console.log('[TTS Debounce] ⏭️ Skipping - audio still playing from previous TTS');
+        return;
+      }
+      
       lastTtsText.current = text;
       
       // Add to spoken sentences BEFORE starting TTS to prevent duplicates
       spokenSentences.current.add(text);
       
       try {
-        console.log(`[TTS Debounce] Starting TTS for: "${text.substring(0, 30)}..."`);
-        const success = await speakTextDesktop(text, lang);
+        console.log(`[TTS Debounce] Starting OpenAI TTS for: "${text.substring(0, 30)}..."`);
+        
+        // Try OpenAI TTS first (with built-in overlap prevention)
+        let success = await speakWithOpenAI(text, lang, eventDataParam || eventData);
         
         if (!success) {
-          console.warn(`[TTS Debounce] TTS failed for: "${text.substring(0, 30)}..."`);
+          console.log('[TTS Debounce] OpenAI failed, trying Azure fallback...');
+          success = await speakTextDesktop(text, lang);
+        }
+        
+        if (!success) {
+          console.warn(`[TTS Debounce] Both OpenAI and Azure TTS failed for: "${text.substring(0, 30)}..."`);
           // Remove from spoken sentences if TTS failed
           spokenSentences.current.delete(text);
         }
@@ -1156,7 +1579,7 @@ export default function BroadcastPage() {
     
     try {
       // 🎯 Use the new queued function that doesn't conflict with button locks
-      const success = await speakTextMobileQueued(item.text, item.lang);
+      const success = await speakTextMobileQueued(item.text, item.lang, eventData);
       console.log(`[Mobile TTS Queue] Item completed with success: ${success}`);
       
       if (!success) {
@@ -1172,7 +1595,7 @@ export default function BroadcastPage() {
       if (mobileTtsQueue.current.length > 0) {
         mobileTtsTimeout.current = setTimeout(() => {
           processMobileQueue();
-        }, 200); // Small delay between mobile TTS items
+        }, 100); // Reduced: 200→100ms for faster mobile TTS
       }
     }
   }, []);
@@ -1308,6 +1731,11 @@ export default function BroadcastPage() {
       setSocketConnected(true);
       setConnectionStatus('connected');
       setReconnectAttempts(0); // Reset on successful connection
+      
+      // Reset translation circuit breaker on successful connection
+      translationCircuitOpen.current = false;
+      translationErrorCount.current = 0;
+      console.log('[Translation] Circuit breaker reset on reconnection');
       
       // Join room
       socket.emit("join_room", { room: id });
@@ -1510,7 +1938,7 @@ export default function BroadcastPage() {
                     } else {
                       // Desktop handling - add to queue for processing
                       ttsQueue.current.push({ text: translatedText.trim(), lang: langCode });
-                      setTimeout(() => processQueue(), 100);
+                      setTimeout(() => processQueue(), 50);  // Reduced: 100→50ms for faster queue processing
                     }
                   }
                 }
@@ -1551,21 +1979,38 @@ export default function BroadcastPage() {
         setCurrentInterimCaption(data.text || "");
         
         // Update display only for interim translations, no TTS
-        if (data.text && data.text.trim() && translationLanguage) {
-          // Add timeout for interim translations too
-          const translationPromise = fetchTranslations(data.text, translationLanguage);
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Interim translation timeout')), 3000);
-          });
+        // Much more aggressive protection for interim translations
+        if (data.text && data.text.trim() && translationLanguage && 
+            data.text.length > 20 && // Increased from 5 to 20
+            !translationCircuitOpen.current) {
           
-          Promise.race([translationPromise, timeoutPromise])
-            .then((translations) => {
-              setRealtimeTranslations(translations);
-            })
-            .catch((error) => {
-              // Silently handle interim translation failures
-              console.log('[Translation] Interim translation failed', { error: error.message });
+          // Additional protection: Only translate if text changed significantly
+          const currentWords = data.text.split(' ').length;
+          const lastInterimKey = `interim_${translationLanguage}`;
+          const lastInterimText = translationCache.current.get(lastInterimKey);
+          
+          if (!lastInterimText || 
+              Math.abs(currentWords - lastInterimText.split(' ').length) > 3 ||
+              data.text.length > lastInterimText.length + 20) {
+            
+            // Cache the interim text to prevent duplicate requests
+            translationCache.current.set(lastInterimKey, data.text);
+            
+            // Only translate interim text if it's substantial (reduce API calls)
+            const translationPromise = fetchTranslations(data.text, translationLanguage);
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Interim translation timeout')), 1500); // Shorter timeout for interim
             });
+            
+            Promise.race([translationPromise, timeoutPromise])
+              .then((translations) => {
+                setRealtimeTranslations(translations);
+              })
+              .catch((error) => {
+                // Silently handle interim translation failures
+                console.log('[Translation] Interim translation failed', { error: error.message });
+              });
+          }
         }
       }
     });
@@ -1586,6 +2031,26 @@ export default function BroadcastPage() {
       // Clear all timers
       if (reconnectionTimer.current) clearTimeout(reconnectionTimer.current);
       if (stuckRecoveryTimer.current) clearTimeout(stuckRecoveryTimer.current);
+      
+      // Cleanup OpenAI TTS audio state and queue
+      if (currentAudioRef && !currentAudioRef.paused) {
+        console.log('[Cleanup] Stopping OpenAI TTS audio');
+        currentAudioRef.pause();
+        currentAudioRef.currentTime = 0;
+      }
+      currentAudioRef = null;
+      isAudioPlaying = false;
+      
+      // Clear OpenAI TTS queue and reject pending promises
+      openAITTSQueue.forEach(item => item.resolve(false));
+      openAITTSQueue = [];
+      isProcessingOpenAIQueue = false;
+      
+      // Clear translation cache and queue
+      translationCache.current.clear();
+      translationRequestQueue.current = [];
+      isProcessingTranslations.current = false;
+      activeTranslationRequests.current.clear();
       
       if (socketRef.current) {
         try {
@@ -1783,13 +2248,33 @@ export default function BroadcastPage() {
       if (window.speechSynthesis && window.speechSynthesis.speaking) {
         window.speechSynthesis.cancel();
       }
+      
+      // Stop OpenAI TTS audio and clear queue
+      if (currentAudioRef && !currentAudioRef.paused) {
+        console.log('[Mobile Play] Stopping OpenAI TTS audio');
+        currentAudioRef.pause();
+        currentAudioRef.currentTime = 0;
+        isAudioPlaying = false;
+      }
+      
+      // Clear OpenAI TTS queue
+      openAITTSQueue.forEach(item => item.resolve(false));
+      openAITTSQueue = [];
+      isProcessingOpenAIQueue = false;
+      
+      // Clear translation cache and queue
+      translationCache.current.clear();
+      translationRequestQueue.current = [];
+      isProcessingTranslations.current = false;
+      activeTranslationRequests.current.clear();
+      
       window.mobileTtsLock = false;
       return;
     }
     
     // Start loading state
     setTtsLoading(true);
-    console.log('[Mobile Play] ⏳ Starting TTS initialization...');
+    console.log('[Mobile Play] ⏳ Starting PROFESSIONAL TTS initialization...');
     
     try {
       // Activate audio context immediately during user interaction
@@ -1802,31 +2287,28 @@ export default function BroadcastPage() {
         }
       }
       
-      // Wait for voices to load (important for iOS)
-      await waitForVoicesToLoad();
-      
-      // Enable auto-speak
-      console.log('[Mobile Play] ▶️ TTS ready, enabling auto-speak');
+      // Enable auto-speak with professional OpenAI TTS
+      console.log('[Mobile Play] ▶️ Professional TTS ready, enabling auto-speak');
       setAutoSpeakLang(langCode);
       
       // Auto-speak current text if available, or provide feedback
       if (displayedTranslation && displayedTranslation.trim().length >= 10) {
-        console.log('[Mobile Play] 🎤 Speaking current text immediately');
-        const success = await speakTextMobile(displayedTranslation.trim(), langCode);
+        console.log('[Mobile Play] 🎤 Speaking current text immediately with professional quality');
+        const success = await speakTextMobile(displayedTranslation.trim(), langCode, eventData);
         if (!success) {
-          setTtsError('Mobile TTS failed. Try again or check browser permissions.');
+          setTtsError('Professional TTS failed. Try again or check connection.');
           setTimeout(() => setTtsError(null), 5000);
         }
       } else {
-        console.log('[Mobile Play] ✅ TTS ready - will speak as content arrives');
+        console.log('[Mobile Play] ✅ Professional TTS ready - will speak as content arrives');
         // Show brief success message
-        setTtsError('✅ TTS ready - will start speaking as content arrives');
+        setTtsError('✅ Professional TTS ready - will start speaking as content arrives');
         setTimeout(() => setTtsError(null), 3000);
       }
       
     } catch (error) {
-      console.error('[Mobile Play] ❌ TTS initialization failed:', error);
-      setTtsError('Failed to initialize TTS. Please try again.');
+      console.error('[Mobile Play] ❌ Professional TTS initialization failed:', error);
+      setTtsError('Failed to initialize professional TTS. Please try again.');
       setTimeout(() => setTtsError(null), 5000);
       setAutoSpeakLang(null);
     } finally {
@@ -2368,7 +2850,34 @@ export default function BroadcastPage() {
                     {autoSpeakLang && (
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
                         <Button
-                          onClick={() => setAutoSpeakLang(null)}
+                          onClick={() => {
+                            setAutoSpeakLang(null);
+                            
+                            // Stop OpenAI TTS audio and clear queue
+                            if (currentAudioRef && !currentAudioRef.paused) {
+                              console.log('[Stop Auto-TTS] Stopping OpenAI TTS audio');
+                              currentAudioRef.pause();
+                              currentAudioRef.currentTime = 0;
+                              isAudioPlaying = false;
+                            }
+                            
+                            // Clear OpenAI TTS queue
+                            openAITTSQueue.forEach(item => item.resolve(false));
+                            openAITTSQueue = [];
+                            isProcessingOpenAIQueue = false;
+                            
+                            // Clear translation cache and queue
+                            translationCache.current.clear();
+                            translationRequestQueue.current = [];
+                            isProcessingTranslations.current = false;
+                            activeTranslationRequests.current.clear();
+                            
+                            // Stop mobile TTS if active
+                            if (window.speechSynthesis && window.speechSynthesis.speaking) {
+                              window.speechSynthesis.cancel();
+                            }
+                            window.mobileTtsLock = false;
+                          }}
                           color="secondary"
                           size="small"
                           sx={{ 
@@ -2437,7 +2946,7 @@ export default function BroadcastPage() {
                                 // Speak current text immediately if available
                                 if (displayedTranslation && displayedTranslation.trim().length >= 10) {
                                   console.log('[Mobile TTS Button] 🎤 Speaking current text immediately');
-                                  const success = await speakTextMobile(displayedTranslation.trim(), langCode);
+                                  const success = await speakTextMobile(displayedTranslation.trim(), langCode, eventData);
                                   if (!success) {
                                     setTtsError('Mobile TTS failed. Try again or check browser permissions.');
                                     setTimeout(() => setTtsError(null), 5000);
@@ -2460,7 +2969,7 @@ export default function BroadcastPage() {
                               
                               if (displayedTranslation && displayedTranslation.trim().length >= 10) {
                                 // Use debounced TTS for button clicks too
-                                debouncedTTS(displayedTranslation.trim(), langCode);
+                                debouncedTTS(displayedTranslation.trim(), langCode, eventData);
                               }
                               
                               return;
@@ -2491,7 +3000,7 @@ export default function BroadcastPage() {
                             spokenSentences.current.delete(displayedTranslation);
                             
                             // Use debounced TTS instead of queue to prevent overlaps
-                            debouncedTTS(displayedTranslation.trim(), langCode);
+                            debouncedTTS(displayedTranslation.trim(), langCode, eventData);
                           }}
                           sx={{ 
                             minWidth: { xs: '100%', sm: 0 },

@@ -511,5 +511,9 @@ def handle_realtime_transcription(data):
 def handle_update_event_status(data):
     room_id = data.get('room_id')
     status = data.get('status')  # e.g., "Paused" or "Completed"
+    logger.info(f"[Event Status Update] Received: room_id={room_id}, status={status}")
     if room_id and status:
-        socketio.emit('event_status_update', {'status': status}, room=room_id)
+        logger.info(f"[Event Status Update] Emitting to room {room_id}: status={status}")
+        socketio.emit('event_status_update', {'status': status, 'room_id': room_id}, room=room_id)
+    else:
+        logger.warning(f"[Event Status Update] Missing data: room_id={room_id}, status={status}")
