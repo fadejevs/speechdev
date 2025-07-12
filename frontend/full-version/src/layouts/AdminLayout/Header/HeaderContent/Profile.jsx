@@ -130,14 +130,14 @@ export default function ProfileSection() {
     const updateAvatar = async () => {
       if (userData) {
         const url = await getAvatarUrl(userData);
-        console.log('Setting avatar URL:', url); // Debug log
+        // Setting avatar URL
         setAvatarUrl(url);
       }
     };
     updateAvatar();
   }, [userData]); // Add dependency on userData
 
-  console.log('userData:', userData);
+  // User data loaded
 
   return (
     <>

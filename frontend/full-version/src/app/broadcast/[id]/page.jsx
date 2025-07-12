@@ -174,6 +174,41 @@ const isMobile = () => {
          isTablet(); // Include tablets in mobile category for TTS handling
 };
 
+// 🚀 CSP-Compliant Silent Audio Creator (for Safari mobile TTS hack)
+const createSilentAudioBlob = () => {
+  // Create minimal WAV file (44 bytes header + minimal data)
+  const arrayBuffer = new ArrayBuffer(78);
+  const view = new DataView(arrayBuffer);
+  
+  // WAV header
+  const writeString = (offset, string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+  
+  writeString(0, 'RIFF');
+  view.setUint32(4, 70, true); // File size - 8
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true); // Subchunk1Size
+  view.setUint16(20, 1, true); // AudioFormat (PCM)
+  view.setUint16(22, 1, true); // NumChannels (mono)
+  view.setUint32(24, 22050, true); // SampleRate
+  view.setUint32(28, 22050, true); // ByteRate
+  view.setUint16(32, 1, true); // BlockAlign
+  view.setUint16(34, 8, true); // BitsPerSample
+  writeString(36, 'data');
+  view.setUint32(40, 34, true); // Subchunk2Size
+  
+  // Minimal silent data (34 bytes of silence)
+  for (let i = 44; i < 78; i++) {
+    view.setUint8(i, 128); // 8-bit silence value
+  }
+  
+  return new Blob([arrayBuffer], { type: 'audio/wav' });
+};
+
 // Enhanced audio context initialization with better error handling
 const initializeAudioContext = () => {
   if (typeof window === 'undefined') return null;
@@ -313,11 +348,11 @@ const processOpenAITTSQueue = async () => {
   }
   
   isProcessingOpenAIQueue = true;
-  console.log('[OpenAI TTS Queue] Starting queue processing, items:', openAITTSQueue.length);
+      // Starting TTS queue processing
   
   while (openAITTSQueue.length > 0) {
     const { text, lang, resolve, eventData } = openAITTSQueue.shift();
-    console.log('[OpenAI TTS Queue] Processing:', text.substring(0, 30) + '...');
+    // Processing TTS item
     
     try {
       const success = await speakWithOpenAIImmediate(text, lang, eventData);
@@ -325,20 +360,20 @@ const processOpenAITTSQueue = async () => {
     } catch (error) {
       console.error('[OpenAI TTS Queue] Error processing item:', error);
       resolve(false);
-    }
-    
+  }
+  
     // Small delay between items to ensure clean separation
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   
   isProcessingOpenAIQueue = false;
-  console.log('[OpenAI TTS Queue] Queue processing completed');
+  // Queue processing completed
 };
 
 // Queue-based OpenAI TTS function (public interface)
 const speakWithOpenAI = async (text, lang, eventData = null) => {
   return new Promise((resolve) => {
-    console.log('[OpenAI TTS] Adding to queue:', text.substring(0, 30) + '...');
+    // Adding to TTS queue
     
     // Add to queue
     openAITTSQueue.push({ text, lang, resolve, eventData });
@@ -348,10 +383,10 @@ const speakWithOpenAI = async (text, lang, eventData = null) => {
   });
 };
 
-// Immediate OpenAI TTS function (internal use only)
+// Immediate OpenAI TTS function (internal use only) - Mobile Optimized
 const speakWithOpenAIImmediate = async (text, lang, eventData = null) => {
   try {
-    console.log('[OpenAI TTS] Generating speech for:', text.substring(0, 30) + '...');
+    console.log('[OpenAI TTS] Starting OpenAI TTS for:', text.substring(0, 30) + '...');
     
     // Set playing state immediately
     isAudioPlaying = true;
@@ -399,9 +434,12 @@ const speakWithOpenAIImmediate = async (text, lang, eventData = null) => {
     const voiceType = eventData?.ttsVoice || 'female';
     const voice = getVoiceForLanguage(lang, voiceType);
     
-    console.log(`[OpenAI TTS] Using ${voiceType} voice: ${voice} for language: ${lang}`);
+    console.log('[OpenAI TTS] Using voice:', voice, 'for language:', lang);
     
-    // Call our OpenAI TTS API
+    // Call our OpenAI TTS API with timeout for mobile
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout for mobile
+    
     const response = await fetch('/api/openai-tts', {
       method: 'POST',
       headers: {
@@ -412,67 +450,105 @@ const speakWithOpenAIImmediate = async (text, lang, eventData = null) => {
         voice: voice,
         speed: 1.0
       }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('[OpenAI TTS] API Error:', response.status, errorData);
+      console.error('[OpenAI TTS] API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData,
+        isMobile: isMobile()
+      });
       isAudioPlaying = false; // Reset on error
       return false;
     }
 
-    // Create audio from the response
+    // Create audio from the response with mobile optimization
     const audioBlob = await response.blob();
     const audioUrl = URL.createObjectURL(audioBlob);
     const audio = new Audio(audioUrl);
     
     // Store reference to current audio
     currentAudioRef = audio;
+      
+    // Mobile-specific audio settings
+    if (isMobile()) {
+      audio.preload = 'auto';
+      audio.crossOrigin = 'anonymous';
+      // Ensure audio plays through speakers on mobile
+      if (audio.setSinkId) {
+        try {
+          await audio.setSinkId('default');
+        } catch (e) {
+          console.warn('[OpenAI TTS] setSinkId not supported:', e);
+        }
+      }
+    }
     
-    // Play the audio with overlap prevention
-    return new Promise((resolve) => {
-      audio.onended = () => {
+    // Play the audio with mobile-optimized handling
+      return new Promise((resolve) => {
+      let resolved = false;
+      
+      const cleanup = () => {
+        if (resolved) return;
+        resolved = true;
         URL.revokeObjectURL(audioUrl);
         isAudioPlaying = false;
+      };
+      
+      audio.onended = () => {
+        cleanup();
         console.log('[OpenAI TTS] ✅ Playback completed');
-        resolve(true);
+              resolve(true);
       };
       
       audio.onerror = (error) => {
-        URL.revokeObjectURL(audioUrl);
-        isAudioPlaying = false;
+        cleanup();
         console.error('[OpenAI TTS] ❌ Playback error:', error);
-        resolve(false);
+              resolve(false);
       };
       
       audio.onpause = () => {
         isAudioPlaying = false;
-        console.log('[OpenAI TTS] ⏸️ Audio paused');
+        console.log('[OpenAI TTS] Audio paused');
       };
       
+      // Set a fallback timeout for mobile
+      setTimeout(() => {
+        if (!resolved && (audio.ended || audio.currentTime > 0)) {
+          cleanup();
+          console.log('[OpenAI TTS] ✅ Fallback timeout - audio likely completed');
+              resolve(true);
+        }
+      }, 15000); // 15 second fallback timeout
+      
       audio.play().then(() => {
-        console.log('[OpenAI TTS] ▶️ Started playback');
+        console.log('[OpenAI TTS] ✅ Started playback');
       }).catch((error) => {
-        console.error('[OpenAI TTS] ❌ Failed to start playback:', error);
-        URL.revokeObjectURL(audioUrl);
-        isAudioPlaying = false;
-        resolve(false);
+        console.error('[OpenAI TTS] Failed to start playback:', error);
+        cleanup();
+            resolve(false);
       });
-    });
+      });
 
-  } catch (error) {
+    } catch (error) {
     console.error('[OpenAI TTS] ❌ Error:', error);
     isAudioPlaying = false; // Reset on error
-    return false;
-  }
+      return false;
+    }
 };
 
-const speakTextMobile = async (text, lang, eventData = null) => {
-  console.log('[Mobile TTS] 🎯 Attempting PROFESSIONAL mobile TTS for:', text.substring(0, 30) + '...');
+// 🚀 SAFARI-PROOF Mobile TTS - Creates audio immediately, loads content dynamically
+const speakTextMobile = async (text, lang, eventData = null, audioContextRef = null) => {
+  console.log('[Safari Mobile TTS] 🎯 Starting SAFARI-PROOF OpenAI TTS for:', text.substring(0, 30) + '...');
   
   // Simple overlap prevention for mobile
   if (window.mobileTtsLock) {
-    console.log('[Mobile TTS] ⚠️ Already locked, preventing overlap');
+    console.log('[Safari Mobile TTS] Another TTS is already in progress');
     return false;
   }
   
@@ -482,180 +558,261 @@ const speakTextMobile = async (text, lang, eventData = null) => {
   try {
     // Stop any existing audio first
     if (currentAudioRef && !currentAudioRef.paused) {
-      console.log('[Mobile TTS] 🔄 Stopping existing OpenAI audio');
       currentAudioRef.pause();
       currentAudioRef.currentTime = 0;
       isAudioPlaying = false;
     }
-    
+
     // Check if we're already speaking and handle interruption
     if (window.speechSynthesis && window.speechSynthesis.speaking) {
-      console.log('[Mobile TTS] 🔄 Interrupting any remaining speech');
       window.speechSynthesis.cancel();
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     
-    // 🎯 PRIMARY METHOD: OpenAI TTS (PROFESSIONAL QUALITY)
-    console.log('[Mobile TTS] 🚀 Trying OpenAI TTS first (professional quality)...');
-    try {
-      const openAISuccess = await speakWithOpenAIImmediate(text, lang, eventData);
-      if (openAISuccess) {
-        console.log('[Mobile TTS] ✅ OpenAI TTS succeeded (professional quality)');
-        return true;
+    // 🔥 SAFARI HACK: Create Audio object IMMEDIATELY in user interaction call stack
+    console.log('[Safari Mobile TTS] 🎯 Creating placeholder audio IMMEDIATELY (Safari hack)');
+    
+    // Create CSP-compliant silent audio blob
+    const silentBlob = createSilentAudioBlob();
+    const silentBlobURL = URL.createObjectURL(silentBlob);
+    const placeholderAudio = new Audio(silentBlobURL);
+    
+    // Clean up blob URL when done
+    placeholderAudio.addEventListener('ended', () => URL.revokeObjectURL(silentBlobURL));
+    placeholderAudio.addEventListener('error', () => URL.revokeObjectURL(silentBlobURL));
+    
+         // OLD CSP-VIOLATING METHOD (commented out):
+     // const silentAudioDataURL = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0EAAAAPAAADAAAAAAAAAA...';
+     // const placeholderAudio = new Audio(silentAudioDataURL);
+    
+    // 🎯 CRITICAL: Set up mobile audio properties BEFORE playing
+    if (isMobile()) {
+      placeholderAudio.preload = 'auto';
+      placeholderAudio.crossOrigin = 'anonymous';
+      placeholderAudio.muted = false; // Ensure not muted
+      if (placeholderAudio.setSinkId) {
+        try {
+          await placeholderAudio.setSinkId('default');
+        } catch (e) {
+          console.warn('[Safari Mobile TTS] setSinkId not supported:', e);
+        }
       }
-      console.log('[Mobile TTS] 🔄 OpenAI TTS failed, falling back to Azure TTS');
-    } catch (error) {
-      console.log('[Mobile TTS] 🔄 OpenAI TTS error, falling back:', error.message);
     }
-
-    // FALLBACK: Azure TTS with mobile-optimized config
-    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-      console.warn('[Mobile TTS] ❌ Azure credentials missing');
+    
+    // Store reference immediately
+    currentAudioRef = placeholderAudio;
+    isAudioPlaying = true;
+    
+    // Ensure audio context is active for mobile (only if provided)
+    if (audioContextRef && audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      try {
+        await audioContextRef.current.resume();
+        console.log('[Safari Mobile TTS] Audio context resumed');
+      } catch (error) {
+        console.warn('[Safari Mobile TTS] Audio context resume failed:', error);
+      }
+    }
+    
+    // 🚀 PLAY PLACEHOLDER IMMEDIATELY (this claims Safari's permission)
+    console.log('[Safari Mobile TTS] 🎯 Playing placeholder audio to claim Safari permission...');
+    await placeholderAudio.play();
+    console.log('[Safari Mobile TTS] ✅ Placeholder audio started - Safari permission claimed!');
+    
+    // 🚀 NOW FETCH OPENAI AUDIO AND SWAP SOURCE DYNAMICALLY
+    const success = await swapToOpenAIAudio(placeholderAudio, text, lang, eventData);
+    
+    if (success) {
+      console.log('[Safari Mobile TTS] ✅ OpenAI TTS successful with Safari hack');
+      return true;
+    } else {
+      console.error('[Safari Mobile TTS] ❌ OpenAI TTS failed - no fallback');
       return false;
     }
-
-    try {
-      console.log('[Mobile TTS] 🔄 Starting Azure TTS fallback...');
-      const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-        process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-        process.env.NEXT_PUBLIC_AZURE_REGION
-      );
-      
-      const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
-      speechConfig.speechSynthesisVoiceName = voice;
-      console.log('[Mobile TTS] 🎵 Using Azure voice:', voice);
-      
-      // Mobile-specific audio configuration - FORCE audio output to speakers
-      const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
-      const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
-
-      return new Promise((resolve) => {
-        const timeoutId = setTimeout(() => {
-          console.warn('[Mobile TTS] ⏰ Azure synthesis timeout after 10s');
-          try { synthesizer.close(); } catch (e) {}
-          resolve(false);
-        }, 10000); // Shorter timeout for mobile
-
-        synthesizer.speakTextAsync(
-          text,
-          (result) => {
-            clearTimeout(timeoutId);
-            
-            try { synthesizer.close(); } catch (e) {}
-            
-            if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-              console.log('[Mobile TTS] ✅ Azure TTS synthesis completed AND should be playing audio');
-              resolve(true);
-            } else {
-              console.warn('[Mobile TTS] ❌ Azure synthesis failed:', result.reason);
-              resolve(false);
-            }
-          },
-          (error) => {
-            clearTimeout(timeoutId);
-            console.error('[Mobile TTS] ❌ Azure synthesis error:', error);
-            try { synthesizer.close(); } catch (e) {}
-            resolve(false);
-          }
-        );
-      });
-
-    } catch (error) {
-      console.error('[Mobile TTS] ❌ Azure TTS setup failed:', error);
-      return false;
-    }
+    
+  } catch (error) {
+    console.error('[Safari Mobile TTS] ❌ OpenAI TTS error:', error.message);
+    return false;
   } finally {
     // Always release mobile lock
     window.mobileTtsLock = false;
-    console.log('[Mobile TTS] 🔓 Released mobile TTS lock');
   }
 };
 
-// 🎯 NEW: Queue-based mobile TTS (for auto-speak) - PROFESSIONAL QUALITY
-const speakTextMobileQueued = async (text, lang, eventData = null) => {
-  console.log('[Mobile TTS Queue] 🚀 Speaking with PROFESSIONAL quality:', text.substring(0, 30) + '...');
-  
+// 🚀 SAFARI HACK: Dynamically swap audio source while keeping the same Audio object
+const swapToOpenAIAudio = async (audioElement, text, lang, eventData = null) => {
+  try {
+    console.log('[Safari Audio Swap] 🔄 Fetching OpenAI audio while placeholder plays...');
+    
+    // Voice selection based on admin preference
+    const getVoiceForLanguage = (langCode, voiceType = 'female') => {
+      const voiceMap = {
+        female: {
+          'en': 'nova', 'es': 'nova', 'fr': 'shimmer', 'de': 'shimmer', 'it': 'nova',
+          'pt': 'nova', 'zh': 'nova', 'ja': 'nova', 'ko': 'nova', 'ru': 'shimmer',
+          'ar': 'nova', 'hi': 'shimmer', 'default': 'nova'
+        },
+        male: {
+          'en': 'echo', 'es': 'onyx', 'fr': 'echo', 'de': 'onyx', 'it': 'echo',
+          'pt': 'onyx', 'zh': 'echo', 'ja': 'echo', 'ko': 'echo', 'ru': 'onyx',
+          'ar': 'echo', 'hi': 'onyx', 'default': 'echo'
+        }
+      };
+      return voiceMap[voiceType]?.[langCode] || voiceMap[voiceType]?.default || 'alloy';
+    };
+    
+    const voiceType = eventData?.ttsVoice || 'female';
+    const voice = getVoiceForLanguage(lang, voiceType);
+    
+    // Call OpenAI TTS API
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    const response = await fetch('/api/openai-tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text, voice: voice, speed: 1.0 }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('[Safari Audio Swap] ❌ OpenAI API Error:', response.status, errorData);
+      return false;
+    }
+
+    // Get audio blob and create URL
+    const audioBlob = await response.blob();
+    const audioUrl = URL.createObjectURL(audioBlob);
+    
+    console.log('[Safari Audio Swap] 🎯 OpenAI audio fetched, swapping source dynamically...');
+    
+    // 🚀 CRITICAL SAFARI HACK: Dynamically change the src while audio is playing
+    // Safari allows this because the Audio object was created in user interaction call stack
+    audioElement.src = audioUrl;
+    audioElement.load(); // Reload with new source
+
+    return new Promise((resolve) => {
+      let resolved = false;
+      
+      const cleanup = () => {
+        if (resolved) return;
+        resolved = true;
+        URL.revokeObjectURL(audioUrl);
+        isAudioPlaying = false;
+      };
+      
+      audioElement.onended = () => {
+        cleanup();
+        console.log('[Safari Audio Swap] ✅ OpenAI audio playback completed');
+        resolve(true);
+      };
+      
+      audioElement.onerror = (error) => {
+        cleanup();
+        console.error('[Safari Audio Swap] ❌ Audio playback error:', error);
+        resolve(false);
+      };
+      
+      // Fallback timeout for mobile
+      setTimeout(() => {
+        if (!resolved && (audioElement.ended || audioElement.currentTime > 0)) {
+          cleanup();
+          console.log('[Safari Audio Swap] ✅ Fallback timeout - audio likely completed');
+          resolve(true);
+        }
+      }, 15000); // 15 second fallback timeout
+      
+      // Start playing the new audio
+      audioElement.play().then(() => {
+        console.log('[Safari Audio Swap] ✅ OpenAI audio started playing');
+      }).catch((error) => {
+        console.error('[Safari Audio Swap] ❌ Failed to play OpenAI audio:', error);
+        cleanup();
+        resolve(false);
+      });
+    });
+
+  } catch (error) {
+    console.error('[Safari Audio Swap] ❌ Error swapping audio:', error);
+    isAudioPlaying = false;
+    return false;
+  }
+};
+
+// 🚀 SAFARI-PROOF Mobile Queue TTS - Creates audio immediately, loads content dynamically
+const speakTextMobileQueued = async (text, lang, eventData = null, audioContextRef = null) => {
   // NO LOCK - queue system handles overlap prevention via isMobileSpeaking.current
   
   try {
     // Stop any existing audio first
     if (currentAudioRef && !currentAudioRef.paused) {
-      console.log('[Mobile TTS Queue] 🔄 Stopping existing OpenAI audio');
       currentAudioRef.pause();
       currentAudioRef.currentTime = 0;
       isAudioPlaying = false;
     }
     
-    // 🎯 PRIMARY METHOD: OpenAI TTS (PROFESSIONAL QUALITY)
-    console.log('[Mobile TTS Queue] 🚀 Trying OpenAI TTS first (professional quality)...');
-    try {
-      const openAISuccess = await speakWithOpenAIImmediate(text, lang, eventData);
-      if (openAISuccess) {
-        console.log('[Mobile TTS Queue] ✅ OpenAI TTS succeeded (professional quality)');
-        return true;
+    // 🔥 SAFARI HACK: For queued items, also use Safari-proof approach
+    console.log('[Safari Mobile TTS Queue] 🎯 Creating placeholder audio for queue (Safari hack)');
+    
+    // Create CSP-compliant silent audio blob
+    const silentBlob = createSilentAudioBlob();
+    const silentBlobURL = URL.createObjectURL(silentBlob);
+    const placeholderAudio = new Audio(silentBlobURL);
+    
+    // Clean up blob URL when done
+    placeholderAudio.addEventListener('ended', () => URL.revokeObjectURL(silentBlobURL));
+    placeholderAudio.addEventListener('error', () => URL.revokeObjectURL(silentBlobURL));
+    
+
+    
+    // 🎯 CRITICAL: Set up mobile audio properties BEFORE playing
+    if (isMobile()) {
+      placeholderAudio.preload = 'auto';
+      placeholderAudio.crossOrigin = 'anonymous';
+      placeholderAudio.muted = false; // Ensure not muted
+      if (placeholderAudio.setSinkId) {
+        try {
+          await placeholderAudio.setSinkId('default');
+        } catch (e) {
+          console.warn('[Safari Mobile TTS Queue] setSinkId not supported:', e);
+        }
       }
-      console.log('[Mobile TTS Queue] 🔄 OpenAI TTS failed, falling back to Azure TTS');
-    } catch (error) {
-      console.log('[Mobile TTS Queue] 🔄 OpenAI TTS error, falling back:', error.message);
     }
-
-    // FALLBACK: Azure TTS with mobile-optimized config
-    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-      console.warn('[Mobile TTS Queue] ❌ Azure credentials missing');
+    
+    // Store reference immediately
+    currentAudioRef = placeholderAudio;
+    isAudioPlaying = true;
+    
+    // Ensure audio context is active for mobile (only if provided)
+    if (audioContextRef && audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      try {
+        await audioContextRef.current.resume();
+        console.log('[Safari Mobile TTS Queue] Audio context resumed');
+      } catch (error) {
+        console.warn('[Safari Mobile TTS Queue] Audio context resume failed:', error);
+      }
+    }
+    
+    // 🚀 PLAY PLACEHOLDER IMMEDIATELY (this claims Safari's permission)
+    console.log('[Safari Mobile TTS Queue] 🎯 Playing placeholder audio to claim Safari permission...');
+    await placeholderAudio.play();
+    console.log('[Safari Mobile TTS Queue] ✅ Placeholder audio started - Safari permission claimed!');
+    
+    // 🚀 NOW FETCH OPENAI AUDIO AND SWAP SOURCE DYNAMICALLY
+    const success = await swapToOpenAIAudio(placeholderAudio, text, lang, eventData);
+    
+    if (success) {
+      console.log('[Safari Mobile TTS Queue] ✅ OpenAI TTS successful with Safari hack');
+      return true;
+    } else {
+      console.error('[Safari Mobile TTS Queue] ❌ OpenAI TTS failed - no fallback');
       return false;
     }
 
-    try {
-      console.log('[Mobile TTS Queue] 🔄 Starting Azure TTS fallback...');
-      const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-        process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-        process.env.NEXT_PUBLIC_AZURE_REGION
-      );
-      
-      const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
-      speechConfig.speechSynthesisVoiceName = voice;
-      console.log('[Mobile TTS Queue] 🎵 Using Azure voice:', voice);
-      
-      // Mobile-specific audio configuration - FORCE audio output to speakers
-      const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
-      const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
-
-      return new Promise((resolve) => {
-        const timeoutId = setTimeout(() => {
-          console.warn('[Mobile TTS Queue] ⏰ Azure synthesis timeout after 10s');
-          try { synthesizer.close(); } catch (e) {}
-          resolve(false);
-        }, 10000);
-
-        synthesizer.speakTextAsync(
-          text,
-          (result) => {
-            clearTimeout(timeoutId);
-            try { synthesizer.close(); } catch (e) {}
-            
-            if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-              console.log('[Mobile TTS Queue] ✅ Azure TTS synthesis completed AND should be playing audio');
-              resolve(true);
-            } else {
-              console.warn('[Mobile TTS Queue] ❌ Azure synthesis failed:', result.reason);
-              resolve(false);
-            }
-          },
-          (error) => {
-            clearTimeout(timeoutId);
-            console.error('[Mobile TTS Queue] ❌ Azure synthesis error:', error);
-            try { synthesizer.close(); } catch (e) {}
-            resolve(false);
-          }
-        );
-      });
-
-    } catch (error) {
-      console.error('[Mobile TTS Queue] ❌ Azure TTS setup failed:', error);
-      return false;
-    }
   } catch (error) {
-    console.error('[Mobile TTS Queue] ❌ Critical error:', error);
+    console.error('[Safari Mobile TTS Queue] ❌ OpenAI TTS error:', error.message);
     return false;
   }
 };
@@ -912,12 +1069,7 @@ export default function BroadcastPage() {
         handleStuckRecovery();
       } else if (timeSinceTranscription > deviceInfo.stuckThreshold && socketConnected) {
         // Log but don't trigger recovery for normal silence
-        console.log('[Watchdog] Long silence detected but seems normal', {
-          timeSinceTranscription,
-          threshold: deviceInfo.stuckThreshold,
-          totalTranscriptions,
-          reason: totalTranscriptions === 0 ? 'No transcriptions yet' : 'Likely normal silence'
-        });
+        // Long silence detected but seems normal
       }
       
       // Update debug info
@@ -945,7 +1097,7 @@ export default function BroadcastPage() {
       audioContextRef.current = initializeAudioContext();
     }
     
-    console.log('[Init] Component mounted', { deviceInfo });
+    // Component mounted
     
     // Cleanup audio context on unmount
     return () => {
@@ -1197,22 +1349,22 @@ export default function BroadcastPage() {
         resolve({ [toCode]: translation });
         console.log("[Translation Queue] ✅ Success:", text.substring(0, 30) + '...');
         
-      } catch (error) {
+          } catch (error) {
         console.error("[Translation Queue] Error:", error);
         resolve({});
       } finally {
         // Always remove from active requests
         activeTranslationRequests.current.delete(cacheKey);
-      }
-      
+        }
+        
       // Small delay between requests to prevent API overwhelming
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
     isProcessingTranslations.current = false;
   }, []);
 
-  // Enhanced speakText function with OpenAI primary and Azure fallback
+  // Desktop OpenAI TTS ONLY - No fallback
   const speakText = useCallback(async (text, lang, onDone) => {
     // Basic validation
     if (!text) {
@@ -1220,67 +1372,25 @@ export default function BroadcastPage() {
       return;
     }
 
-    console.log('[TTS] Starting with OpenAI primary method...');
+    console.log('[Desktop TTS] Starting OpenAI TTS exclusively...');
     
-    // Try OpenAI TTS first for desktop
+    // OpenAI TTS ONLY - No fallback
     try {
       const openAISuccess = await speakWithOpenAI(text, lang, eventData);
       if (openAISuccess) {
-        console.log('[TTS] ✅ OpenAI TTS successful');
+        console.log('[Desktop TTS] ✅ OpenAI TTS successful');
         if (onDone) onDone(true);
         return;
+      } else {
+        console.error('[Desktop TTS] ❌ OpenAI TTS failed - no fallback');
+        if (onDone) onDone(false);
+        return;
       }
-      console.log('[TTS] ⚠️ OpenAI TTS failed, falling back to Azure...');
     } catch (error) {
-      console.warn('[TTS] ⚠️ OpenAI TTS error, falling back to Azure:', error);
-    }
-
-    // Fallback to Azure TTS
-    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-      console.error('[TTS] ❌ Azure TTS credentials not available');
+      console.error('[Desktop TTS] ❌ OpenAI TTS error:', error.message);
       if (onDone) onDone(false);
       return;
     }
-
-    // Safari/iOS specific workarounds
-    const safariMode = isSafari() || isIOS();
-    
-    const performSynthesis = async () => {
-      if (safariMode) {
-        // Ensure audio context is active for Safari before each synthesis
-        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-          try {
-            await audioContextRef.current.resume();
-            console.log('[TTS Safari] Audio context resumed for synthesis');
-          } catch (error) {
-            console.warn('[TTS Safari] Failed to resume audio context:', error);
-          }
-        }
-        
-        // Add small delay for Safari to prevent rapid-fire issues
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      try {
-        // Configure and create the synthesizer with Safari optimizations
-        const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-          process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-          process.env.NEXT_PUBLIC_AZURE_REGION
-        );
-        
-        const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
-        speechConfig.speechSynthesisVoiceName = voice;
-        
-        // Safari-specific audio config
-        const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
-        const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
-        
-        // Store the synthesizer instance so we can clean up if needed
-        currentSynthesizerRef.current = synthesizer;
-
-        console.log(`[TTS] Starting synthesis for: "${text.substring(0, 30)}..." (Safari mode: ${safariMode})`);
-
-        // Create synthesis promise with timeout
         const synthesisPromise = new Promise((resolve, reject) => {
           const timeoutId = setTimeout(() => {
             console.warn('[TTS] Synthesis timeout, cleaning up...');
@@ -1344,148 +1454,34 @@ export default function BroadcastPage() {
           );
         });
 
-        const success = await synthesisPromise;
-        if (onDone) onDone(success);
-
-      } catch (error) {
-        console.error(`[TTS] Critical error: ${error.message}`);
-        ttsErrorCount.current++;
-        
-        // If too many errors, temporarily disable TTS
-        if (ttsErrorCount.current >= maxTtsErrors) {
-          console.warn(`[TTS] Too many errors (${ttsErrorCount.current}), temporarily disabling TTS`);
-          setTimeout(() => {
-            ttsErrorCount.current = 0;
-            console.log('[TTS] TTS re-enabled after cooldown');
-          }, 10000); // 10 second cooldown
-        }
-        
-        if (onDone) onDone(false);
-      }
-    };
-
-    // Execute the synthesis
-    performSynthesis();
   }, []);
 
-  // Enhanced TTS function with OpenAI primary and Azure fallback
+  // Desktop OpenAI TTS ONLY - No fallback
   const speakTextDesktop = useCallback(async (text, lang) => {
     // Basic validation
     if (!text) {
       return false;
     }
 
-    console.log('[Desktop TTS] Starting TTS with OpenAI primary method...');
+    console.log('[Desktop TTS] Starting OpenAI TTS exclusively...');
     
-    // Try OpenAI TTS first
+    // OpenAI TTS ONLY - No fallback
     try {
       const openAISuccess = await speakWithOpenAI(text, lang, eventData);
       if (openAISuccess) {
         console.log('[Desktop TTS] ✅ OpenAI TTS successful');
         return true;
-      }
-      console.log('[Desktop TTS] ⚠️ OpenAI TTS failed, falling back to Azure...');
-    } catch (error) {
-      console.warn('[Desktop TTS] ⚠️ OpenAI TTS error, falling back to Azure:', error);
-    }
-
-    // Fallback to Azure TTS
-    if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-      console.error('[Desktop TTS] ❌ Azure TTS credentials not available');
-      return false;
-    }
-
-    // Wait for any ongoing TTS to complete
-    if (ttsPromiseRef.current) {
-      try {
-        await ttsPromiseRef.current;
-      } catch (e) {
-        console.log('[TTS] Previous TTS failed, continuing');
-      }
-    }
-
-    // Create new TTS promise with proper locking
-    ttsPromiseRef.current = new Promise(async (resolve, reject) => {
-      try {
-        // Safari/iOS specific workarounds
-        const safariMode = isSafari() || isIOS();
-        
-        if (safariMode) {
-          // Ensure audio context is active for Safari before each synthesis
-          if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-            try {
-              await audioContextRef.current.resume();
-              console.log('[TTS Desktop] Audio context resumed for synthesis');
-            } catch (error) {
-              console.warn('[TTS Desktop] Failed to resume audio context:', error);
-            }
-          }
-          
-          // Add small delay for Safari to prevent rapid-fire issues
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-
-        const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-          process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-          process.env.NEXT_PUBLIC_AZURE_REGION
-        );
-        
-        const voice = voiceMap[lang] || voiceMap['en'] || 'en-US-JennyNeural';
-        speechConfig.speechSynthesisVoiceName = voice;
-        
-        const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
-        const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
-        
-        // Store synthesizer reference
-        currentSynthesizerRef.current = synthesizer;
-        
-        console.log(`[TTS Desktop] Starting synthesis for: "${text.substring(0, 30)}..."`);
-
-        synthesizer.speakTextAsync(
-          text,
-          (result) => {
-            if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-              // Reset error count on success
-              ttsErrorCount.current = 0;
-              
-              // Wait for audio to actually finish playing
-              const audioDurationMs = result.audioDuration / 10000; // Convert to ms
-              const waitTime = safariMode ? Math.min(audioDurationMs, 3000) : audioDurationMs;
-              
-              console.log(`[TTS Desktop] Synthesis complete. Waiting ${waitTime}ms for playback to finish.`);
-              
-              setTimeout(() => {
-                try { synthesizer.close(); } catch(e) {}
-                currentSynthesizerRef.current = null;
-                console.log(`[TTS Desktop] Playback finished for: "${text.substring(0, 30)}..."`);
-                resolve(true);
-              }, waitTime);
             } else {
-              console.warn(`[TTS Desktop] Synthesis failed. Reason: ${result.reason}`);
-              try { synthesizer.close(); } catch(e) {}
-              currentSynthesizerRef.current = null;
-              resolve(false);
-            }
-          },
-          (error) => {
-            console.error(`[TTS Desktop] Error during synthesis: ${error}`);
-            ttsErrorCount.current++;
-            try { synthesizer.close(); } catch(e) {}
-            currentSynthesizerRef.current = null;
-            reject(error);
+        console.error('[Desktop TTS] ❌ OpenAI TTS failed - no fallback');
+        return false;
           }
-        );
       } catch (error) {
-        console.error(`[TTS Desktop] Critical error: ${error.message}`);
-        ttsErrorCount.current++;
-        reject(error);
+      console.error('[Desktop TTS] ❌ OpenAI TTS error:', error.message);
+      return false;
       }
-    });
-
-    return ttsPromiseRef.current;
   }, []);
 
-  // Debounced TTS function with OpenAI primary method and overlap prevention
+  // Debounced OpenAI TTS ONLY - No fallback
   const debouncedTTS = useCallback((text, lang, eventDataParam = null) => {
     // Clear previous timer
     if (ttsDebounceTimer.current) {
@@ -1511,28 +1507,25 @@ export default function BroadcastPage() {
       spokenSentences.current.add(text);
       
       try {
-        console.log(`[TTS Debounce] Starting OpenAI TTS for: "${text.substring(0, 30)}..."`);
+        console.log(`[TTS Debounce] Starting OpenAI TTS exclusively for: "${text.substring(0, 30)}..."`);
         
-        // Try OpenAI TTS first (with built-in overlap prevention)
-        let success = await speakWithOpenAI(text, lang, eventDataParam || eventData);
-        
-        if (!success) {
-          console.log('[TTS Debounce] OpenAI failed, trying Azure fallback...');
-          success = await speakTextDesktop(text, lang);
-        }
+        // OpenAI TTS ONLY - No fallback
+        const success = await speakWithOpenAI(text, lang, eventDataParam || eventData);
         
         if (!success) {
-          console.warn(`[TTS Debounce] Both OpenAI and Azure TTS failed for: "${text.substring(0, 30)}..."`);
+          console.error(`[TTS Debounce] ❌ OpenAI TTS failed - no fallback for: "${text.substring(0, 30)}..."`);
           // Remove from spoken sentences if TTS failed
           spokenSentences.current.delete(text);
+        } else {
+          console.log(`[TTS Debounce] ✅ OpenAI TTS successful for: "${text.substring(0, 30)}..."`);
         }
       } catch (error) {
-        console.error('[TTS Debounce] Error during debounced TTS:', error);
+        console.error('[TTS Debounce] ❌ OpenAI TTS error:', error.message);
         // Remove from spoken sentences if TTS failed
         spokenSentences.current.delete(text);
       }
     }, similarity);
-  }, [speakTextDesktop]);
+  }, []);
 
   // Enhanced queue processor with Safari error handling
   const processQueue = useCallback(() => {
@@ -1579,7 +1572,7 @@ export default function BroadcastPage() {
     
     try {
       // 🎯 Use the new queued function that doesn't conflict with button locks
-      const success = await speakTextMobileQueued(item.text, item.lang, eventData);
+      const success = await speakTextMobileQueued(item.text, item.lang, eventData, audioContextRef);
       console.log(`[Mobile TTS Queue] Item completed with success: ${success}`);
       
       if (!success) {
@@ -1697,11 +1690,7 @@ export default function BroadcastPage() {
     connectionStateRef.current.isRecovering = true;
     setConnectionStatus('connecting');
     
-    console.log('[Connection] Initializing socket connection', { 
-      url: SOCKET_URL, 
-      roomId: id,
-      deviceType: deviceInfo.isTablet ? 'tablet' : deviceInfo.isMobile ? 'mobile' : 'desktop'
-    });
+    // Initializing socket connection
 
     const socket = io(SOCKET_URL, { 
       transports: ["websocket"],
@@ -1723,10 +1712,7 @@ export default function BroadcastPage() {
       connectionStateRef.current.lastConnect = now;
       connectionStateRef.current.isRecovering = false;
       
-      console.log('[Connection] Socket connected successfully', { 
-        socketId: socket.id,
-        reconnectCount: connectionStateRef.current.reconnectCount
-      });
+      // Socket connected successfully
       
       setSocketConnected(true);
       setConnectionStatus('connected');
@@ -1735,7 +1721,7 @@ export default function BroadcastPage() {
       // Reset translation circuit breaker on successful connection
       translationCircuitOpen.current = false;
       translationErrorCount.current = 0;
-      console.log('[Translation] Circuit breaker reset on reconnection');
+      // Circuit breaker reset on reconnection
       
       // Join room
       socket.emit("join_room", { room: id });
@@ -1793,12 +1779,7 @@ export default function BroadcastPage() {
       connectionStateRef.current.lastTranscription = now;
       connectionStateRef.current.totalTranscriptions++;
       
-      console.log('[Transcription] Received transcription', { 
-        text: data.text ? data.text.substring(0, 50) + '...' : 'empty',
-        is_final: data.is_final, 
-        source_language: data.source_language,
-        totalReceived: connectionStateRef.current.totalTranscriptions
-      });
+      // Received transcription
       
       setLastTranscriptionTime(now);
       
@@ -1975,7 +1956,7 @@ export default function BroadcastPage() {
         }
       } else {
         // Handle interim transcriptions - ONLY update display, never trigger TTS
-        console.log('[Transcription] Setting interim caption', { text: data.text });
+        // Setting interim caption
         setCurrentInterimCaption(data.text || "");
         
         // Update display only for interim translations, no TTS
@@ -1997,19 +1978,19 @@ export default function BroadcastPage() {
             translationCache.current.set(lastInterimKey, data.text);
             
             // Only translate interim text if it's substantial (reduce API calls)
-            const translationPromise = fetchTranslations(data.text, translationLanguage);
-            const timeoutPromise = new Promise((_, reject) => {
+          const translationPromise = fetchTranslations(data.text, translationLanguage);
+          const timeoutPromise = new Promise((_, reject) => {
               setTimeout(() => reject(new Error('Interim translation timeout')), 1500); // Shorter timeout for interim
+          });
+          
+          Promise.race([translationPromise, timeoutPromise])
+            .then((translations) => {
+              setRealtimeTranslations(translations);
+            })
+            .catch((error) => {
+              // Silently handle interim translation failures
+              console.log('[Translation] Interim translation failed', { error: error.message });
             });
-            
-            Promise.race([translationPromise, timeoutPromise])
-              .then((translations) => {
-                setRealtimeTranslations(translations);
-              })
-              .catch((error) => {
-                // Silently handle interim translation failures
-                console.log('[Translation] Interim translation failed', { error: error.message });
-              });
           }
         }
       }
@@ -2024,7 +2005,7 @@ export default function BroadcastPage() {
 
     // Enhanced cleanup
     return () => {
-      console.log('[Connection] Cleaning up socket connection');
+      // Cleaning up socket connection
       
       connectionStateRef.current.isRecovering = false;
       
@@ -2288,21 +2269,24 @@ export default function BroadcastPage() {
       }
       
       // Enable auto-speak with professional OpenAI TTS
-      console.log('[Mobile Play] ▶️ Professional TTS ready, enabling auto-speak');
+      console.log('[Mobile Play] ▶️ Professional OpenAI TTS ready, enabling auto-speak');
       setAutoSpeakLang(langCode);
       
       // Auto-speak current text if available, or provide feedback
       if (displayedTranslation && displayedTranslation.trim().length >= 10) {
-        console.log('[Mobile Play] 🎤 Speaking current text immediately with professional quality');
-        const success = await speakTextMobile(displayedTranslation.trim(), langCode, eventData);
-        if (!success) {
-          setTtsError('Professional TTS failed. Try again or check connection.');
+        console.log('[Mobile Play] 🎤 Speaking current text immediately with OpenAI TTS');
+        const success = await speakTextMobile(displayedTranslation.trim(), langCode, eventData, audioContextRef);
+        if (success) {
+          setTtsError('✅ OpenAI TTS working perfectly!');
+          setTimeout(() => setTtsError(null), 3000);
+        } else {
+          setTtsError('⚠️ OpenAI TTS failed. Check your connection and try again.');
           setTimeout(() => setTtsError(null), 5000);
         }
       } else {
-        console.log('[Mobile Play] ✅ Professional TTS ready - will speak as content arrives');
+        console.log('[Mobile Play] ✅ OpenAI TTS ready - will speak as content arrives');
         // Show brief success message
-        setTtsError('✅ Professional TTS ready - will start speaking as content arrives');
+        setTtsError('✅ OpenAI TTS ready - will start speaking as content arrives');
         setTimeout(() => setTtsError(null), 3000);
       }
       
@@ -2945,10 +2929,13 @@ export default function BroadcastPage() {
                                 
                                 // Speak current text immediately if available
                                 if (displayedTranslation && displayedTranslation.trim().length >= 10) {
-                                  console.log('[Mobile TTS Button] 🎤 Speaking current text immediately');
-                                  const success = await speakTextMobile(displayedTranslation.trim(), langCode, eventData);
-                                  if (!success) {
-                                    setTtsError('Mobile TTS failed. Try again or check browser permissions.');
+                                  console.log('[Mobile TTS Button] 🎤 Speaking current text immediately with OpenAI TTS');
+                                  const success = await speakTextMobile(displayedTranslation.trim(), langCode, eventData, audioContextRef);
+                                  if (success) {
+                                    setTtsError('✅ OpenAI TTS working perfectly!');
+                                    setTimeout(() => setTtsError(null), 3000);
+                                  } else {
+                                    setTtsError('⚠️ OpenAI TTS failed. Check your connection and try again.');
                                     setTimeout(() => setTtsError(null), 5000);
                                   }
                                 }

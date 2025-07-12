@@ -165,21 +165,112 @@ export default function EventLivePage() {
 
     if (!eventData || !sourceLanguage) return;
 
-    console.log("Attempting to connect to socket server...");
+    // Connecting to socket server
     const socket = io("https://speechdev.onrender.com", { transports: ["websocket"] });
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("Socket connected!");
+      // Socket connected
 
       const startRecognizer = () => {
-        // Add debug logging
-        console.log('Azure Speech Key available:', !!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY);
-        console.log('Azure Region available:', !!process.env.NEXT_PUBLIC_AZURE_REGION);
-        
         if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
           alert("Azure Speech key/region not set");
           return;
+        }
+
+        // Azure Speech SDK language mapping and validation
+        const azureSpeechLanguageMap = {
+          'en': 'en-US',
+          'es': 'es-ES', 
+          'fr': 'fr-FR',
+          'de': 'de-DE',
+          'it': 'it-IT',
+          'pt': 'pt-PT',
+          'ru': 'ru-RU',
+          'ja': 'ja-JP',
+          'ko': 'ko-KR',
+          'zh': 'zh-CN',
+          'ar': 'ar-SA',
+          'hi': 'hi-IN',
+          'tr': 'tr-TR',
+          'nl': 'nl-NL',
+          'pl': 'pl-PL',
+          'sv': 'sv-SE',
+          'no': 'nb-NO',
+          'da': 'da-DK',
+          'fi': 'fi-FI',
+          'cs': 'cs-CZ',
+          'hu': 'hu-HU',
+          'ro': 'ro-RO',
+          'sk': 'sk-SK',
+          'bg': 'bg-BG',
+          'hr': 'hr-HR',
+          'sl': 'sl-SI',
+          'et': 'et-EE',
+          'lv': 'lv-LV',  // Latvian
+          'lt': 'lt-LT',  // Lithuanian
+          'uk': 'uk-UA',
+          'he': 'he-IL',
+          'th': 'th-TH',
+          'vi': 'vi-VN',
+          'id': 'id-ID',
+          'ms': 'ms-MY',
+          'fa': 'fa-IR',
+          'Latvian': 'lv-LV',
+          'English': 'en-US',
+          'Spanish': 'es-ES',
+          'French': 'fr-FR',
+          'German': 'de-DE'
+        };
+        
+        // DEBUGGING: Show exactly what we received
+        console.log('[Azure] Raw sourceLanguage from event data:', sourceLanguage);
+        console.log('[Azure] Event sourceLanguages array:', eventData?.sourceLanguages);
+        
+        // Map to proper Azure language code
+        let azureLanguageCode = sourceLanguage;
+        
+        // Try direct mapping first
+        if (azureSpeechLanguageMap[sourceLanguage]) {
+          azureLanguageCode = azureSpeechLanguageMap[sourceLanguage];
+          console.log('[Azure] Direct mapping found:', sourceLanguage, '→', azureLanguageCode);
+        }
+        // If it's already in xx-XX format, use it
+        else if (sourceLanguage && sourceLanguage.includes('-')) {
+          azureLanguageCode = sourceLanguage;
+          console.log('[Azure] Using language code as-is:', azureLanguageCode);
+        }
+        // If it's just a base code, map it
+        else if (sourceLanguage) {
+          const baseCode = sourceLanguage.split('-')[0].toLowerCase();
+          if (azureSpeechLanguageMap[baseCode]) {
+            azureLanguageCode = azureSpeechLanguageMap[baseCode];
+            console.log('[Azure] Base code mapping:', baseCode, '→', azureLanguageCode);
+          }
+        }
+        
+        // Final validation - NO FALLBACK TO ENGLISH!
+        if (!azureLanguageCode || (!azureLanguageCode.includes('-') && azureLanguageCode === sourceLanguage)) {
+          console.error('[Azure] Could not map language:', sourceLanguage);
+          console.error('[Azure] Available mappings:', Object.keys(azureSpeechLanguageMap));
+          // Don't fall back to English - that defeats the purpose!
+          // Use whatever we have and let Azure tell us if it's wrong
+          azureLanguageCode = sourceLanguage;
+        }
+        
+        console.log('[Azure] Final language code for Azure Speech SDK:', azureLanguageCode);
+        console.log('[Azure] Region:', process.env.NEXT_PUBLIC_AZURE_REGION);
+        console.log('[Azure] Key exists:', !!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY);
+        
+        // Test Azure service connectivity
+        try {
+          const testConfig = SpeechSDK.SpeechConfig.fromSubscription(
+            process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+            process.env.NEXT_PUBLIC_AZURE_REGION
+          );
+          console.log('[Azure] Basic config created successfully');
+        } catch (configError) {
+          console.error('[Azure] Failed to create basic config:', configError);
         }
 
         const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(
@@ -188,7 +279,8 @@ export default function EventLivePage() {
         );
         
         // Configure speech settings
-        speechConfig.speechRecognitionLanguage = sourceLanguage;
+        console.log(`[Azure] Using language code: ${azureLanguageCode}`);
+        speechConfig.speechRecognitionLanguage = azureLanguageCode;
         speechConfig.enableDictation();  // Enable dictation mode for better continuous recognition
         speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw);  // Don't filter any speech
         
@@ -197,8 +289,6 @@ export default function EventLivePage() {
         speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, "200");  // Default: 2000ms -> 300ms
         speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "100");  // Default: 5000ms -> 300ms  
         speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, "300");  // Default: 15000ms -> 800ms
-        
-        console.log("[Azure Config] Applied aggressive timeout settings for faster TTS response");
         
         // Add target languages
         (eventData.targetLanguages || []).forEach(lang => {
@@ -210,16 +300,24 @@ export default function EventLivePage() {
 
         recognizerRef.current = recognizer;
 
-        // Handle recognition errors
+        // Handle recognition errors - NO FALLBACK, just fail gracefully
         recognizer.canceled = (s, e) => {
           console.log("[Live] Recognition canceled. Reason:", e.reason);
           if (e.reason === SpeechSDK.CancellationReason.Error) {
             console.error(`[Live] Recognition error: ${e.errorDetails}`);
-            // If there's an error, try to restart the recognizer
+            
+            // Check if this is a language support error (1007)
+            if (e.errorDetails.includes('1007') || e.errorDetails.includes('not supported')) {
+              console.error(`[Azure] ❌ Language ${azureLanguageCode} is not supported in region ${process.env.NEXT_PUBLIC_AZURE_REGION}`);
+              console.error('[Azure] 💡 Try changing your Azure region to West Europe or North Europe');
+              console.error('[Azure] 💡 Or contact your Azure administrator to verify language support in your region');
+            }
+            
+            console.error('[Live] Recognition failed - stopping without retry');
+            
             if (recognizerRef.current) {
               recognizerRef.current.stopContinuousRecognitionAsync(() => {
-                console.log("[Live] Stopped recognition after error");
-                startRecognizer(); // Restart recognition
+                console.log("[Live] Recognition stopped due to error");
               }, err => console.error("[Live] Error stopping recognition:", err));
             }
           }
@@ -228,7 +326,6 @@ export default function EventLivePage() {
         recognizer.recognizing = (_s, evt) => {
           const text = evt.result.text;
           if (text && socketRef.current && socketRef.current.connected) {
-            console.log("[Live] Emitting interim transcription:", text);
             socketRef.current.emit("realtime_transcription", {
               text,
               is_final: false,
@@ -244,7 +341,6 @@ export default function EventLivePage() {
             ? Object.fromEntries(Object.entries(evt.result.translations))
             : {};
           if (text && socketRef.current && socketRef.current.connected) {
-            console.log("[Live] Emitting final transcription:", text);
             socketRef.current.emit("realtime_transcription", {
               text,
               is_final: true,
@@ -346,6 +442,7 @@ export default function EventLivePage() {
   const handlePauseResumeEvent = async () => {
     try {
       const newStatus = eventData.status === "Paused" ? "Live" : "Paused";
+      
       // Update in Supabase
       await updateEventStatus(eventData.id, newStatus);
       setEventData(prev => ({ ...prev, status: newStatus }));

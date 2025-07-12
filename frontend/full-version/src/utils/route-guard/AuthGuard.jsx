@@ -92,7 +92,7 @@ export function useCurrentUser() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
       
-      console.log('AuthGuard: Auth state change:', event);
+      // Auth state change
       
       if (session?.user) {
         setUserData(session.user);

@@ -81,7 +81,7 @@ export const AuthProvider = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
-      console.log('Auth state change:', event, session ? 'session exists' : 'no session');
+      // Auth state change
 
       if (session) {
         localStorage.setItem(AUTH_USER_KEY, JSON.stringify(session));
