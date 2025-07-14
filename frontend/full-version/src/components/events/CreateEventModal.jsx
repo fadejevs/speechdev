@@ -177,20 +177,20 @@ const CreateEventModal = ({
     }
     
     try {
-      // Create a properly formatted event object
-      const newEvent = {
-        title: eventData.name || 'Not specified',
-        description: eventData.description || 'Not specified',
-        location: eventData.location || 'Not specified',
-        timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : 'Not specified',
-        type: eventData.eventType || 'Not specified',
-        sourceLanguages: eventData.sourceLanguages || [],
-        targetLanguages: eventData.targetLanguages || [],
-        recordEvent: eventData.recordEvent,
-        status: eventData.status || "Scheduled",
-        startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
-        endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
-      };
+    // Create a properly formatted event object
+    const newEvent = {
+      title: eventData.name || 'Not specified',
+      description: eventData.description || 'Not specified',
+      location: eventData.location || 'Not specified',
+      timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : 'Not specified',
+      type: eventData.eventType || 'Not specified',
+      sourceLanguages: eventData.sourceLanguages || [],
+      targetLanguages: eventData.targetLanguages || [],
+      recordEvent: eventData.recordEvent,
+      status: eventData.status || "Scheduled",
+      startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
+      endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
+    };
 
       // Call the parent handler (which will save to Supabase and handle navigation)
       await handleCreate(newEvent);
@@ -198,7 +198,7 @@ const CreateEventModal = ({
       // Only close the modal if we're editing (not creating new event)
       // For new events, the parent component handles closing and navigation
       if (isEditing) {
-        handleClose();
+    handleClose();
       }
       // For new events, the modal will stay open with loading state until parent navigates
       
@@ -975,7 +975,7 @@ const CreateEventModal = ({
               />
             )}
             <span style={{ opacity: isCreating ? 0 : 1 }}>
-              {isEditing ? 'Save Changes' : 'Create Event'}
+            {isEditing ? 'Save Changes' : 'Create Event'}
             </span>
           </Button>
         </DialogActions>

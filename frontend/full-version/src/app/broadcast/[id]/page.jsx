@@ -580,7 +580,7 @@ const speakTextMobile = async (text, lang, eventData = null, audioContextRef = n
     // Clean up blob URL when done
     placeholderAudio.addEventListener('ended', () => URL.revokeObjectURL(silentBlobURL));
     placeholderAudio.addEventListener('error', () => URL.revokeObjectURL(silentBlobURL));
-    
+      
          // OLD CSP-VIOLATING METHOD (commented out):
      // const silentAudioDataURL = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0EAAAAPAAADAAAAAAAAAA...';
      // const placeholderAudio = new Audio(silentAudioDataURL);
@@ -695,12 +695,33 @@ const swapToOpenAIAudio = async (audioElement, text, lang, eventData = null) => 
 
     return new Promise((resolve) => {
       let resolved = false;
+      let timeoutId = null;
       
       const cleanup = () => {
         if (resolved) return;
         resolved = true;
-        URL.revokeObjectURL(audioUrl);
+        
+        // Clear timeout
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        
+        // Clean up audio URL
+        try {
+          URL.revokeObjectURL(audioUrl);
+        } catch (e) {
+          console.warn('[Safari Audio Swap] URL cleanup failed:', e);
+        }
+        
+        // Reset audio state
         isAudioPlaying = false;
+        
+        // Remove event listeners to prevent memory leaks
+        audioElement.onended = null;
+        audioElement.onerror = null;
+        audioElement.onpause = null;
+        audioElement.onplay = null;
       };
       
       audioElement.onended = () => {
@@ -715,16 +736,42 @@ const swapToOpenAIAudio = async (audioElement, text, lang, eventData = null) => 
         resolve(false);
       };
       
-      // Fallback timeout for mobile
-      setTimeout(() => {
-        if (!resolved && (audioElement.ended || audioElement.currentTime > 0)) {
-          cleanup();
-          console.log('[Safari Audio Swap] ✅ Fallback timeout - audio likely completed');
-          resolve(true);
+      // Additional event listeners for better state tracking
+      audioElement.onpause = () => {
+        console.log('[Safari Audio Swap] Audio paused');
+        isAudioPlaying = false;
+      };
+      
+      audioElement.onplay = () => {
+        console.log('[Safari Audio Swap] Audio started playing');
+        isAudioPlaying = true;
+      };
+      
+      // Enhanced fallback timeout for mobile with better detection
+      timeoutId = setTimeout(() => {
+        if (!resolved) {
+          // More sophisticated completion detection
+          const hasPlayed = audioElement.currentTime > 0;
+          const isComplete = audioElement.ended || 
+                           (hasPlayed && audioElement.currentTime >= audioElement.duration - 0.1);
+          
+          if (isComplete) {
+            cleanup();
+            console.log('[Safari Audio Swap] ✅ Fallback timeout - audio completed');
+            resolve(true);
+          } else if (hasPlayed) {
+            cleanup();
+            console.log('[Safari Audio Swap] ⚠️ Fallback timeout - audio may have completed');
+            resolve(true); // Assume success if it played at all
+          } else {
+            cleanup();
+            console.log('[Safari Audio Swap] ❌ Fallback timeout - audio never played');
+            resolve(false);
+          }
         }
       }, 15000); // 15 second fallback timeout
       
-      // Start playing the new audio
+      // Start playing the new audio with enhanced error handling
       audioElement.play().then(() => {
         console.log('[Safari Audio Swap] ✅ OpenAI audio started playing');
       }).catch((error) => {
@@ -753,6 +800,20 @@ const speakTextMobileQueued = async (text, lang, eventData = null, audioContextR
       isAudioPlaying = false;
     }
     
+    // 🔊 ENHANCED: Double-check audio context state before attempting TTS
+    if (audioContextRef && audioContextRef.current) {
+      if (audioContextRef.current.state === 'suspended') {
+        try {
+          await audioContextRef.current.resume();
+          console.log('[Safari Mobile TTS Queue] 🔊 Audio context resumed before TTS');
+        } catch (error) {
+          console.warn('[Safari Mobile TTS Queue] ⚠️ Audio context resume failed:', error);
+        }
+      } else if (audioContextRef.current.state === 'closed') {
+        console.warn('[Safari Mobile TTS Queue] ⚠️ Audio context is closed - TTS may fail');
+      }
+    }
+    
     // 🔥 SAFARI HACK: For queued items, also use Safari-proof approach
     console.log('[Safari Mobile TTS Queue] 🎯 Creating placeholder audio for queue (Safari hack)');
     
@@ -761,17 +822,28 @@ const speakTextMobileQueued = async (text, lang, eventData = null, audioContextR
     const silentBlobURL = URL.createObjectURL(silentBlob);
     const placeholderAudio = new Audio(silentBlobURL);
     
-    // Clean up blob URL when done
-    placeholderAudio.addEventListener('ended', () => URL.revokeObjectURL(silentBlobURL));
-    placeholderAudio.addEventListener('error', () => URL.revokeObjectURL(silentBlobURL));
+    // Enhanced cleanup to prevent memory leaks
+    const cleanupBlob = () => {
+      try {
+        URL.revokeObjectURL(silentBlobURL);
+      } catch (e) {
+        console.warn('[Safari Mobile TTS Queue] Blob cleanup failed:', e);
+      }
+    };
     
-
+    placeholderAudio.addEventListener('ended', cleanupBlob);
+    placeholderAudio.addEventListener('error', cleanupBlob);
     
     // 🎯 CRITICAL: Set up mobile audio properties BEFORE playing
     if (isMobile()) {
       placeholderAudio.preload = 'auto';
       placeholderAudio.crossOrigin = 'anonymous';
       placeholderAudio.muted = false; // Ensure not muted
+      
+      // Enhanced audio setup for mobile
+      placeholderAudio.volume = 1.0;
+      placeholderAudio.playbackRate = 1.0;
+      
       if (placeholderAudio.setSinkId) {
         try {
           await placeholderAudio.setSinkId('default');
@@ -785,20 +857,18 @@ const speakTextMobileQueued = async (text, lang, eventData = null, audioContextR
     currentAudioRef = placeholderAudio;
     isAudioPlaying = true;
     
-    // Ensure audio context is active for mobile (only if provided)
-    if (audioContextRef && audioContextRef.current && audioContextRef.current.state === 'suspended') {
-      try {
-        await audioContextRef.current.resume();
-        console.log('[Safari Mobile TTS Queue] Audio context resumed');
-      } catch (error) {
-        console.warn('[Safari Mobile TTS Queue] Audio context resume failed:', error);
-      }
-    }
-    
     // 🚀 PLAY PLACEHOLDER IMMEDIATELY (this claims Safari's permission)
     console.log('[Safari Mobile TTS Queue] 🎯 Playing placeholder audio to claim Safari permission...');
-    await placeholderAudio.play();
-    console.log('[Safari Mobile TTS Queue] ✅ Placeholder audio started - Safari permission claimed!');
+    
+    try {
+      await placeholderAudio.play();
+      console.log('[Safari Mobile TTS Queue] ✅ Placeholder audio started - Safari permission claimed!');
+    } catch (playError) {
+      console.error('[Safari Mobile TTS Queue] ❌ Placeholder audio play failed:', playError);
+      cleanupBlob();
+      isAudioPlaying = false;
+      return false;
+    }
     
     // 🚀 NOW FETCH OPENAI AUDIO AND SWAP SOURCE DYNAMICALLY
     const success = await swapToOpenAIAudio(placeholderAudio, text, lang, eventData);
@@ -808,11 +878,13 @@ const speakTextMobileQueued = async (text, lang, eventData = null, audioContextR
       return true;
     } else {
       console.error('[Safari Mobile TTS Queue] ❌ OpenAI TTS failed - no fallback');
+      cleanupBlob();
       return false;
     }
 
   } catch (error) {
     console.error('[Safari Mobile TTS Queue] ❌ OpenAI TTS error:', error.message);
+    isAudioPlaying = false;
     return false;
   }
 };
@@ -1558,35 +1630,52 @@ export default function BroadcastPage() {
     });
   }, []); // No dependencies to prevent recreation
 
-  // Mobile-specific TTS queue processor
+  // Mobile-specific TTS queue processor with enhanced error handling
   const processMobileQueue = useCallback(async () => {
     if (isMobileSpeaking.current || mobileTtsQueue.current.length === 0) {
       return; // Exit if already speaking or nothing to speak
     }
 
     isMobileSpeaking.current = true;
+    window.mobileTtsStartTime = Date.now(); // Track start time for watchdog
     const item = mobileTtsQueue.current.shift();
     
     console.log(`[Mobile TTS Queue] Processing item: "${item.text.substring(0, 30)}..." (${mobileTtsQueue.current.length} remaining)`);
     
     try {
+      // 🔊 CRITICAL: Reactivate audio context before each TTS attempt
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        try {
+          await audioContextRef.current.resume();
+          console.log('[Mobile TTS Queue] 🔊 Audio context resumed before TTS');
+        } catch (error) {
+          console.warn('[Mobile TTS Queue] ⚠️ Audio context resume failed:', error);
+        }
+      }
+      
       // 🎯 Use the new queued function that doesn't conflict with button locks
       const success = await speakTextMobileQueued(item.text, item.lang, eventData, audioContextRef);
       console.log(`[Mobile TTS Queue] Item completed with success: ${success}`);
       
       if (!success) {
-        console.log('[Mobile TTS Queue] Item failed');
+        console.log('[Mobile TTS Queue] Item failed - will retry queue processing');
+        // Don't stop queue processing on failure - continue with next item
       }
     } catch (error) {
       console.error('[Mobile TTS Queue] Error processing item:', error);
     } finally {
+      // Always reset speaking state regardless of success/failure
       isMobileSpeaking.current = false;
+      window.mobileTtsStartTime = 0; // Reset start time
       
       // Process next item after a short delay
       if (mobileTtsQueue.current.length > 0) {
         mobileTtsTimeout.current = setTimeout(() => {
+          console.log(`[Mobile TTS Queue] 🔄 Processing next item (${mobileTtsQueue.current.length} remaining)`);
           processMobileQueue();
-        }, 100); // Reduced: 200→100ms for faster mobile TTS
+        }, 150); // Slightly increased for better reliability
+      } else {
+        console.log('[Mobile TTS Queue] ✅ Queue processing completed');
       }
     }
   }, []);
@@ -1594,10 +1683,52 @@ export default function BroadcastPage() {
   // Add queue watchdog to restart stuck queues - simplified version
   useEffect(() => {
     const watchdogInterval = setInterval(() => {
-      // If there are items in queue but nothing is speaking, restart the queue
+      // Desktop queue watchdog
       if (ttsQueue.current.length > 0 && !currentSynthesizerRef.current && autoSpeakLang) {
         console.log('[TTS Watchdog] Restarting stuck queue with', ttsQueue.current.length, 'items');
         processQueue();
+      }
+      
+      // Mobile queue watchdog - detect and recover from stuck mobile TTS
+      if (isMobile() && mobileTtsQueue.current.length > 0 && !isMobileSpeaking.current && autoSpeakLang) {
+        console.log('[Mobile TTS Watchdog] 🔄 Restarting stuck mobile queue with', mobileTtsQueue.current.length, 'items');
+        processMobileQueue();
+      }
+      
+      // Additional mobile TTS health check
+      if (isMobile() && isMobileSpeaking.current) {
+        // Check if mobile TTS has been speaking for too long (might be stuck)
+        const mobileTtsStartTime = window.mobileTtsStartTime || 0;
+        const currentTime = Date.now();
+        const speakingDuration = currentTime - mobileTtsStartTime;
+        
+        // If speaking for more than 30 seconds, consider it stuck
+        if (speakingDuration > 30000) {
+          console.log('[Mobile TTS Watchdog] ⚠️ Mobile TTS stuck for', speakingDuration / 1000, 'seconds - force recovery');
+          
+          // Force reset mobile TTS state
+          isMobileSpeaking.current = false;
+          window.mobileTtsLock = false;
+          
+          // Stop any current audio
+          if (currentAudioRef && !currentAudioRef.paused) {
+            currentAudioRef.pause();
+            currentAudioRef.currentTime = 0;
+            isAudioPlaying = false;
+          }
+          
+          // Clear mobile TTS timeout
+          if (mobileTtsTimeout.current) {
+            clearTimeout(mobileTtsTimeout.current);
+            mobileTtsTimeout.current = null;
+          }
+          
+          // Restart queue processing if items remain
+          if (mobileTtsQueue.current.length > 0) {
+            console.log('[Mobile TTS Watchdog] 🔄 Restarting after force recovery');
+            processMobileQueue();
+          }
+        }
       }
     }, 3000); // Check every 3 seconds
 
@@ -1628,6 +1759,8 @@ export default function BroadcastPage() {
     ttsQueue.current = [];
     mobileTtsQueue.current = []; // Clear mobile queue
     isMobileSpeaking.current = false; // Reset mobile speaking state
+    window.mobileTtsStartTime = 0; // Reset mobile TTS start time
+    window.mobileTtsLock = false; // Reset mobile TTS lock
     
     if (currentSynthesizerRef.current) {
       try { currentSynthesizerRef.current.close(); } catch(e) {}
@@ -1639,6 +1772,18 @@ export default function BroadcastPage() {
       clearTimeout(mobileTtsTimeout.current);
       mobileTtsTimeout.current = null;
     }
+    
+    // Stop any current audio
+    if (currentAudioRef && !currentAudioRef.paused) {
+      currentAudioRef.pause();
+      currentAudioRef.currentTime = 0;
+      isAudioPlaying = false;
+    }
+    
+    // Clear OpenAI TTS queue
+    openAITTSQueue.forEach(item => item.resolve(false));
+    openAITTSQueue = [];
+    isProcessingOpenAIQueue = false;
     
     setShowTtsWarning(false);
   }, [autoSpeakLang]);
