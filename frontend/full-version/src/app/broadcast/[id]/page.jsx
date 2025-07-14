@@ -608,7 +608,7 @@ const speakTextMobile = async (text, lang, eventData = null, audioContextRef = n
       try {
         await audioContextRef.current.resume();
         console.log('[Safari Mobile TTS] Audio context resumed');
-      } catch (error) {
+    } catch (error) {
         console.warn('[Safari Mobile TTS] Audio context resume failed:', error);
       }
     }
@@ -877,7 +877,6 @@ export default function BroadcastPage() {
   const stabilizationTimer = useRef(null);
 
   // Add fallback for when TTS fails completely
-  const [ttsError, setTtsError] = useState(null);
   const [showTtsWarning, setShowTtsWarning] = useState(false);
   
   // TTS Loading state for mobile
@@ -1576,8 +1575,7 @@ export default function BroadcastPage() {
       console.log(`[Mobile TTS Queue] Item completed with success: ${success}`);
       
       if (!success) {
-        setTtsError('Mobile TTS failed. Try again or use a different browser.');
-        setTimeout(() => setTtsError(null), 5000);
+        console.log('[Mobile TTS Queue] Item failed');
       }
     } catch (error) {
       console.error('[Mobile TTS Queue] Error processing item:', error);
@@ -1642,7 +1640,6 @@ export default function BroadcastPage() {
       mobileTtsTimeout.current = null;
     }
     
-    setTtsError(null);
     setShowTtsWarning(false);
   }, [autoSpeakLang]);
 
@@ -2276,24 +2273,12 @@ export default function BroadcastPage() {
       if (displayedTranslation && displayedTranslation.trim().length >= 10) {
         console.log('[Mobile Play] 🎤 Speaking current text immediately with OpenAI TTS');
         const success = await speakTextMobile(displayedTranslation.trim(), langCode, eventData, audioContextRef);
-        if (success) {
-          setTtsError('✅ OpenAI TTS working perfectly!');
-          setTimeout(() => setTtsError(null), 3000);
-        } else {
-          setTtsError('⚠️ OpenAI TTS failed. Check your connection and try again.');
-          setTimeout(() => setTtsError(null), 5000);
-        }
       } else {
         console.log('[Mobile Play] ✅ OpenAI TTS ready - will speak as content arrives');
-        // Show brief success message
-        setTtsError('✅ OpenAI TTS ready - will start speaking as content arrives');
-        setTimeout(() => setTtsError(null), 3000);
       }
       
     } catch (error) {
       console.error('[Mobile Play] ❌ Professional TTS initialization failed:', error);
-      setTtsError('Failed to initialize professional TTS. Please try again.');
-      setTimeout(() => setTtsError(null), 5000);
       setAutoSpeakLang(null);
     } finally {
       // Always clear loading state
@@ -2441,20 +2426,7 @@ export default function BroadcastPage() {
               )}
             </Box>
 
-            {/* TTS Error/Success Notification for Mobile */}
-            {ttsError && (
-              <Box sx={{ 
-                mt: 2,
-                p: 2, 
-                bgcolor: ttsError.startsWith('✅') ? "#d4edda" : "#fff3cd", 
-                border: ttsError.startsWith('✅') ? "1px solid #c3e6cb" : "1px solid #ffeaa7", 
-                borderRadius: 2,
-                fontSize: "0.875rem",
-                color: ttsError.startsWith('✅') ? "#155724" : "#856404"
-              }}>
-                {ttsError.startsWith('✅') ? ttsError : `⚠️ ${ttsError}`}
-              </Box>
-            )}
+
           </Box>
 
           {/* Floating Play/Pause Button */}
@@ -2816,20 +2788,6 @@ export default function BroadcastPage() {
               <Box sx={{ p:0 }}>
                 {availableTargetLanguages.length > 0 ? (
                   <Box sx={{ display: "flex", flexDirection: "column" }}>
-                    {/* TTS Error Notification */}
-                    {ttsError && (
-                      <Box sx={{ 
-                        mb: 2, 
-                        p: 1.5, 
-                        bgcolor: "#fff3cd", 
-                        border: "1px solid #ffeaa7", 
-                        borderRadius: 1,
-                        fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                        color: "#856404"
-                      }}>
-                        ⚠️ {ttsError}
-                      </Box>
-                    )}
                     
                     {autoSpeakLang && (
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
@@ -2931,13 +2889,6 @@ export default function BroadcastPage() {
                                 if (displayedTranslation && displayedTranslation.trim().length >= 10) {
                                   console.log('[Mobile TTS Button] 🎤 Speaking current text immediately with OpenAI TTS');
                                   const success = await speakTextMobile(displayedTranslation.trim(), langCode, eventData, audioContextRef);
-                                  if (success) {
-                                    setTtsError('✅ OpenAI TTS working perfectly!');
-                                    setTimeout(() => setTtsError(null), 3000);
-                                  } else {
-                                    setTtsError('⚠️ OpenAI TTS failed. Check your connection and try again.');
-                                    setTimeout(() => setTtsError(null), 5000);
-                                  }
                                 }
                               }
                               return;
@@ -2952,7 +2903,6 @@ export default function BroadcastPage() {
                               }
                               
                               ttsErrorCount.current = 0;
-                              setTtsError(null);
                               
                               if (displayedTranslation && displayedTranslation.trim().length >= 10) {
                                 // Use debounced TTS for button clicks too
