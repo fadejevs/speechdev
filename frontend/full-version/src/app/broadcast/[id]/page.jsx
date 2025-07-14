@@ -2380,6 +2380,7 @@ export default function BroadcastPage() {
         isAudioPlaying = false;
       }
       
+      
       // Clear OpenAI TTS queue
       openAITTSQueue.forEach(item => item.resolve(false));
       openAITTSQueue = [];
