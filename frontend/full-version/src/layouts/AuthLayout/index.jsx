@@ -32,7 +32,7 @@ export default function AuthLayout({ children }) {
           <Stack sx={{ alignItems: 'center', gap: 2 }}>
             <LogoMain />
             <Typography variant="body2" color="text.secondary" align="center" sx={{ maxWidth: 400 }}>
-            AI-powered real-time simultaneous interpretation and captions for online and on-site events
+              AI-powered real-time simultaneous interpretation and captions for online and on-site events
             </Typography>
           </Stack>
           <Box sx={{ pt: 6, pl: 6, height: 'calc(100% - 50px)' }}>
@@ -48,7 +48,7 @@ export default function AuthLayout({ children }) {
                 borderRight: 'none',
                 backgroundPositionX: 'left',
                 backgroundPositionY: 'top',
-                borderTopLeftRadius: 24,
+                borderTopLeftRadius: 24
               }}
             />
           </Box>

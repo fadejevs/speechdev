@@ -37,11 +37,11 @@ import { generateUniqueId } from '@/utils/idGenerator';
 import Autocomplete from '@mui/material/Autocomplete';
 import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
 
-const LANGUAGES = DEEPL_LANGUAGES.map(l => ({
+const LANGUAGES = DEEPL_LANGUAGES.map((l) => ({
   value: l.azure || l.deepl, // Use Azure code if available, fallback to DeepL code
   name: l.name,
   deepl: l.deepl,
-  azure: l.azure,
+  azure: l.azure
 }));
 
 const EVENT_TYPES = [
@@ -62,26 +62,18 @@ const LOCATIONS = [
   { value: 'Tallinn', label: 'Tallinn' },
   { value: 'Berlin', label: 'Berlin' },
   { value: 'London', label: 'London' },
-  { value: 'Online', label: 'Online' },
+  { value: 'Online', label: 'Online' }
   // ...add more cities as needed...
 ];
 
 const getLanguageName = (code) => {
-  const found = DEEPL_LANGUAGES.find(
-    l => l.azure === code || l.deepl === code || l.deepl === code?.toUpperCase()
-  );
+  const found = DEEPL_LANGUAGES.find((l) => l.azure === code || l.deepl === code || l.deepl === code?.toUpperCase());
   return found ? found.name : code;
 };
 
-const GEOAPIFY_API_KEY = "a108fe26f510452dae47978e1619c895";
+const GEOAPIFY_API_KEY = 'a108fe26f510452dae47978e1619c895';
 
-const CreateEventModal = ({ 
-  open, 
-  handleClose, 
-  handleCreate, 
-  initialData = null,
-  isEditing = false 
-}) => {
+const CreateEventModal = ({ open, handleClose, handleCreate, initialData = null, isEditing = false }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [eventData, setEventData] = useState({
     name: '',
@@ -93,9 +85,9 @@ const CreateEventModal = ({
     sourceLanguages: [],
     targetLanguages: [],
     eventType: '',
-    recordEvent: false,
+    recordEvent: false
   });
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredLanguages, setFilteredLanguages] = useState(LANGUAGES);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -131,7 +123,7 @@ const CreateEventModal = ({
         sourceLanguages: [],
         targetLanguages: [],
         eventType: '',
-        recordEvent: false,
+        recordEvent: false
       });
       setSearchTerm('');
       setIsCreating(false); // Reset creating state when modal closes
@@ -139,11 +131,7 @@ const CreateEventModal = ({
   }, [open, initialData]);
 
   useEffect(() => {
-    setFilteredLanguages(
-      LANGUAGES.filter(lang => 
-        lang.name.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    );
+    setFilteredLanguages(LANGUAGES.filter((lang) => lang.name.toLowerCase().includes(searchTerm.toLowerCase())));
   }, [searchTerm]);
 
   useEffect(() => {
@@ -152,56 +140,55 @@ const CreateEventModal = ({
         setShowCalendar(false);
       }
     }
-    
-    document.addEventListener("mousedown", handleClickOutside);
+
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
 
   const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
-    setEventData(prev => ({ ...prev, [name]: value }));
+    setEventData((prev) => ({ ...prev, [name]: value }));
   }, []);
 
   const handleDateChange = useCallback((newDate) => {
-    setEventData(prev => ({ ...prev, date: newDate }));
+    setEventData((prev) => ({ ...prev, date: newDate }));
   }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Start loading state for new events
     if (!isEditing) {
       setIsCreating(true);
     }
-    
+
     try {
-    // Create a properly formatted event object
-    const newEvent = {
-      title: eventData.name || 'Not specified',
-      description: eventData.description || 'Not specified',
-      location: eventData.location || 'Not specified',
-      timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : 'Not specified',
-      type: eventData.eventType || 'Not specified',
-      sourceLanguages: eventData.sourceLanguages || [],
-      targetLanguages: eventData.targetLanguages || [],
-      recordEvent: eventData.recordEvent,
-      status: eventData.status || "Scheduled",
-      startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
-      endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
-    };
+      // Create a properly formatted event object
+      const newEvent = {
+        title: eventData.name || 'Not specified',
+        description: eventData.description || 'Not specified',
+        location: eventData.location || 'Not specified',
+        timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : 'Not specified',
+        type: eventData.eventType || 'Not specified',
+        sourceLanguages: eventData.sourceLanguages || [],
+        targetLanguages: eventData.targetLanguages || [],
+        recordEvent: eventData.recordEvent,
+        status: eventData.status || 'Scheduled',
+        startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
+        endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
+      };
 
       // Call the parent handler (which will save to Supabase and handle navigation)
       await handleCreate(newEvent);
-      
+
       // Only close the modal if we're editing (not creating new event)
       // For new events, the parent component handles closing and navigation
       if (isEditing) {
-    handleClose();
+        handleClose();
       }
       // For new events, the modal will stay open with loading state until parent navigates
-      
     } catch (error) {
       console.error('Error creating event:', error);
       // Reset loading state on error
@@ -210,29 +197,29 @@ const CreateEventModal = ({
   };
 
   const handleLanguageToggle = (language, field) => {
-    setEventData(prev => {
+    setEventData((prev) => {
       // For source languages, replace existing selection with the new language
       if (field === 'sourceLanguages') {
         return { ...prev, [field]: [language.value] };
-      } 
+      }
       // For target languages, keep the existing toggle behavior
       else {
         const currentLanguages = [...prev[field]];
         const languageIndex = currentLanguages.indexOf(language.value);
-        
+
         if (languageIndex === -1) {
           currentLanguages.push(language.value);
         } else {
           currentLanguages.splice(languageIndex, 1);
         }
-        
+
         return { ...prev, [field]: currentLanguages };
       }
     });
   };
 
   const handleDeleteLanguage = (language, field) => {
-    setEventData(prev => {
+    setEventData((prev) => {
       // For source languages, only remove if more than one (which shouldn't happen)
       // or allow complete removal if needed
       if (field === 'sourceLanguages' && prev[field].length <= 1) {
@@ -240,40 +227,40 @@ const CreateEventModal = ({
       } else {
         const currentLanguages = [...prev[field]];
         const languageIndex = currentLanguages.indexOf(language.value);
-        
+
         if (languageIndex !== -1) {
           currentLanguages.splice(languageIndex, 1);
         }
-        
+
         return { ...prev, [field]: currentLanguages };
       }
     });
   };
 
   const handleCloseWithConfirmation = () => {
-    const isFormModified = 
-      eventData.name !== '' || 
-      eventData.description !== '' || 
-      eventData.location !== '' || 
-      eventData.date !== null || 
-      eventData.sourceLanguages.length > 0 || 
-      eventData.targetLanguages.length > 0 || 
-      eventData.eventType !== '' || 
+    const isFormModified =
+      eventData.name !== '' ||
+      eventData.description !== '' ||
+      eventData.location !== '' ||
+      eventData.date !== null ||
+      eventData.sourceLanguages.length > 0 ||
+      eventData.targetLanguages.length > 0 ||
+      eventData.eventType !== '' ||
       eventData.recordEvent !== false ||
       eventData.status !== 'Draft event';
-    
+
     if (isFormModified) {
       setConfirmDialogOpen(true);
     } else {
       handleClose();
     }
   };
-  
+
   const handleDiscard = () => {
     setConfirmDialogOpen(false);
     handleClose();
   };
-  
+
   const handleSaveAsDraft = () => {
     const draftEvent = {
       title: eventData.name || '',
@@ -295,14 +282,17 @@ const CreateEventModal = ({
 
   const renderLanguageSelector = (field, label, dropdownKey) => {
     const dropdownOpen = openDropdown === dropdownKey;
-    
+
     return (
       <Box sx={{ mb: 2, position: 'relative' }}>
-        <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>{label}<span style={{ color: 'red' }}>*</span></Typography>
-        
-        <Box 
+        <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>
+          {label}
+          <span style={{ color: 'red' }}>*</span>
+        </Typography>
+
+        <Box
           onClick={() => setOpenDropdown(dropdownOpen ? null : dropdownKey)}
-          sx={{ 
+          sx={{
             border: '1px solid #e0e0e0',
             borderRadius: '8px',
             px: 1.5,
@@ -320,14 +310,16 @@ const CreateEventModal = ({
           {eventData[field].length === 0 ? (
             <Typography sx={{ color: '#637381', fontSize: '14px' }}>Select {label}</Typography>
           ) : (
-            <Box sx={{ 
-              display: 'flex', 
-              flexWrap: 'nowrap', 
-              gap: 0.5, 
-              alignItems: 'center',
-              maxWidth: 'calc(100% - 30px)',
-              overflow: 'hidden'
-            }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'nowrap',
+                gap: 0.5,
+                alignItems: 'center',
+                maxWidth: 'calc(100% - 30px)',
+                overflow: 'hidden'
+              }}
+            >
               {eventData[field].map((lang, index) => (
                 <Chip
                   key={lang}
@@ -336,7 +328,7 @@ const CreateEventModal = ({
                     ? {
                         deleteIcon: <CloseIcon style={{ fontSize: '16px' }} />,
                         onDelete: () => {
-                          const languageObj = LANGUAGES.find(l => l.value === lang);
+                          const languageObj = LANGUAGES.find((l) => l.value === lang);
                           if (languageObj) handleDeleteLanguage(languageObj, field);
                         }
                       }
@@ -366,22 +358,19 @@ const CreateEventModal = ({
             </Box>
           )}
           <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
-            <IconButton 
-              size="small" 
+            <IconButton
+              size="small"
               onClick={(e) => {
                 e.stopPropagation();
                 setOpenDropdown(dropdownOpen ? null : dropdownKey);
               }}
               sx={{ padding: 0 }}
             >
-              {dropdownOpen ? 
-                <KeyboardArrowUpIcon fontSize="small" /> : 
-                <KeyboardArrowDownIcon fontSize="small" />
-              }
+              {dropdownOpen ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
             </IconButton>
           </Box>
         </Box>
-        
+
         {dropdownOpen && (
           <Box
             sx={{
@@ -423,7 +412,7 @@ const CreateEventModal = ({
                 onClick={(e) => e.stopPropagation()}
               />
             </Box>
-            
+
             <Box sx={{ overflow: 'auto', maxHeight: '200px' }}>
               {filteredLanguages.map((language) => (
                 <Box
@@ -452,7 +441,7 @@ const CreateEventModal = ({
                       setOpenDropdown(false);
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    sx={{ 
+                    sx={{
                       color: '#4f46e5',
                       '&.Mui-checked': {
                         color: '#4f46e5'
@@ -473,14 +462,16 @@ const CreateEventModal = ({
 
   const renderEventTypeSelector = (dropdownKey) => {
     const dropdownOpen = openDropdown === dropdownKey;
-    
+
     return (
       <Box sx={{ mb: 2, position: 'relative' }}>
-        <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>Select Event Type<span style={{ color: 'red' }}>*</span></Typography>
-        
-        <Box 
+        <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>
+          Select Event Type<span style={{ color: 'red' }}>*</span>
+        </Typography>
+
+        <Box
           onClick={() => setOpenDropdown(dropdownOpen ? null : dropdownKey)}
-          sx={{ 
+          sx={{
             border: '1px solid #e0e0e0',
             borderRadius: '8px',
             px: 1.5,
@@ -498,18 +489,20 @@ const CreateEventModal = ({
           {!eventData.eventType ? (
             <Typography sx={{ color: '#637381', fontSize: '14px' }}>Select Event Type</Typography>
           ) : (
-            <Box sx={{ 
-              display: 'flex', 
-              flexWrap: 'nowrap', 
-              gap: 0.5, 
-              alignItems: 'center',
-              maxWidth: 'calc(100% - 30px)',
-              overflow: 'hidden'
-            }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'nowrap',
+                gap: 0.5,
+                alignItems: 'center',
+                maxWidth: 'calc(100% - 30px)',
+                overflow: 'hidden'
+              }}
+            >
               <Chip
-                label={EVENT_TYPES.find(type => type.value === eventData.eventType)?.label}
+                label={EVENT_TYPES.find((type) => type.value === eventData.eventType)?.label}
                 deleteIcon={<CloseIcon style={{ fontSize: '16px' }} />}
-                onDelete={() => setEventData(prev => ({ ...prev, eventType: '' }))}
+                onDelete={() => setEventData((prev) => ({ ...prev, eventType: '' }))}
                 size="small"
                 sx={{
                   borderRadius: '4px',
@@ -534,22 +527,19 @@ const CreateEventModal = ({
             </Box>
           )}
           <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
-            <IconButton 
-              size="small" 
+            <IconButton
+              size="small"
               onClick={(e) => {
                 e.stopPropagation();
                 setOpenDropdown(dropdownOpen ? null : dropdownKey);
               }}
               sx={{ padding: 0 }}
             >
-              {dropdownOpen ? 
-                <KeyboardArrowUpIcon fontSize="small" /> : 
-                <KeyboardArrowDownIcon fontSize="small" />
-              }
+              {dropdownOpen ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
             </IconButton>
           </Box>
         </Box>
-        
+
         {dropdownOpen && (
           <Box
             sx={{
@@ -571,7 +561,7 @@ const CreateEventModal = ({
                 key={type.value}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setEventData(prev => ({ ...prev, eventType: type.value }));
+                  setEventData((prev) => ({ ...prev, eventType: type.value }));
                   setOpenDropdown(false);
                 }}
                 sx={{
@@ -590,10 +580,10 @@ const CreateEventModal = ({
                   checked={eventData.eventType === type.value}
                   onChange={(event) => {
                     event.stopPropagation();
-                    setEventData(prev => ({ ...prev, eventType: type.value }));
+                    setEventData((prev) => ({ ...prev, eventType: type.value }));
                   }}
                   onClick={(e) => e.stopPropagation()}
-                  sx={{ 
+                  sx={{
                     color: '#4f46e5',
                     '&.Mui-checked': {
                       color: '#4f46e5'
@@ -628,8 +618,20 @@ const CreateEventModal = ({
   };
 
   const getMonthName = (month) => {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                   'July', 'August', 'September', 'October', 'November', 'December'];
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
+    ];
     return months[month];
   };
 
@@ -655,8 +657,8 @@ const CreateEventModal = ({
   };
 
   const handleDateSelect = (day) => {
-    const selectedDate = `${day < 10 ? '0' + day : day}.${(currentMonth + 1) < 10 ? '0' + (currentMonth + 1) : (currentMonth + 1)}.${currentYear}`;
-    setEventData(prev => ({ ...prev, date: dayjs(selectedDate) }));
+    const selectedDate = `${day < 10 ? '0' + day : day}.${currentMonth + 1 < 10 ? '0' + (currentMonth + 1) : currentMonth + 1}.${currentYear}`;
+    setEventData((prev) => ({ ...prev, date: dayjs(selectedDate) }));
     setShowCalendar(false);
   };
 
@@ -675,7 +677,7 @@ const CreateEventModal = ({
       setLocationOptions(
         (data.results || []).map((item) => ({
           label: `${item.city || item.name}, ${item.country}`,
-          value: `${item.city || item.name}, ${item.country}`,
+          value: `${item.city || item.name}, ${item.country}`
         }))
       );
     } catch (e) {
@@ -686,8 +688,8 @@ const CreateEventModal = ({
 
   return (
     <>
-      <Dialog 
-        open={open} 
+      <Dialog
+        open={open}
         onClose={handleCloseWithConfirmation}
         maxWidth="md"
         fullWidth
@@ -703,26 +705,28 @@ const CreateEventModal = ({
           }
         }}
       >
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          p: { xs: 1.5, sm: 2 }, 
-          borderBottom: '1px solid #f0f0f0',
-          position: 'sticky',
-          top: 0,
-          bgcolor: 'background.paper',
-          zIndex: 1
-        }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            p: { xs: 1.5, sm: 2 },
+            borderBottom: '1px solid #f0f0f0',
+            position: 'sticky',
+            top: 0,
+            bgcolor: 'background.paper',
+            zIndex: 1
+          }}
+        >
           <Typography variant="h6" sx={{ fontWeight: 500, fontSize: { xs: '0.95rem', sm: '1rem' } }}>
             {isEditing ? 'Edit Event' : 'Create New Event'}
           </Typography>
-          <IconButton 
-            onClick={handleCloseWithConfirmation} 
+          <IconButton
+            onClick={handleCloseWithConfirmation}
             size="small"
             disabled={isCreating}
-            sx={{ 
-              position: 'absolute', 
+            sx={{
+              position: 'absolute',
               right: { xs: 4, sm: 8 },
               opacity: isCreating ? 0.5 : 1
             }}
@@ -730,25 +734,29 @@ const CreateEventModal = ({
             <CloseIcon />
           </IconButton>
         </Box>
-        
-        <DialogContent sx={{ 
-          p: { xs: 1.5, sm: 3 },
-          overflowY: 'auto',
-          '&::-webkit-scrollbar': {
-            width: '8px'
-          },
-          '&::-webkit-scrollbar-thumb': {
-            backgroundColor: '#E0E0E0',
-            borderRadius: '4px'
-          }
-        }}>
+
+        <DialogContent
+          sx={{
+            p: { xs: 1.5, sm: 3 },
+            overflowY: 'auto',
+            '&::-webkit-scrollbar': {
+              width: '8px'
+            },
+            '&::-webkit-scrollbar-thumb': {
+              backgroundColor: '#E0E0E0',
+              borderRadius: '4px'
+            }
+          }}
+        >
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="500" sx={{ mb: 2 }}>
               General Information
             </Typography>
-            
+
             <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>Event Name<span style={{ color: 'red' }}>*</span></Typography>
+              <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>
+                Event Name<span style={{ color: 'red' }}>*</span>
+              </Typography>
               <TextField
                 fullWidth
                 name="name"
@@ -757,7 +765,7 @@ const CreateEventModal = ({
                 placeholder="Demo Event"
                 size="small"
                 variant="outlined"
-                sx={{ 
+                sx={{
                   '& .MuiOutlinedInput-root': {
                     borderRadius: '8px',
                     '& fieldset': {
@@ -767,9 +775,11 @@ const CreateEventModal = ({
                 }}
               />
             </Box>
-            
+
             <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>Description</Typography>
+              <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>
+                Description
+              </Typography>
               <TextField
                 fullWidth
                 multiline
@@ -780,7 +790,7 @@ const CreateEventModal = ({
                 placeholder="My first Demo Event with Real time AI Speech to Speech Translation"
                 size="small"
                 variant="outlined"
-                sx={{ 
+                sx={{
                   '& .MuiOutlinedInput-root': {
                     borderRadius: '8px',
                     '& fieldset': {
@@ -791,7 +801,7 @@ const CreateEventModal = ({
               />
             </Box>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" sx={{ mb: 1, color: '#637381' }}>
@@ -813,7 +823,7 @@ const CreateEventModal = ({
                 onChange={(_, newValue) => {
                   setEventData((prev) => ({
                     ...prev,
-                    location: typeof newValue === "string" ? newValue : (newValue?.value || "")
+                    location: typeof newValue === 'string' ? newValue : newValue?.value || ''
                   }));
                 }}
                 renderInput={(params) => (
@@ -838,24 +848,24 @@ const CreateEventModal = ({
                           {locationLoading ? <CircularProgress color="inherit" size={16} /> : null}
                           {params.InputProps.endAdornment}
                         </>
-                      ),
+                      )
                     }}
                   />
                 )}
               />
             </Box>
-            
+
             <LocalizationProvider dateAdapter={AdapterDayjs}>
               <Box sx={{ mb: 2 }}>
                 <DatePicker
                   label="Event Date"
                   value={eventData.date}
-                  onChange={(newDate) => setEventData(prev => ({ ...prev, date: newDate }))}
+                  onChange={(newDate) => setEventData((prev) => ({ ...prev, date: newDate }))}
                   slotProps={{
                     textField: {
                       fullWidth: true,
-                      size: "small",
-                      sx: { 
+                      size: 'small',
+                      sx: {
                         '& .MuiOutlinedInput-root': {
                           borderRadius: '8px',
                           height: '40px'
@@ -868,11 +878,11 @@ const CreateEventModal = ({
                   <TimePicker
                     label="Start Time"
                     value={eventData.startTime}
-                    onChange={(newValue) => setEventData(prev => ({ ...prev, startTime: newValue }))}
+                    onChange={(newValue) => setEventData((prev) => ({ ...prev, startTime: newValue }))}
                     slotProps={{
                       textField: {
                         fullWidth: true,
-                        size: "small",
+                        size: 'small',
                         sx: {
                           '& .MuiOutlinedInput-root': {
                             borderRadius: '8px',
@@ -885,11 +895,11 @@ const CreateEventModal = ({
                   <TimePicker
                     label="End Time"
                     value={eventData.endTime}
-                    onChange={(newValue) => setEventData(prev => ({ ...prev, endTime: newValue }))}
+                    onChange={(newValue) => setEventData((prev) => ({ ...prev, endTime: newValue }))}
                     slotProps={{
                       textField: {
                         fullWidth: true,
-                        size: "small",
+                        size: 'small',
                         sx: {
                           '& .MuiOutlinedInput-root': {
                             borderRadius: '8px',
@@ -903,43 +913,44 @@ const CreateEventModal = ({
               </Box>
             </LocalizationProvider>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="500" sx={{ mb: 2 }}>
               Language Settings
             </Typography>
-            
+
             {renderLanguageSelector('sourceLanguages', 'Source Language', 'sourceLanguages')}
             {renderLanguageSelector('targetLanguages', 'Target Language', 'targetLanguages')}
           </Box>
-          
+
           <Box>
             <Typography variant="subtitle1" fontWeight="500" sx={{ mb: 2 }}>
               Event Settings
             </Typography>
-            
+
             {renderEventTypeSelector('eventType')}
-            
           </Box>
         </DialogContent>
-        
-        <DialogActions sx={{ 
-          p: { xs: 1.5, sm: 2 }, 
-          borderTop: '1px solid #f0f0f0', 
-          justifyContent: 'space-between',
-          position: 'sticky',
-          bottom: 0,
-          bgcolor: 'background.paper',
-          zIndex: 1,
-          flexDirection: { xs: 'column', sm: 'row' },
-          gap: { xs: 1, sm: 0 }
-        }}>
-          <Button 
-            onClick={handleCloseWithConfirmation} 
+
+        <DialogActions
+          sx={{
+            p: { xs: 1.5, sm: 2 },
+            borderTop: '1px solid #f0f0f0',
+            justifyContent: 'space-between',
+            position: 'sticky',
+            bottom: 0,
+            bgcolor: 'background.paper',
+            zIndex: 1,
+            flexDirection: { xs: 'column', sm: 'row' },
+            gap: { xs: 1, sm: 0 }
+          }}
+        >
+          <Button
+            onClick={handleCloseWithConfirmation}
             variant="text"
             fullWidth={true}
             disabled={isCreating}
-            sx={{ 
+            sx={{
               color: '#637381',
               display: { xs: 'block', sm: 'inline-flex' },
               opacity: isCreating ? 0.5 : 1
@@ -947,12 +958,12 @@ const CreateEventModal = ({
           >
             Cancel
           </Button>
-          <Button 
-            onClick={handleSubmit} 
-            variant="contained" 
+          <Button
+            onClick={handleSubmit}
+            variant="contained"
             fullWidth={true}
-            sx={{ 
-              bgcolor: '#6366f1', 
+            sx={{
+              bgcolor: '#6366f1',
               '&:hover': { bgcolor: '#4338ca' },
               borderRadius: '8px',
               textTransform: 'none',
@@ -962,25 +973,23 @@ const CreateEventModal = ({
             disabled={!isFormValid() || isCreating}
           >
             {isCreating && (
-              <CircularProgress 
-                size={20} 
-                sx={{ 
+              <CircularProgress
+                size={20}
+                sx={{
                   color: 'white',
                   position: 'absolute',
                   left: '50%',
                   top: '50%',
                   marginLeft: '-10px',
                   marginTop: '-10px'
-                }} 
+                }}
               />
             )}
-            <span style={{ opacity: isCreating ? 0 : 1 }}>
-            {isEditing ? 'Save Changes' : 'Create Event'}
-            </span>
+            <span style={{ opacity: isCreating ? 0 : 1 }}>{isEditing ? 'Save Changes' : 'Create Event'}</span>
           </Button>
         </DialogActions>
       </Dialog>
-      
+
       <Dialog
         open={confirmDialogOpen}
         onClose={() => setConfirmDialogOpen(false)}
@@ -995,42 +1004,51 @@ const CreateEventModal = ({
           }
         }}
       >
-        <DialogContent sx={{ 
-          pt: { xs: 3, sm: 4 }, 
-          pb: { xs: 2, sm: 3 },
-          px: { xs: 2, sm: 3 }
-        }}>
+        <DialogContent
+          sx={{
+            pt: { xs: 3, sm: 4 },
+            pb: { xs: 2, sm: 3 },
+            px: { xs: 2, sm: 3 }
+          }}
+        >
           <Box sx={{ mb: { xs: 1.5, sm: 2 }, display: 'flex', justifyContent: 'center' }}>
-            <Box sx={{ 
-              height: { xs: 120, sm: 172 }, 
-              width: { xs: 150, sm: 230 } 
-            }}>
+            <Box
+              sx={{
+                height: { xs: 120, sm: 172 },
+                width: { xs: 150, sm: 230 }
+              }}
+            >
               <PlantDoodle />
             </Box>
           </Box>
-          <Typography variant="h6" sx={{ 
-            mb: 1,
-            fontSize: { xs: '1rem', sm: '1.25rem' },
-            lineHeight: { xs: 1.3, sm: 1.2 },
-            px: { xs: 1, sm: 0 }
-          }}>
+          <Typography
+            variant="h6"
+            sx={{
+              mb: 1,
+              fontSize: { xs: '1rem', sm: '1.25rem' },
+              lineHeight: { xs: 1.3, sm: 1.2 },
+              px: { xs: 1, sm: 0 }
+            }}
+          >
             Are you sure you want to cancel event creation?
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ 
-          p: { xs: 2, sm: 2 }, 
-          flexDirection: { xs: 'column', sm: 'row' },
-          gap: { xs: 1.5, sm: 2 },
-          '& > button': {
-            width: { xs: '100%', sm: 'auto' },
-            height: { xs: '44px', sm: 'auto' },
-            fontSize: { xs: '14px', sm: '14px' }
-          }
-        }}>
-          <Button 
-            onClick={handleDiscard} 
+        <DialogActions
+          sx={{
+            p: { xs: 2, sm: 2 },
+            flexDirection: { xs: 'column', sm: 'row' },
+            gap: { xs: 1.5, sm: 2 },
+            '& > button': {
+              width: { xs: '100%', sm: 'auto' },
+              height: { xs: '44px', sm: 'auto' },
+              fontSize: { xs: '14px', sm: '14px' }
+            }
+          }}
+        >
+          <Button
+            onClick={handleDiscard}
             variant="outlined"
-            sx={{ 
+            sx={{
               color: '#d32f2f',
               borderColor: '#d32f2f',
               '&:hover': { borderColor: '#b71c1c', bgcolor: 'rgba(211, 47, 47, 0.04)' },
@@ -1043,11 +1061,11 @@ const CreateEventModal = ({
           >
             Discard
           </Button>
-          <Button 
-            onClick={handleSaveAsDraft} 
-            variant="contained" 
-            sx={{ 
-              bgcolor: '#6366f1', 
+          <Button
+            onClick={handleSaveAsDraft}
+            variant="contained"
+            sx={{
+              bgcolor: '#6366f1',
               '&:hover': { bgcolor: '#4338ca' },
               borderRadius: '8px',
               textTransform: 'none',
@@ -1065,4 +1083,4 @@ const CreateEventModal = ({
   );
 };
 
-export default CreateEventModal; 
+export default CreateEventModal;

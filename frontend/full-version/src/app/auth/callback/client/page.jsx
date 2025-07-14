@@ -13,7 +13,7 @@ export default function ClientCallback() {
     const handleCallback = async () => {
       // Check for PKCE code in query parameters
       const code = searchParams.get('code');
-      
+
       // Check for implicit flow tokens in URL hash fragment
       const urlHash = window.location.hash.substring(1); // Remove the #
       const hashParams = new URLSearchParams(urlHash);
@@ -21,29 +21,29 @@ export default function ClientCallback() {
       const refreshToken = hashParams.get('refresh_token');
       const tokenType = hashParams.get('token_type');
       const authType = hashParams.get('type'); // 'signup' or 'recovery', etc.
-      
+
       console.log('Client callback: Processing authentication...');
       console.log('Client callback: Has PKCE code:', !!code);
       console.log('Client callback: Has access token:', !!accessToken);
       console.log('Client callback: Auth type:', authType);
-      
+
       // Handle implicit flow tokens (from URL hash)
       if (accessToken && tokenType) {
         try {
           setStatus('Setting up your session...');
           console.log('Client callback: Processing implicit flow tokens');
-          
+
           // Set the session using the tokens from the URL
           const { data, error } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken || ''
           });
-          
+
           if (!error && data?.session) {
             console.log('Client callback: Implicit flow session set successfully');
             console.log('Client callback: User email:', data.session.user?.email);
             setStatus('Authentication successful! Redirecting...');
-            
+
             // Small delay to ensure the session is properly set
             setTimeout(() => {
               router.replace('/dashboard/analytics');
@@ -51,7 +51,7 @@ export default function ClientCallback() {
           } else {
             console.error('Client callback: Session setup failed:', error);
             setStatus('Authentication failed. Redirecting to login...');
-            
+
             setTimeout(() => {
               router.replace('/login?error=session_setup_failed');
             }, 2000);
@@ -59,34 +59,34 @@ export default function ClientCallback() {
         } catch (error) {
           console.error('Client callback: Exception setting session:', error);
           setStatus('Authentication error. Redirecting to login...');
-          
+
           setTimeout(() => {
             router.replace('/login?error=session_exception');
           }, 2000);
         }
         return;
       }
-      
+
       // Handle PKCE flow (from query parameters)
       if (code) {
         try {
           setStatus('Exchanging authentication code...');
-          
+
           // Debug: Check if PKCE verifier exists
           const pkceVerifier = localStorage.getItem('supabase.auth.code_verifier');
           console.log('Client callback: PKCE verifier exists:', !!pkceVerifier);
-          
+
           // Exchange the code for a session using PKCE flow
           console.log('Client callback: Attempting exchangeCodeForSession...');
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-          
+
           console.log('Client callback: PKCE exchange result - data:', !!data, 'error:', error);
-          
+
           if (!error && data?.session) {
             console.log('Client callback: PKCE session exchange successful');
             console.log('Client callback: User email:', data.session.user?.email);
             setStatus('Authentication successful! Redirecting...');
-            
+
             // Small delay to ensure the session is properly set
             setTimeout(() => {
               router.replace('/dashboard/analytics');
@@ -94,7 +94,7 @@ export default function ClientCallback() {
           } else {
             console.error('Client callback: PKCE error:', error);
             setStatus('Authentication failed. Redirecting to login...');
-            
+
             setTimeout(() => {
               router.replace('/login?error=pkce_callback_failed');
             }, 2000);
@@ -102,18 +102,18 @@ export default function ClientCallback() {
         } catch (error) {
           console.error('Client callback: PKCE exception:', error);
           setStatus('Authentication error. Redirecting to login...');
-          
+
           setTimeout(() => {
             router.replace('/login?error=pkce_callback_exception');
           }, 2000);
         }
         return;
       }
-      
+
       // No authentication parameters found
       console.log('Client callback: No authentication parameters found');
       setStatus('No authentication data found. Redirecting to login...');
-      
+
       setTimeout(() => {
         router.replace('/login?error=no_auth_data');
       }, 1500);
@@ -123,33 +123,44 @@ export default function ClientCallback() {
   }, [router, searchParams]);
 
   return (
-    <div style={{ 
-      padding: '40px 20px', 
-      textAlign: 'center',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      maxWidth: '400px',
-      margin: '100px auto'
-    }}>
-      <div style={{ 
-        fontSize: '24px', 
-        marginBottom: '20px',
-        animation: 'pulse 1.5s ease-in-out infinite'
-      }}>
+    <div
+      style={{
+        padding: '40px 20px',
+        textAlign: 'center',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        maxWidth: '400px',
+        margin: '100px auto'
+      }}
+    >
+      <div
+        style={{
+          fontSize: '24px',
+          marginBottom: '20px',
+          animation: 'pulse 1.5s ease-in-out infinite'
+        }}
+      >
         🔐
       </div>
-      <p style={{ 
-        fontSize: '16px', 
-        color: '#666',
-        lineHeight: '1.5'
-      }}>
+      <p
+        style={{
+          fontSize: '16px',
+          color: '#666',
+          lineHeight: '1.5'
+        }}
+      >
         {status}
       </p>
       <style jsx>{`
         @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
+          0%,
+          100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
         }
       `}</style>
     </div>
   );
-} 
+}

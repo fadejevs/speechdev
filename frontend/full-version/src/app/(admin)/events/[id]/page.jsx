@@ -46,89 +46,84 @@ import Autocomplete from '@mui/material/Autocomplete';
 import CircularProgress from '@mui/material/CircularProgress';
 import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
 
-const languages = DEEPL_LANGUAGES.map(l => ({
+const languages = DEEPL_LANGUAGES.map((l) => ({
   code: l.deepl, // Use DeepL code as primary for consistency
   name: l.name,
   deepl: l.deepl,
-  azure: l.azure,
+  azure: l.azure
 }));
 
 const getLanguageName = (code) => {
   // First try to find by exact code match
-  const found = languages.find(
-    l => l.code === code || l.deepl === code || l.azure === code
-  );
+  const found = languages.find((l) => l.code === code || l.deepl === code || l.azure === code);
   if (found) return found.name;
-  
+
   // If not found and it's a formatted code, try to reverse-map it
   if (code) {
     // Handle DeepL formatted codes
-    const deeplLanguage = DEEPL_LANGUAGES.find(l => l.deepl === code);
+    const deeplLanguage = DEEPL_LANGUAGES.find((l) => l.deepl === code);
     if (deeplLanguage) return deeplLanguage.name;
-    
+
     // Handle Azure formatted codes
-    const azureLanguage = DEEPL_LANGUAGES.find(l => l.azure === code);
+    const azureLanguage = DEEPL_LANGUAGES.find((l) => l.azure === code);
     if (azureLanguage) return azureLanguage.name;
-    
+
     // Handle common cases where formatted codes need mapping back
     const codeMap = {
-      'EN': 'English',
+      EN: 'English',
       'EN-US': 'English (American)',
       'EN-GB': 'English (British)',
-      'DE': 'German',
-      'FR': 'French',
-      'ES': 'Spanish',
-      'IT': 'Italian',
-      'NL': 'Dutch',
-      'PL': 'Polish',
-      'PT': 'Portuguese',
-      'PT-BR': 'Portuguese (Brazilian)', 
+      DE: 'German',
+      FR: 'French',
+      ES: 'Spanish',
+      IT: 'Italian',
+      NL: 'Dutch',
+      PL: 'Polish',
+      PT: 'Portuguese',
+      'PT-BR': 'Portuguese (Brazilian)',
       'PT-PT': 'Portuguese (European)',
-      'RU': 'Russian',
-      'JA': 'Japanese',
-      'ZH': 'Chinese',
-      'BG': 'Bulgarian',
-      'CS': 'Czech',
-      'DA': 'Danish',
-      'EL': 'Greek',
-      'ET': 'Estonian',
-      'FI': 'Finnish',
-      'HU': 'Hungarian',
-      'ID': 'Indonesian',
-      'KO': 'Korean',
-      'LT': 'Lithuanian',
-      'LV': 'Latvian',
-      'NB': 'Norwegian Bokmål',
-      'RO': 'Romanian',
-      'SK': 'Slovak',
-      'SL': 'Slovenian',
-      'SV': 'Swedish',
-      'TR': 'Turkish',
-      'UK': 'Ukrainian'
+      RU: 'Russian',
+      JA: 'Japanese',
+      ZH: 'Chinese',
+      BG: 'Bulgarian',
+      CS: 'Czech',
+      DA: 'Danish',
+      EL: 'Greek',
+      ET: 'Estonian',
+      FI: 'Finnish',
+      HU: 'Hungarian',
+      ID: 'Indonesian',
+      KO: 'Korean',
+      LT: 'Lithuanian',
+      LV: 'Latvian',
+      NB: 'Norwegian Bokmål',
+      RO: 'Romanian',
+      SK: 'Slovak',
+      SL: 'Slovenian',
+      SV: 'Swedish',
+      TR: 'Turkish',
+      UK: 'Ukrainian'
     };
-    
+
     if (codeMap[code]) return codeMap[code];
   }
-  
+
   return code; // fallback to showing the code
 };
 
-const GEOAPIFY_API_KEY = "a108fe26f510452dae47978e1619c895"; // <-- Use your real Geoapify API key
+const GEOAPIFY_API_KEY = 'a108fe26f510452dae47978e1619c895'; // <-- Use your real Geoapify API key
 
 const updateEventStatus = async (id, status) => {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`,
-    {
-      method: "PATCH",
-      headers: {
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({ status }),
-    }
-  );
+  const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation'
+    },
+    body: JSON.stringify({ status })
+  });
   if (!res.ok) {
     const error = await res.text();
     throw new Error(error);
@@ -176,7 +171,7 @@ const EditEventPage = () => {
   // Function to compare if event data has changed
   const hasDataChanged = (current, original) => {
     if (!original) return false;
-    
+
     // Helper function to safely format dates
     const formatDate = (date) => {
       if (!date) return null;
@@ -192,7 +187,7 @@ const EditEventPage = () => {
       if (dayjs.isDayjs(time)) return time.format('HH:mm');
       return null;
     };
-    
+
     // Compare all fields that can be edited
     return (
       current.name !== original.name ||
@@ -221,15 +216,12 @@ const EditEventPage = () => {
     const fetchEvent = async () => {
       setLoading(true);
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`,
-          {
-            headers: {
-              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-            },
+        const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`, {
+          headers: {
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
           }
-        );
+        });
         const data = await res.json();
         // console.log('Fetched event data:', data);
         if (data && data.length > 0) {
@@ -295,12 +287,12 @@ const EditEventPage = () => {
     try {
       // First request microphone access - this is necessary to see all devices
       await navigator.mediaDevices.getUserMedia({ audio: true });
-      
+
       // Then enumerate devices
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioInputs = devices.filter(device => device.kind === 'audioinput');
+      const audioInputs = devices.filter((device) => device.kind === 'audioinput');
       setAudioInputDevices(audioInputs);
-      
+
       // Set default device if none selected
       if (!selectedAudioInput && audioInputs.length > 0) {
         setSelectedAudioInput(audioInputs[0].deviceId);
@@ -332,14 +324,14 @@ const EditEventPage = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setEventData(prev => ({ ...prev, [name]: value }));
+    setEventData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleLanguageChange = (field, language, action) => {
     if (action === 'remove') {
-      setEventData(prev => ({
+      setEventData((prev) => ({
         ...prev,
-        [field]: prev[field].filter(lang => lang !== language)
+        [field]: prev[field].filter((lang) => lang !== language)
       }));
     } else if (action === 'add') {
       // Format the language based on the field
@@ -349,8 +341,8 @@ const EditEventPage = () => {
       } else if (field === 'targetLanguages') {
         formattedLanguage = formatForTranslationTarget(language);
       }
-      
-      setEventData(prev => ({
+
+      setEventData((prev) => ({
         ...prev,
         [field]: [...prev[field], formattedLanguage]
       }));
@@ -362,22 +354,13 @@ const EditEventPage = () => {
 
     try {
       // Format all source and target languages as needed
-      const formattedSourceLanguages = eventData.sourceLanguages.map(lang =>
-        formatForSpeechRecognition(lang)
-      );
-      const formattedTargetLanguages = eventData.targetLanguages.map(lang =>
-        formatForTranslationTarget(lang)
-      );
+      const formattedSourceLanguages = eventData.sourceLanguages.map((lang) => formatForSpeechRecognition(lang));
+      const formattedTargetLanguages = eventData.targetLanguages.map((lang) => formatForTranslationTarget(lang));
 
       // --- Fix: Validate startTime and endTime before formatting ---
       const validStartTime =
-        eventData.startTime && dayjs(eventData.startTime).isValid()
-          ? dayjs(eventData.startTime).format('HH:mm')
-          : null;
-      const validEndTime =
-        eventData.endTime && dayjs(eventData.endTime).isValid()
-          ? dayjs(eventData.endTime).format('HH:mm')
-          : null;
+        eventData.startTime && dayjs(eventData.startTime).isValid() ? dayjs(eventData.startTime).format('HH:mm') : null;
+      const validEndTime = eventData.endTime && dayjs(eventData.endTime).isValid() ? dayjs(eventData.endTime).format('HH:mm') : null;
 
       // Prepare the update object with snake_case keys for Supabase
       const updateData = {
@@ -396,19 +379,16 @@ const EditEventPage = () => {
       };
 
       // Update the event in Supabase
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-            Prefer: 'return=representation',
-          },
-          body: JSON.stringify(updateData),
-        }
-      );
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+          Prefer: 'return=representation'
+        },
+        body: JSON.stringify(updateData)
+      });
 
       if (!res.ok) {
         const error = await res.json();
@@ -417,7 +397,7 @@ const EditEventPage = () => {
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
-      
+
       // Update the original data after successful save - convert to same format
       const updatedOriginalData = {
         ...eventData,
@@ -427,7 +407,6 @@ const EditEventPage = () => {
       };
       setOriginalEventData(updatedOriginalData);
       setHasUnsavedChanges(false);
-      
     } catch (error) {
       console.error('Error saving event data:', error);
     } finally {
@@ -440,18 +419,18 @@ const EditEventPage = () => {
     // Format the language code for speech recognition
     const formattedLanguage = formatForSpeechRecognition(language);
     console.log(`Formatted source language: ${formattedLanguage}`);
-    
-    setEventData(prev => ({
+
+    setEventData((prev) => ({
       ...prev,
       sourceLanguages: [formattedLanguage]
     }));
-    
+
     setSourceMenuAnchorEl(null);
   };
 
   useEffect(() => {
     if (eventData && eventData.sourceLanguages && eventData.sourceLanguages.length > 1) {
-      setEventData(prev => ({
+      setEventData((prev) => ({
         ...prev,
         sourceLanguages: [prev.sourceLanguages[prev.sourceLanguages.length - 1]]
       }));
@@ -469,7 +448,7 @@ const EditEventPage = () => {
 
   const handleAddLanguage = (field, language) => {
     console.log(`Adding language to ${field}: ${language}`);
-    
+
     // Format the language based on the field
     let formattedLanguage = language;
     if (field === 'sourceLanguages') {
@@ -479,12 +458,12 @@ const EditEventPage = () => {
       formattedLanguage = formatForTranslationTarget(language);
       console.log(`Formatted target language: ${formattedLanguage}`);
     }
-    
-    setEventData(prev => ({
+
+    setEventData((prev) => ({
       ...prev,
       [field]: [...prev[field], formattedLanguage]
     }));
-    
+
     if (field === 'sourceLanguages') {
       handleCloseSourceMenu();
     } else {
@@ -492,9 +471,7 @@ const EditEventPage = () => {
     }
   };
 
-  const filteredSourceLanguages = languages.filter(lang => 
-    lang.name.toLowerCase().includes(languageSearch.toLowerCase())
-  );
+  const filteredSourceLanguages = languages.filter((lang) => lang.name.toLowerCase().includes(languageSearch.toLowerCase()));
 
   const handleOpenShareDialog = () => {
     setShareDialogOpen(true);
@@ -513,21 +490,17 @@ const EditEventPage = () => {
     }
 
     // Format languages before opening the start dialog
-    const formattedSourceLanguages = eventData.sourceLanguages.map(lang => 
-      formatForSpeechRecognition(lang)
-    );
-    
-    const formattedTargetLanguages = eventData.targetLanguages.map(lang => 
-      formatForTranslationTarget(lang)
-    );
-    
+    const formattedSourceLanguages = eventData.sourceLanguages.map((lang) => formatForSpeechRecognition(lang));
+
+    const formattedTargetLanguages = eventData.targetLanguages.map((lang) => formatForTranslationTarget(lang));
+
     // Update the event data with formatted languages
-    setEventData(prev => ({
+    setEventData((prev) => ({
       ...prev,
       sourceLanguages: formattedSourceLanguages,
       targetLanguages: formattedTargetLanguages
     }));
-    
+
     setStartDialogOpen(true);
   };
 
@@ -538,24 +511,20 @@ const EditEventPage = () => {
   const handleSaveAndStart = async () => {
     setUnsavedChangesDialogOpen(false);
     await handleSaveChanges();
-    
+
     // After saving, directly open the start dialog without checking for unsaved changes
     // Format languages before opening the start dialog
-    const formattedSourceLanguages = eventData.sourceLanguages.map(lang => 
-      formatForSpeechRecognition(lang)
-    );
-    
-    const formattedTargetLanguages = eventData.targetLanguages.map(lang => 
-      formatForTranslationTarget(lang)
-    );
-    
+    const formattedSourceLanguages = eventData.sourceLanguages.map((lang) => formatForSpeechRecognition(lang));
+
+    const formattedTargetLanguages = eventData.targetLanguages.map((lang) => formatForTranslationTarget(lang));
+
     // Update the event data with formatted languages
-    setEventData(prev => ({
+    setEventData((prev) => ({
       ...prev,
       sourceLanguages: formattedSourceLanguages,
       targetLanguages: formattedTargetLanguages
     }));
-    
+
     // Small delay to ensure save completes and state updates
     setTimeout(() => {
       setStartDialogOpen(true);
@@ -581,14 +550,14 @@ const EditEventPage = () => {
   };
 
   const handleAudioInputChange = (language, device) => {
-    setSelectedAudioInputs(prev => ({
+    setSelectedAudioInputs((prev) => ({
       ...prev,
       [language]: device
     }));
   };
 
   const handleAudioOutputChange = (language, device) => {
-    setSelectedAudioOutputs(prev => ({
+    setSelectedAudioOutputs((prev) => ({
       ...prev,
       [language]: device
     }));
@@ -609,7 +578,7 @@ const EditEventPage = () => {
       setLocationOptions(
         (data.results || []).map((item) => ({
           label: `${item.city || item.name}, ${item.country}`,
-          value: `${item.city || item.name}, ${item.country}`,
+          value: `${item.city || item.name}, ${item.country}`
         }))
       );
     } catch (e) {
@@ -626,19 +595,21 @@ const EditEventPage = () => {
     <Box sx={{ bgcolor: '#', minHeight: '100vh' }}>
       <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: '1200px', mx: 'auto' }}>
         {/* Header with back button and action buttons */}
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          mb: 3,
-          flexDirection: { xs: 'column', sm: 'row' },
-          gap: { xs: 2, sm: 0 }
-        }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            mb: 3,
+            flexDirection: { xs: 'column', sm: 'row' },
+            gap: { xs: 2, sm: 0 }
+          }}
+        >
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <Button
               startIcon={<ArrowBackIcon />}
               onClick={() => router.push('/dashboard/analytics')}
-              sx={{ 
+              sx={{
                 color: '#637381',
                 textTransform: 'none',
                 fontWeight: 500,
@@ -648,17 +619,19 @@ const EditEventPage = () => {
               Back To Events
             </Button>
           </Box>
-          
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'flex-end',
-            gap: 2
-          }}>
+
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 2
+            }}
+          >
             <Button
               variant="outlined"
               onClick={handleOpenShareDialog}
-              sx={{ 
+              sx={{
                 borderColor: '#E5E8EB',
                 color: '#637381',
                 borderRadius: '8px',
@@ -668,8 +641,8 @@ const EditEventPage = () => {
                 py: 0,
                 height: '40px',
                 fontSize: '14px',
-                '&:hover': { 
-                  borderColor: '#B0B7C3', 
+                '&:hover': {
+                  borderColor: '#B0B7C3',
                   bgcolor: 'rgba(99, 115, 129, 0.08)',
                   color: '#212B36'
                 }
@@ -677,11 +650,11 @@ const EditEventPage = () => {
             >
               Share Event
             </Button>
-            
+
             <Button
               variant="contained"
               onClick={handleOpenStartDialog}
-              sx={{ 
+              sx={{
                 bgcolor: hasUnsavedChanges ? '#ff9800' : '#6366f1',
                 borderRadius: '8px',
                 textTransform: 'none',
@@ -691,8 +664,8 @@ const EditEventPage = () => {
                 height: '40px',
                 fontSize: '14px',
                 position: 'relative',
-                '&:hover': { 
-                  bgcolor: hasUnsavedChanges ? '#f57c00' : '#4338ca' 
+                '&:hover': {
+                  bgcolor: hasUnsavedChanges ? '#f57c00' : '#4338ca'
                 },
                 ...(hasUnsavedChanges && {
                   '&::before': {
@@ -714,7 +687,7 @@ const EditEventPage = () => {
             </Button>
           </Box>
         </Box>
-        
+
         {/* Content Sections */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {/* General Settings Section */}
@@ -728,9 +701,9 @@ const EditEventPage = () => {
                   Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
                 </Typography> */}
               </Box>
-              
+
               <Divider sx={{ mx: -3, mb: 3 }} />
-              
+
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 3 }}>
                 <Box>
                   <Typography variant="subtitle2" sx={{ mb: 1, color: '#637381', fontWeight: 500 }}>
@@ -739,12 +712,12 @@ const EditEventPage = () => {
                   <TextField
                     fullWidth
                     name="name"
-                    value={eventData.name || ""}
+                    value={eventData.name || ''}
                     onChange={handleChange}
                     placeholder="Demo Event"
                     variant="outlined"
                     size="small"
-                    sx={{ 
+                    sx={{
                       '& .MuiOutlinedInput-root': {
                         borderRadius: '8px',
                         height: '40px'
@@ -752,7 +725,7 @@ const EditEventPage = () => {
                     }}
                   />
                 </Box>
-                
+
                 <Box>
                   <Typography variant="subtitle2" sx={{ mb: 1, color: '#637381', fontWeight: 500 }}>
                     Event Description
@@ -760,14 +733,14 @@ const EditEventPage = () => {
                   <TextField
                     fullWidth
                     name="description"
-                    value={eventData.description || ""}
+                    value={eventData.description || ''}
                     onChange={handleChange}
                     placeholder="My first Demo Event with Real time AI Speech to Speech Translation"
                     variant="outlined"
                     multiline
                     rows={1}
                     size="small"
-                    sx={{ 
+                    sx={{
                       '& .MuiOutlinedInput-root': {
                         borderRadius: '8px',
                         minHeight: '40px'
@@ -775,7 +748,7 @@ const EditEventPage = () => {
                     }}
                   />
                 </Box>
-                
+
                 <Box>
                   <Typography variant="subtitle2" sx={{ mb: 1, color: '#637381', fontWeight: 500 }}>
                     Event Location
@@ -785,7 +758,7 @@ const EditEventPage = () => {
                     filterOptions={(x) => x}
                     options={locationOptions}
                     loading={locationLoading}
-                    value={eventData.location || ""}
+                    value={eventData.location || ''}
                     onInputChange={(_, value) => {
                       setEventData((prev) => ({ ...prev, location: value }));
                       fetchLocationSuggestions(value);
@@ -793,7 +766,7 @@ const EditEventPage = () => {
                     onChange={(_, value) => {
                       setEventData((prev) => ({
                         ...prev,
-                        location: typeof value === "string" ? value : value?.value || "",
+                        location: typeof value === 'string' ? value : value?.value || ''
                       }));
                     }}
                     renderInput={(params) => (
@@ -816,13 +789,13 @@ const EditEventPage = () => {
                               {locationLoading ? <CircularProgress color="inherit" size={16} /> : null}
                               {params.InputProps.endAdornment}
                             </>
-                          ),
+                          )
                         }}
                       />
                     )}
                   />
                 </Box>
-                
+
                 <Box>
                   <Typography variant="subtitle2" sx={{ mb: 1, color: '#637381', fontWeight: 500 }}>
                     Event Date
@@ -834,13 +807,13 @@ const EditEventPage = () => {
                           ? dayjs(eventData.date)
                           : null
                       }
-                      onChange={(newDate) => setEventData(prev => ({ ...prev, date: newDate }))}
+                      onChange={(newDate) => setEventData((prev) => ({ ...prev, date: newDate }))}
                       format="DD.MM.YYYY"
                       slotProps={{
                         textField: {
                           fullWidth: true,
-                          size: "small",
-                          sx: { 
+                          size: 'small',
+                          sx: {
                             '& .MuiOutlinedInput-root': {
                               borderRadius: '8px',
                               height: '40px'
@@ -851,7 +824,7 @@ const EditEventPage = () => {
                     />
                   </LocalizationProvider>
                 </Box>
-                
+
                 <Box>
                   <Typography variant="subtitle2" sx={{ mb: 1, color: '#637381', fontWeight: 500 }}>
                     Event Type
@@ -862,11 +835,11 @@ const EditEventPage = () => {
                     value={eventData.type}
                     onChange={handleChange}
                     size="small"
-                    sx={{ 
+                    sx={{
                       borderRadius: '8px',
                       height: '40px',
                       '& .MuiOutlinedInput-notchedOutline': {
-                        borderRadius: '8px',
+                        borderRadius: '8px'
                       }
                     }}
                     IconComponent={KeyboardArrowDownIcon}
@@ -879,7 +852,7 @@ const EditEventPage = () => {
               </Box>
             </Box>
           </Paper>
-          
+
           {/* Language Settings Section */}
           <Paper sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: '0px 2px 4px rgba(0,0,0,0.05)' }}>
             <Box sx={{ p: 3 }}>
@@ -891,25 +864,27 @@ const EditEventPage = () => {
                   Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
                 </Typography> */}
               </Box>
-              
+
               <Divider sx={{ mx: -3, mb: 3 }} />
-              
+
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 3 }}>
                 <Box>
                   <Typography variant="subtitle2" sx={{ mb: 1, color: '#637381', fontWeight: 500 }}>
                     Selected Source Language
                   </Typography>
-                  <Box sx={{ 
-                    border: '1px solid #e0e0e0', 
-                    borderRadius: '8px', 
-                    p: 1.5, 
-                    minHeight: '40px',
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 0.75,
-                    position: 'relative'
-                  }}>
-                    {eventData.sourceLanguages.map(lang => (
+                  <Box
+                    sx={{
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '8px',
+                      p: 1.5,
+                      minHeight: '40px',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 0.75,
+                      position: 'relative'
+                    }}
+                  >
+                    {eventData.sourceLanguages.map((lang) => (
                       <Chip
                         key={lang}
                         label={getLanguageName(lang)}
@@ -938,15 +913,13 @@ const EditEventPage = () => {
                       />
                     ))}
                     {eventData.sourceLanguages.length === 0 && (
-                      <Typography sx={{ color: '#637381', fontSize: '14px' }}>
-                        No source languages selected
-                      </Typography>
+                      <Typography sx={{ color: '#637381', fontSize: '14px' }}>No source languages selected</Typography>
                     )}
-                    <IconButton 
-                      size="small" 
+                    <IconButton
+                      size="small"
                       onClick={(event) => setSourceMenuAnchorEl(event.currentTarget)}
-                      sx={{ 
-                        ml: 'auto', 
+                      sx={{
+                        ml: 'auto',
                         color: '#6366f1',
                         '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.08)' }
                       }}
@@ -954,18 +927,18 @@ const EditEventPage = () => {
                       <AddIcon fontSize="small" />
                     </IconButton>
                   </Box>
-                  
+
                   <Popover
                     open={Boolean(sourceMenuAnchorEl)}
                     anchorEl={sourceMenuAnchorEl}
                     onClose={() => setSourceMenuAnchorEl(null)}
                     anchorOrigin={{
                       vertical: 'bottom',
-                      horizontal: 'left',
+                      horizontal: 'left'
                     }}
                     transformOrigin={{
                       vertical: 'top',
-                      horizontal: 'left',
+                      horizontal: 'left'
                     }}
                   >
                     <Box sx={{ p: 2, width: 250 }}>
@@ -979,32 +952,32 @@ const EditEventPage = () => {
                               <InputAdornment position="start">
                                 <SearchIcon fontSize="small" />
                               </InputAdornment>
-                            ),
+                            )
                           }}
                           onChange={(e) => setLanguageSearch(e.target.value)}
                           value={languageSearch}
                           sx={{
                             '& .MuiOutlinedInput-root': {
-                              borderRadius: '8px',
+                              borderRadius: '8px'
                             }
                           }}
                         />
                       </Box>
-                      
+
                       <List sx={{ pt: 0 }}>
                         {filteredSourceLanguages.map((language) => (
                           <ListItemButton
                             key={language.code}
                             onClick={() => handleAddSourceLanguage(language.code)}
-                            sx={{ 
+                            sx={{
                               py: 1,
                               '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
                             }}
                           >
-                            <ListItemText 
+                            <ListItemText
                               primary={language.name}
-                              sx={{ 
-                                '& .MuiListItemText-primary': { 
+                              sx={{
+                                '& .MuiListItemText-primary': {
                                   fontSize: '0.875rem',
                                   fontWeight: 400,
                                   color: '#212B36'
@@ -1017,22 +990,24 @@ const EditEventPage = () => {
                     </Box>
                   </Popover>
                 </Box>
-                
+
                 <Box>
                   <Typography variant="subtitle2" sx={{ mb: 1, color: '#637381', fontWeight: 500 }}>
                     Selected Target Language
                   </Typography>
-                  <Box sx={{ 
-                    border: '1px solid #e0e0e0', 
-                    borderRadius: '8px', 
-                    p: 1.5, 
-                    minHeight: '40px',
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 0.75,
-                    position: 'relative'
-                  }}>
-                    {eventData.targetLanguages.map(lang => (
+                  <Box
+                    sx={{
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '8px',
+                      p: 1.5,
+                      minHeight: '40px',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 0.75,
+                      position: 'relative'
+                    }}
+                  >
+                    {eventData.targetLanguages.map((lang) => (
                       <Chip
                         key={lang}
                         label={getLanguageName(lang)}
@@ -1061,15 +1036,13 @@ const EditEventPage = () => {
                       />
                     ))}
                     {eventData.targetLanguages.length === 0 && (
-                      <Typography sx={{ color: '#637381', fontSize: '14px' }}>
-                        No target languages selected
-                      </Typography>
+                      <Typography sx={{ color: '#637381', fontSize: '14px' }}>No target languages selected</Typography>
                     )}
-                    <IconButton 
-                      size="small" 
+                    <IconButton
+                      size="small"
                       onClick={handleOpenTargetMenu}
-                      sx={{ 
-                        ml: 'auto', 
+                      sx={{
+                        ml: 'auto',
                         color: '#6366f1',
                         '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.08)' }
                       }}
@@ -1077,23 +1050,23 @@ const EditEventPage = () => {
                       <AddIcon fontSize="small" />
                     </IconButton>
                   </Box>
-                  
+
                   <Popover
                     open={Boolean(targetAnchorEl)}
                     anchorEl={targetAnchorEl}
                     onClose={handleCloseTargetMenu}
                     anchorOrigin={{
                       vertical: 'bottom',
-                      horizontal: 'left',
+                      horizontal: 'left'
                     }}
                     transformOrigin={{
                       vertical: 'top',
-                      horizontal: 'left',
+                      horizontal: 'left'
                     }}
                     PaperProps={{
-                      sx: { 
-                        width: 250, 
-                        mt: 1, 
+                      sx: {
+                        width: 250,
+                        mt: 1,
                         boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.15)',
                         borderRadius: '8px'
                       }
@@ -1110,10 +1083,10 @@ const EditEventPage = () => {
                             <SearchIcon fontSize="small" sx={{ color: '#637381' }} />
                           </InputAdornment>
                         }
-                        sx={{ 
-                          mb: 1, 
-                          p: 1, 
-                          bgcolor: '#F4F6F8', 
+                        sx={{
+                          mb: 1,
+                          p: 1,
+                          bgcolor: '#F4F6F8',
                           borderRadius: '8px',
                           '& .MuiInputBase-input': {
                             fontSize: '14px'
@@ -1121,38 +1094,40 @@ const EditEventPage = () => {
                         }}
                       />
                       <List sx={{ maxHeight: 250, overflow: 'auto', py: 0 }}>
-                        {languages.filter(lang => 
-                          lang.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-                          !eventData.targetLanguages.includes(lang.code)
-                        ).map((language) => (
-                          <ListItemButton
-                            key={language.code}
-                            onClick={() => handleAddLanguage('targetLanguages', language.code)}
-                            sx={{ 
-                              py: 1,
-                              '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
-                            }}
-                          >
-                            <ListItemText 
-                              primary={language.name}
-                              sx={{ 
-                                '& .MuiListItemText-primary': { 
-                                  fontSize: '0.875rem',
-                                  fontWeight: 400,
-                                  color: '#212B36'
-                                }
+                        {languages
+                          .filter(
+                            (lang) =>
+                              lang.name.toLowerCase().includes(searchTerm.toLowerCase()) && !eventData.targetLanguages.includes(lang.code)
+                          )
+                          .map((language) => (
+                            <ListItemButton
+                              key={language.code}
+                              onClick={() => handleAddLanguage('targetLanguages', language.code)}
+                              sx={{
+                                py: 1,
+                                '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
                               }}
-                            />
-                          </ListItemButton>
-                        ))}
-                        {languages.filter(lang => 
-                          lang.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-                          !eventData.targetLanguages.includes(lang.code)
+                            >
+                              <ListItemText
+                                primary={language.name}
+                                sx={{
+                                  '& .MuiListItemText-primary': {
+                                    fontSize: '0.875rem',
+                                    fontWeight: 400,
+                                    color: '#212B36'
+                                  }
+                                }}
+                              />
+                            </ListItemButton>
+                          ))}
+                        {languages.filter(
+                          (lang) =>
+                            lang.name.toLowerCase().includes(searchTerm.toLowerCase()) && !eventData.targetLanguages.includes(lang.code)
                         ).length === 0 && (
                           <ListItem sx={{ py: 1 }}>
-                            <ListItemText 
-                              primary="No languages found" 
-                              primaryTypographyProps={{ 
+                            <ListItemText
+                              primary="No languages found"
+                              primaryTypographyProps={{
                                 fontSize: '14px',
                                 color: '#637381',
                                 textAlign: 'center'
@@ -1167,7 +1142,7 @@ const EditEventPage = () => {
               </Box>
             </Box>
           </Paper>
-          
+
           {/* Features Section */}
           <Paper sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: '0px 2px 4px rgba(0,0,0,0.05)' }}>
             <Box sx={{ p: 3 }}>
@@ -1179,9 +1154,9 @@ const EditEventPage = () => {
                   Debitis consequatur et facilis consequatur fugiat fugit nulla quo.
                 </Typography> */}
               </Box>
-              
+
               <Divider sx={{ mx: -3, mb: 3 }} />
-              
+
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Box>
                   <Typography variant="subtitle1" sx={{ fontWeight: 500, color: '#212B36', mb: 0.5 }}>
@@ -1193,19 +1168,19 @@ const EditEventPage = () => {
                 </Box>
                 <Switch
                   checked={eventData.recordEvent}
-                  onChange={(e) => setEventData(prev => ({ ...prev, recordEvent: e.target.checked }))}
+                  onChange={(e) => setEventData((prev) => ({ ...prev, recordEvent: e.target.checked }))}
                   sx={{
                     '& .MuiSwitch-switchBase.Mui-checked': {
-                      color: '#fff',
+                      color: '#fff'
                     },
                     '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
                       backgroundColor: '#6366f1',
-                      opacity: 1,
+                      opacity: 1
                     },
                     '& .MuiSwitch-track': {
                       backgroundColor: '#E5E8EB',
-                      opacity: 1,
-                    },
+                      opacity: 1
+                    }
                   }}
                 />
               </Box>
@@ -1224,26 +1199,22 @@ const EditEventPage = () => {
                   <Select
                     fullWidth
                     value={eventData.ttsVoice || 'female'}
-                    onChange={(e) => setEventData(prev => ({ ...prev, ttsVoice: e.target.value }))}
+                    onChange={(e) => setEventData((prev) => ({ ...prev, ttsVoice: e.target.value }))}
                     size="small"
                     IconComponent={KeyboardArrowDownIcon}
-                    sx={{ 
+                    sx={{
                       borderRadius: '8px',
                       height: '40px',
                       '& .MuiOutlinedInput-notchedOutline': {
-                        borderRadius: '8px',
+                        borderRadius: '8px'
                       }
                     }}
                   >
                     <MenuItem value="female">
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        👩 Female
-                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>👩 Female</Box>
                     </MenuItem>
                     <MenuItem value="male">
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        👨 Male
-                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>👨 Male</Box>
                     </MenuItem>
                   </Select>
                 </Box>
@@ -1254,8 +1225,8 @@ const EditEventPage = () => {
       </Box>
 
       {/* Share Event Dialog */}
-      <Dialog 
-        open={shareDialogOpen} 
+      <Dialog
+        open={shareDialogOpen}
         onClose={handleCloseShareDialog}
         PaperProps={{
           sx: {
@@ -1268,19 +1239,21 @@ const EditEventPage = () => {
         }}
       >
         <Box sx={{ p: '24px' }}>
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            mb: 2
-          }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 2
+            }}
+          >
             <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '18px', color: '#212B36' }}>
               Share Event Access
             </Typography>
-            <IconButton 
-              onClick={handleCloseShareDialog} 
+            <IconButton
+              onClick={handleCloseShareDialog}
               size="small"
-              sx={{ 
+              sx={{
                 color: '#637381',
                 p: '4px',
                 '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
@@ -1289,18 +1262,18 @@ const EditEventPage = () => {
               <CloseIcon fontSize="small" />
             </IconButton>
           </Box>
-          
+
           <Typography variant="body1" sx={{ mb: 1.5, color: '#212B36', fontSize: '14px' }}>
             Here is the unique event access link
           </Typography>
-          
+
           <TextField
             fullWidth
             variant="outlined"
             value={`${window.location.origin}/broadcast/${id}`}
             InputProps={{
               readOnly: true,
-              sx: { 
+              sx: {
                 borderRadius: '8px',
                 fontSize: '14px',
                 bgcolor: '#F9FAFB',
@@ -1312,11 +1285,11 @@ const EditEventPage = () => {
             }}
             sx={{ mb: 1 }}
           />
-          
+
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3, fontSize: '12px' }}>
             This is a hint text to help user.
           </Typography>
-          
+
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
             <Button
               variant="contained"
@@ -1341,8 +1314,8 @@ const EditEventPage = () => {
       </Dialog>
 
       {/* Start Event Dialog */}
-      <Dialog 
-        open={startDialogOpen} 
+      <Dialog
+        open={startDialogOpen}
         onClose={handleCloseStartDialog}
         maxWidth="sm"
         fullWidth
@@ -1373,20 +1346,22 @@ const EditEventPage = () => {
 
         {/* Audio Input Selection */}
         <Box sx={{ mb: 3 }}>
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            mb: 1 
-          }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 1
+            }}
+          >
             <Typography variant="subtitle2" sx={{ color: '#212B36' }}>
               Select Source You Would Like to Record
             </Typography>
             {/* Add refresh button */}
-            <IconButton 
+            <IconButton
               onClick={getAudioDevices}
               size="small"
-              sx={{ 
+              sx={{
                 color: '#637381',
                 '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
               }}
@@ -1399,7 +1374,7 @@ const EditEventPage = () => {
             value={selectedAudioInput}
             onChange={(e) => setSelectedAudioInput(e.target.value)}
             displayEmpty
-            sx={{ 
+            sx={{
               borderRadius: '8px',
               '& .MuiOutlinedInput-notchedOutline': {
                 borderColor: '#E5E8EB'
@@ -1409,12 +1384,12 @@ const EditEventPage = () => {
             <MenuItem disabled value="">
               <Typography sx={{ color: '#637381' }}>Select audio input</Typography>
             </MenuItem>
-            {audioInputDevices.map(device => (
-              <MenuItem 
-                key={device.deviceId} 
+            {audioInputDevices.map((device) => (
+              <MenuItem
+                key={device.deviceId}
                 value={device.deviceId}
-                sx={{ 
-                  display: 'flex', 
+                sx={{
+                  display: 'flex',
                   justifyContent: 'space-between',
                   py: 1.5
                 }}
@@ -1439,7 +1414,7 @@ const EditEventPage = () => {
             disabled
             sx={{
               '& .MuiOutlinedInput-root': {
-                borderRadius: '8px',
+                borderRadius: '8px'
               }
             }}
           />
@@ -1453,11 +1428,11 @@ const EditEventPage = () => {
           variant="contained"
           onClick={async () => {
             try {
-              await updateEventStatus(id, "Live");
+              await updateEventStatus(id, 'Live');
               handleCloseStartDialog();
               router.push(`/events/${id}/live`);
             } catch (e) {
-              alert("Failed to start event. Please try again.");
+              alert('Failed to start event. Please try again.');
               console.error(e);
             }
           }}
@@ -1491,12 +1466,14 @@ const EditEventPage = () => {
         }}
       >
         <Box sx={{ p: '24px' }}>
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'flex-start',
-            mb: 2
-          }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              mb: 2
+            }}
+          >
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '18px', color: '#212B36', mb: 0.5 }}>
                 Unsaved Changes
@@ -1505,10 +1482,10 @@ const EditEventPage = () => {
                 You have unsaved changes to your event settings.
               </Typography>
             </Box>
-            <IconButton 
-              onClick={() => setUnsavedChangesDialogOpen(false)} 
+            <IconButton
+              onClick={() => setUnsavedChangesDialogOpen(false)}
               size="small"
-              sx={{ 
+              sx={{
                 color: '#637381',
                 p: '4px',
                 '&:hover': { bgcolor: 'rgba(99, 115, 129, 0.08)' }
@@ -1517,11 +1494,11 @@ const EditEventPage = () => {
               <CloseIcon fontSize="small" />
             </IconButton>
           </Box>
-          
+
           <Typography variant="body2" sx={{ mb: 3, color: '#637381', fontSize: '14px', lineHeight: 1.5 }}>
             Would you like to save your changes before starting the event, or discard them and continue?
           </Typography>
-          
+
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             <Button
               fullWidth
@@ -1547,7 +1524,7 @@ const EditEventPage = () => {
             >
               {isSaving ? 'Saving...' : 'Save Changes & Start Event'}
             </Button>
-            
+
             <Button
               fullWidth
               variant="outlined"
@@ -1569,7 +1546,7 @@ const EditEventPage = () => {
             >
               Discard Changes & Start Event
             </Button>
-            
+
             <Button
               fullWidth
               variant="text"

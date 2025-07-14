@@ -80,7 +80,10 @@ export default function SettingDetailsCard() {
   useEffect(() => {
     async function fetchUser() {
       setLoading(true);
-      const { data: { user }, error } = await supabase.auth.getUser();
+      const {
+        data: { user },
+        error
+      } = await supabase.auth.getUser();
       if (user) {
         setProfile({
           firstname: user.user_metadata?.firstname || '',
@@ -102,7 +105,10 @@ export default function SettingDetailsCard() {
   const handleSave = async () => {
     setSaving(true);
     setError('');
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser();
     if (!user) {
       setError('You are not logged in. Please log in again.');
       setSaving(false);
@@ -158,18 +164,10 @@ export default function SettingDetailsCard() {
               />
             </Grid>
             <Grid size={12}>
-              <FormHelperText sx={{ mt: 0 }}>
-                Use your first and last name as they appear on your government-issued ID.
-              </FormHelperText>
+              <FormHelperText sx={{ mt: 0 }}>Use your first and last name as they appear on your government-issued ID.</FormHelperText>
             </Grid>
             <Grid size={12}>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleSave}
-                disabled={loading || saving}
-                sx={{ mt: 2 }}
-              >
+              <Button variant="contained" color="primary" onClick={handleSave} disabled={loading || saving} sx={{ mt: 2 }}>
                 {saving ? 'Saving...' : 'Save'}
               </Button>
               {error && <FormHelperText error>{error}</FormHelperText>}
@@ -177,11 +175,7 @@ export default function SettingDetailsCard() {
           </Grid>
         </ListItem>
         <ListItem sx={listStyle} divider>
-          <ListItemText
-            primary="Email Address"
-            secondary={profile.email}
-            {...{ primaryTypographyProps, secondaryTypographyProps }}
-          />
+          <ListItemText primary="Email Address" secondary={profile.email} {...{ primaryTypographyProps, secondaryTypographyProps }} />
           <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, ml: 'auto' }}>
             <Chip label="Verified" variant="text" avatar={<IconCheck />} color="success" />
             <ModalEmail />
@@ -249,9 +243,7 @@ function AvatarUpload({ user, profile, onAvatarChange }) {
     const filePath = `${user.id}/${user.id}.${fileExt}`;
     console.log('Upload path:', filePath);
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(filePath, file, { upsert: true });
+    const { data: uploadData, error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, { upsert: true });
 
     console.log('Upload data:', uploadData);
     console.log('Upload error:', uploadError);
@@ -268,10 +260,7 @@ function AvatarUpload({ user, profile, onAvatarChange }) {
     const publicUrl = data.publicUrl;
 
     // 3. Update profile in Supabase
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ avatar_url: publicUrl })
-      .eq('id', user.id);
+    const { error: updateError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
 
     if (updateError) {
       alert('Profile update failed!');
@@ -295,6 +284,3 @@ function AvatarUpload({ user, profile, onAvatarChange }) {
     </div>
   );
 }
-
-
-

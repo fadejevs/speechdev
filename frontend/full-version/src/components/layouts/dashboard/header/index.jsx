@@ -8,21 +8,21 @@ import { useEffect, useState } from 'react';
 
 const Header = ({ onOpenNav }) => {
   const pathname = usePathname();
-  const [eventName, setEventName] = useState("Demo Event");
-  
+  const [eventName, setEventName] = useState('Demo Event');
+
   // Fetch the event name when on an event page
   useEffect(() => {
     if (pathname.includes('/events/') && !pathname.endsWith('/events')) {
       const eventId = pathname.split('/').pop();
-      
+
       // Get event data from localStorage
       try {
         const savedEvents = localStorage.getItem('eventData');
         if (savedEvents) {
           const events = JSON.parse(savedEvents);
-          const event = events.find(e => e.id.toString() === eventId);
+          const event = events.find((e) => e.id.toString() === eventId);
           if (event) {
-            setEventName(event.title || "Demo Event");
+            setEventName(event.title || 'Demo Event');
           }
         }
       } catch (error) {
@@ -30,10 +30,10 @@ const Header = ({ onOpenNav }) => {
       }
     }
   }, [pathname]);
-  
+
   // Only render breadcrumbs on event pages
   const shouldShowBreadcrumbs = pathname.includes('/events/') && !pathname.endsWith('/events');
-  
+
   return (
     <Box
       component="header"
@@ -47,17 +47,14 @@ const Header = ({ onOpenNav }) => {
       }}
     >
       {shouldShowBreadcrumbs && (
-        <Breadcrumbs 
-          separator={<KeyboardArrowRightIcon fontSize="small" sx={{ color: 'text.secondary' }} />}
-          aria-label="breadcrumb"
-        >
+        <Breadcrumbs separator={<KeyboardArrowRightIcon fontSize="small" sx={{ color: 'text.secondary' }} />} aria-label="breadcrumb">
           <Link href="/dashboard/analytics" style={{ textDecoration: 'none' }}>
-            <Typography 
-              variant="subtitle1" 
+            <Typography
+              variant="subtitle1"
               color="text.secondary"
-              sx={{ 
-                fontWeight: 500, 
-                '&:hover': { color: 'primary.main' } 
+              sx={{
+                fontWeight: 500,
+                '&:hover': { color: 'primary.main' }
               }}
             >
               My Events
@@ -68,10 +65,10 @@ const Header = ({ onOpenNav }) => {
           </Typography>
         </Breadcrumbs>
       )}
-      
+
       {/* Add your other header content here */}
     </Box>
   );
 };
 
-export default Header; 
+export default Header;

@@ -3,24 +3,18 @@ import { NextResponse } from 'next/server';
 
 export async function middleware(request) {
   const response = NextResponse.next();
-  
+
   // Only apply auth middleware to protected routes
-  if (request.nextUrl.pathname.startsWith('/dashboard') || 
-      request.nextUrl.pathname.startsWith('/api/auth')) {
-    
+  if (request.nextUrl.pathname.startsWith('/dashboard') || request.nextUrl.pathname.startsWith('/api/auth')) {
     // Create Supabase client for middleware
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        auth: {
-          flowType: 'pkce',
-          detectSessionInUrl: false,
-          autoRefreshToken: false,
-          persistSession: false
-        }
+    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+      auth: {
+        flowType: 'pkce',
+        detectSessionInUrl: false,
+        autoRefreshToken: false,
+        persistSession: false
       }
-    );
+    });
 
     // Check for existing session in cookies
     const accessToken = request.cookies.get('sb-access-token')?.value;
@@ -44,4 +38,4 @@ export async function middleware(request) {
 
 export const config = {
   matcher: ['/dashboard/:path*', '/api/auth/:path*']
-}; 
+};

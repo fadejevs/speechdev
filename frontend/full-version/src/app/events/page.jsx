@@ -1,15 +1,15 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableContainer, 
-  TableHead, 
-  TableRow, 
+import {
+  Box,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Paper,
   Chip,
   Button,
@@ -64,7 +64,7 @@ const EventsPage = () => {
           setLoading(false);
           return;
         }
-        
+
         const data = await getTranscriptHistory();
         setTranscripts(data);
       } catch (error) {
@@ -80,11 +80,11 @@ const EventsPage = () => {
   // Memoize status chips to prevent re-renders
   const getStatusChip = useMemo(() => {
     const chips = {
-      'stt': <Chip label="Draft event" size="small" sx={{ bgcolor: '#e6f7e6', color: '#43a047', borderRadius: '16px' }} />,
-      'translation': <Chip label="Scheduled" size="small" sx={{ bgcolor: '#fff8e1', color: '#ff9800', borderRadius: '16px' }} />,
-      'tts': <Chip label="Completed" size="small" sx={{ bgcolor: '#e8f5e9', color: '#4caf50', borderRadius: '16px' }} />
+      stt: <Chip label="Draft event" size="small" sx={{ bgcolor: '#e6f7e6', color: '#43a047', borderRadius: '16px' }} />,
+      translation: <Chip label="Scheduled" size="small" sx={{ bgcolor: '#fff8e1', color: '#ff9800', borderRadius: '16px' }} />,
+      tts: <Chip label="Completed" size="small" sx={{ bgcolor: '#e8f5e9', color: '#4caf50', borderRadius: '16px' }} />
     };
-    
+
     return (type) => chips[type] || chips['tts'];
   }, []);
 
@@ -100,17 +100,15 @@ const EventsPage = () => {
     setSearchQuery(e.target.value);
     setCurrentPage(1);
   };
-  
-  const filteredTranscripts = transcripts.filter(transcript => 
-    transcript.original_text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    transcript.source_language.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    transcript.target_language.toLowerCase().includes(searchQuery.toLowerCase())
+
+  const filteredTranscripts = transcripts.filter(
+    (transcript) =>
+      transcript.original_text.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      transcript.source_language.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      transcript.target_language.toLowerCase().includes(searchQuery.toLowerCase())
   );
-  
-  const paginatedFilteredTranscripts = filteredTranscripts.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+
+  const paginatedFilteredTranscripts = filteredTranscripts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handleCreateEvent = (eventData) => {
     // Create a new event with the form data
@@ -122,10 +120,10 @@ const EventsPage = () => {
       type: eventData.eventType || 'Not specified',
       status: 'Draft event'
     };
-    
+
     // Add the new event to the list
     setTranscripts([newEvent, ...transcripts]);
-    
+
     // Close the modal since this page doesn't navigate anywhere
     setIsModalOpen(false);
   };
@@ -137,12 +135,8 @@ const EventsPage = () => {
         <Typography variant="h4" component="h1">
           My Events
         </Typography>
-        
-        <Button 
-          variant="contained" 
-          onClick={() => setIsModalOpen(true)}
-          sx={{ bgcolor: '#6366f1', '&:hover': { bgcolor: '#4338ca' } }}
-        >
+
+        <Button variant="contained" onClick={() => setIsModalOpen(true)} sx={{ bgcolor: '#6366f1', '&:hover': { bgcolor: '#4338ca' } }}>
           + Add New
         </Button>
       </Box>
@@ -157,10 +151,7 @@ const EventsPage = () => {
             value={searchQuery}
             onChange={handleSearch}
           />
-          <Button 
-            variant="outlined"
-            sx={{ borderColor: '#e0e0e0', color: '#637381' }}
-          >
+          <Button variant="outlined" sx={{ borderColor: '#e0e0e0', color: '#637381' }}>
             Filter
           </Button>
         </Box>
@@ -185,11 +176,15 @@ const EventsPage = () => {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} align="center">Loading...</TableCell>
+                <TableCell colSpan={7} align="center">
+                  Loading...
+                </TableCell>
               </TableRow>
             ) : paginatedFilteredTranscripts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center">No events found</TableCell>
+                <TableCell colSpan={7} align="center">
+                  No events found
+                </TableCell>
               </TableRow>
             ) : (
               paginatedFilteredTranscripts.map((transcript, index) => (
@@ -197,13 +192,11 @@ const EventsPage = () => {
                   <TableCell padding="checkbox">
                     <input type="checkbox" />
                   </TableCell>
+                  <TableCell>{transcript.original_text}</TableCell>
                   <TableCell>
-                    {transcript.original_text}
-                  </TableCell>
-                  <TableCell>
-                    {transcript.timestamp instanceof Date 
-                      ? transcript.timestamp.toLocaleDateString() 
-                      : transcript.timestamp && transcript.timestamp.seconds 
+                    {transcript.timestamp instanceof Date
+                      ? transcript.timestamp.toLocaleDateString()
+                      : transcript.timestamp && transcript.timestamp.seconds
                         ? new Date(transcript.timestamp.seconds * 1000).toLocaleDateString()
                         : new Date(transcript.timestamp).toLocaleDateString()}
                   </TableCell>
@@ -224,18 +217,14 @@ const EventsPage = () => {
 
       {/* Pagination */}
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-        <Button 
-          disabled={currentPage === 1} 
-          onClick={() => setCurrentPage(prev => prev - 1)}
-          sx={{ mx: 0.5, color: '#637381' }}
-        >
+        <Button disabled={currentPage === 1} onClick={() => setCurrentPage((prev) => prev - 1)} sx={{ mx: 0.5, color: '#637381' }}>
           ← Previous
         </Button>
-        
+
         <Button
           variant="contained"
-          sx={{ 
-            mx: 0.5, 
+          sx={{
+            mx: 0.5,
             minWidth: '40px',
             bgcolor: '#6366f1',
             '&:hover': { bgcolor: '#4338ca' }
@@ -243,47 +232,29 @@ const EventsPage = () => {
         >
           {currentPage}
         </Button>
-        
+
         {totalPages > 1 && (
-          <Button
-            variant="text"
-            onClick={() => setCurrentPage(2)}
-            sx={{ mx: 0.5, minWidth: '40px', color: '#637381' }}
-          >
+          <Button variant="text" onClick={() => setCurrentPage(2)} sx={{ mx: 0.5, minWidth: '40px', color: '#637381' }}>
             2
           </Button>
         )}
-        
-        {totalPages > 2 && (
-          <Typography sx={{ mx: 0.5, color: '#637381', alignSelf: 'center' }}>...</Typography>
-        )}
-        
+
+        {totalPages > 2 && <Typography sx={{ mx: 0.5, color: '#637381', alignSelf: 'center' }}>...</Typography>}
+
         {totalPages > 3 && (
-          <Button
-            variant="text"
-            onClick={() => setCurrentPage(totalPages)}
-            sx={{ mx: 0.5, minWidth: '40px', color: '#637381' }}
-          >
+          <Button variant="text" onClick={() => setCurrentPage(totalPages)} sx={{ mx: 0.5, minWidth: '40px', color: '#637381' }}>
             {totalPages}
           </Button>
         )}
-        
-        <Button 
-          disabled={currentPage === totalPages} 
-          onClick={() => setCurrentPage(prev => prev + 1)}
-          sx={{ mx: 0.5, color: '#637381' }}
-        >
+
+        <Button disabled={currentPage === totalPages} onClick={() => setCurrentPage((prev) => prev + 1)} sx={{ mx: 0.5, color: '#637381' }}>
           Next →
         </Button>
       </Box>
-      
-      <CreateEventModal 
-        open={isModalOpen}
-        handleClose={() => setIsModalOpen(false)}
-        handleCreate={handleCreateEvent}
-      />
+
+      <CreateEventModal open={isModalOpen} handleClose={() => setIsModalOpen(false)} handleCreate={handleCreateEvent} />
     </Box>
   );
 };
 
-export default EventsPage; 
+export default EventsPage;

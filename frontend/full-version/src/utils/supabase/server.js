@@ -6,8 +6,8 @@ export function createSupabaseClient() {
       auth: {
         flowType: 'pkce',
         detectSessionInUrl: false, // Server side should not detect session in URL
-        autoRefreshToken: false,   // Server side should not auto refresh
-        persistSession: false      // Server side should not persist session
+        autoRefreshToken: false, // Server side should not auto refresh
+        persistSession: false // Server side should not persist session
       }
     });
   } else {

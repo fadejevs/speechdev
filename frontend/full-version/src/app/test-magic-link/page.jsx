@@ -47,7 +47,7 @@ export default function TestMagicLink() {
   const testCallbackFlow = () => {
     // Test the callback routes directly
     setMessage('Testing callback flow...');
-    
+
     // Simulate what happens when clicking a magic link
     // This will test our callback route with a fake code
     router.push('/auth/callback?code=fake_test_code_123');
@@ -62,7 +62,7 @@ export default function TestMagicLink() {
   return (
     <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto' }}>
       <h2>Test Magic Link Callback</h2>
-      
+
       {/* Original email test */}
       <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px' }}>
         <h3>Option 1: Try Email (might be rate limited)</h3>
@@ -72,9 +72,9 @@ export default function TestMagicLink() {
             placeholder="Enter your email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            style={{ 
-              width: '100%', 
-              padding: '10px', 
+            style={{
+              width: '100%',
+              padding: '10px',
               marginBottom: '10px',
               border: '1px solid #ccc',
               borderRadius: '4px'
@@ -101,10 +101,8 @@ export default function TestMagicLink() {
       {/* Test callback flow */}
       <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px' }}>
         <h3>Option 2: Test Callback Flow Directly</h3>
-        <p style={{ fontSize: '14px', marginBottom: '10px' }}>
-          These buttons simulate what happens when you click a magic link:
-        </p>
-        
+        <p style={{ fontSize: '14px', marginBottom: '10px' }}>These buttons simulate what happens when you click a magic link:</p>
+
         <button
           onClick={testCallbackFlow}
           style={{
@@ -120,7 +118,7 @@ export default function TestMagicLink() {
         >
           Test Server Callback Route
         </button>
-        
+
         <button
           onClick={testClientCallback}
           style={{
@@ -136,29 +134,36 @@ export default function TestMagicLink() {
           Test Client Callback Route
         </button>
       </div>
-      
+
       {message && (
-        <div style={{ 
-          padding: '10px', 
-          marginTop: '10px',
-          backgroundColor: message.includes('Error') ? '#f8d7da' : '#d1edff',
-          border: '1px solid ' + (message.includes('Error') ? '#f5c6cb' : '#bee5eb'),
-          borderRadius: '4px'
-        }}>
+        <div
+          style={{
+            padding: '10px',
+            marginTop: '10px',
+            backgroundColor: message.includes('Error') ? '#f8d7da' : '#d1edff',
+            border: '1px solid ' + (message.includes('Error') ? '#f5c6cb' : '#bee5eb'),
+            borderRadius: '4px'
+          }}
+        >
           {message}
         </div>
       )}
 
       <div style={{ marginTop: '20px', fontSize: '14px', color: '#666' }}>
-        <p><strong>How to test without emails:</strong></p>
+        <p>
+          <strong>How to test without emails:</strong>
+        </p>
         <ol>
           <li>Click "Test Server Callback Route" - should redirect to client callback</li>
           <li>Click "Test Client Callback Route" - should show callback error (expected)</li>
           <li>Watch the browser developer console for logs</li>
           <li>Check where you end up (login page with error = expected behavior)</li>
         </ol>
-        <p><strong>Expected behavior:</strong> Both should redirect you to login with errors since we're using fake codes, but this proves the routing works!</p>
+        <p>
+          <strong>Expected behavior:</strong> Both should redirect you to login with errors since we're using fake codes, but this proves
+          the routing works!
+        </p>
       </div>
     </div>
   );
-} 
+}

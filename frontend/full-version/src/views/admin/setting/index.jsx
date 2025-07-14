@@ -57,9 +57,7 @@ export default function Setting({ tab = 'general' }) {
         </Tabs>
       </Stack>
 
-      <Box>
-        {tab === 'general' && <ProfileSetting />}
-      </Box>
+      <Box>{tab === 'general' && <ProfileSetting />}</Box>
     </Stack>
   );
 }

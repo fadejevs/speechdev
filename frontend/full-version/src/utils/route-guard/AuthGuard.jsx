@@ -24,7 +24,7 @@ export default function AuthGuard({ children }) {
       const timeoutId = setTimeout(() => {
         router.push('/login');
       }, 200);
-      
+
       return () => clearTimeout(timeoutId);
     }
   }, [userData, pathname, isProcessing, router]);
@@ -48,7 +48,7 @@ export function useCurrentUser() {
     const getSession = async () => {
       try {
         const { data, error } = await supabase.auth.getSession();
-        
+
         if (!mounted) return;
 
         if (data?.session?.user && !error) {
@@ -60,7 +60,7 @@ export function useCurrentUser() {
           const delay = (retryCount + 1) * 500;
           timeoutId = setTimeout(() => {
             if (mounted) {
-              setRetryCount(prev => prev + 1);
+              setRetryCount((prev) => prev + 1);
             }
           }, delay);
         } else {
@@ -75,7 +75,7 @@ export function useCurrentUser() {
             const delay = (retryCount + 1) * 500;
             timeoutId = setTimeout(() => {
               if (mounted) {
-                setRetryCount(prev => prev + 1);
+                setRetryCount((prev) => prev + 1);
               }
             }, delay);
           } else {
@@ -89,11 +89,13 @@ export function useCurrentUser() {
     getSession();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
-      
+
       // Auth state change
-      
+
       if (session?.user) {
         setUserData(session.user);
         setIsProcessing(false);

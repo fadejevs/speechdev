@@ -47,7 +47,9 @@ export default function SearchBar() {
   useEffect(() => {
     const fetchUserEvents = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user }
+        } = await supabase.auth.getUser();
         if (!user) return;
 
         const { data, error } = await supabase
@@ -78,11 +80,12 @@ export default function SearchBar() {
     }
 
     const query = searchQuery.toLowerCase();
-    const filtered = userEvents.filter(event => 
-      (event.title && event.title.toLowerCase().includes(query)) ||
-      (event.description && event.description.toLowerCase().includes(query)) ||
-      (event.location && event.location.toLowerCase().includes(query)) ||
-      (event.type && event.type.toLowerCase().includes(query))
+    const filtered = userEvents.filter(
+      (event) =>
+        (event.title && event.title.toLowerCase().includes(query)) ||
+        (event.description && event.description.toLowerCase().includes(query)) ||
+        (event.location && event.location.toLowerCase().includes(query)) ||
+        (event.type && event.type.toLowerCase().includes(query))
     );
 
     setFilteredEvents(filtered);
@@ -131,9 +134,9 @@ export default function SearchBar() {
 
   const handleEventClick = (eventData) => {
     // Navigate to the event based on its status
-    if (eventData.status === "Live" || eventData.status === "Paused") {
+    if (eventData.status === 'Live' || eventData.status === 'Paused') {
       router.push(`/events/${eventData.id}/live`);
-    } else if (eventData.status === "Completed") {
+    } else if (eventData.status === 'Completed') {
       router.push(`/events/${eventData.id}/complete`);
     } else {
       router.push(`/events/${eventData.id}`);
@@ -153,60 +156,64 @@ export default function SearchBar() {
   };
 
   const getStatusChip = (status) => {
-    switch(status) {
+    switch (status) {
       case 'Draft event':
-        return <Chip 
-          label="Draft" 
-          size="small" 
-          sx={{ 
-            bgcolor: '#fff5f5',
-            color: '#ff4842',
-            fontSize: '0.75rem',
-            height: '20px'
-          }} 
-        />;
+        return (
+          <Chip
+            label="Draft"
+            size="small"
+            sx={{
+              bgcolor: '#fff5f5',
+              color: '#ff4842',
+              fontSize: '0.75rem',
+              height: '20px'
+            }}
+          />
+        );
       case 'Live':
-        return <Chip 
-          label="Live" 
-          size="small" 
-          sx={{ 
-            bgcolor: '#e8f5e9',
-            color: '#4caf50',
-            fontSize: '0.75rem',
-            height: '20px'
-          }} 
-        />;
+        return (
+          <Chip
+            label="Live"
+            size="small"
+            sx={{
+              bgcolor: '#e8f5e9',
+              color: '#4caf50',
+              fontSize: '0.75rem',
+              height: '20px'
+            }}
+          />
+        );
       case 'Completed':
-        return <Chip 
-          label="Completed" 
-          size="small" 
-          sx={{ 
-            bgcolor: '#e8f5e9',
-            color: '#4caf50',
-            fontSize: '0.75rem',
-            height: '20px'
-          }} 
-        />;
+        return (
+          <Chip
+            label="Completed"
+            size="small"
+            sx={{
+              bgcolor: '#e8f5e9',
+              color: '#4caf50',
+              fontSize: '0.75rem',
+              height: '20px'
+            }}
+          />
+        );
       default:
-        return <Chip 
-          label={status || 'Draft'} 
-          size="small" 
-          sx={{ 
-            bgcolor: '#fff8e1',
-            color: '#ff9800',
-            fontSize: '0.75rem',
-            height: '20px'
-          }} 
-        />;
+        return (
+          <Chip
+            label={status || 'Draft'}
+            size="small"
+            sx={{
+              bgcolor: '#fff8e1',
+              color: '#ff9800',
+              fontSize: '0.75rem',
+              height: '20px'
+            }}
+          />
+        );
     }
   };
 
   const renderEventItem = (event, index) => (
-    <ListItemButton 
-      key={event.id || index} 
-      sx={buttonStyle} 
-      onClick={() => handleEventClick(event)}
-    >
+    <ListItemButton key={event.id || index} sx={buttonStyle} onClick={() => handleEventClick(event)}>
       <div style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
           <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary' }}>
@@ -214,14 +221,14 @@ export default function SearchBar() {
           </Typography>
           {getStatusChip(event.status)}
         </div>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
           <IconCalendar size={14} color={theme.palette.text.secondary} />
           <Typography variant="caption" color="text.secondary">
             {formatDate(event.timestamp)}
           </Typography>
         </div>
-        
+
         {event.location && event.location !== 'Not specified' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <IconMapPin size={14} color={theme.palette.text.secondary} />
@@ -318,8 +325,8 @@ export default function SearchBar() {
                     </ListSubheader>
                     {filteredEvents.slice(0, 5).map((event, index) => renderEventItem(event, index))}
                     {filteredEvents.length > 5 && (
-                      <ListItemButton 
-                        sx={buttonStyle} 
+                      <ListItemButton
+                        sx={buttonStyle}
                         onClick={() => {
                           router.push('/dashboard/analytics');
                           setIsPopperOpen(false);

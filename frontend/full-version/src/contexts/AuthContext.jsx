@@ -40,11 +40,14 @@ export const AuthProvider = ({ children }) => {
     const initializeAuth = async () => {
       try {
         // Wait a bit for any pending auth operations to complete
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         // Get the current session
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
+        const {
+          data: { session },
+          error
+        } = await supabase.auth.getSession();
+
         if (!mounted) return;
 
         if (session && !error) {
@@ -53,10 +56,12 @@ export const AuthProvider = ({ children }) => {
           await fetchUser();
         } else {
           // Try to refresh the session once
-          const { data: { session: refreshedSession } } = await supabase.auth.refreshSession();
-          
+          const {
+            data: { session: refreshedSession }
+          } = await supabase.auth.refreshSession();
+
           if (!mounted) return;
-          
+
           if (refreshedSession) {
             localStorage.setItem(AUTH_USER_KEY, JSON.stringify(refreshedSession));
             await fetchUser();
@@ -78,7 +83,9 @@ export const AuthProvider = ({ children }) => {
     initializeAuth();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
       // Auth state change

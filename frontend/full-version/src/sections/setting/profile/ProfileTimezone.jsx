@@ -17,7 +17,7 @@ const TimeList = [
   { label: '(GMT+05:30) Chennai,Kolkata, Mumbai, New Delhi', iana: 'Asia/Kolkata' },
   { label: '(GMT-05:00) Eastern Time (US & Canada) - New York, Washington, D.C.', iana: 'America/New_York' },
   { label: '(GMT-06:00) Central Time (US & Canada) - Chicago, Dallas', iana: 'America/Chicago' },
-  { label: '(GMT+02:00) Eastern European Time - Riga, Vilnius, Tallinn', iana: 'Europe/Riga' },
+  { label: '(GMT+02:00) Eastern European Time - Riga, Vilnius, Tallinn', iana: 'Europe/Riga' }
   // ...add more as needed
 ];
 
@@ -34,13 +34,13 @@ const mapIanaToTimeList = (ianaTz) => {
 
 export default function SettingTimezoneCard({ selectedTags, setSelectedTags, isDisabled = false }) {
   // Find the initial value by label (for backward compatibility)
-  const initialValue = TimeList.find(tz => tz.label === selectedTags) || TimeList[0];
+  const initialValue = TimeList.find((tz) => tz.label === selectedTags) || TimeList[0];
   const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
     if (!selectedTags) {
       const ianaTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const matched = TimeList.find(tz => tz.iana === ianaTz);
+      const matched = TimeList.find((tz) => tz.iana === ianaTz);
       if (matched) {
         setValue(matched);
         if (setSelectedTags) setSelectedTags(matched.label);
@@ -54,7 +54,7 @@ export default function SettingTimezoneCard({ selectedTags, setSelectedTags, isD
         <InputLabel>Timezone</InputLabel>
         <Autocomplete
           options={TimeList}
-          getOptionLabel={option => option.label}
+          getOptionLabel={(option) => option.label}
           value={value}
           onChange={(_event, newValue) => {
             if (newValue) {

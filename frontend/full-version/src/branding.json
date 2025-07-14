@@ -1,12 +1,12 @@
 {
-    "brandName": "Everspeak",
-    "company": {
-        "name": "Everspeak",
-        "url": "https://everspeak.ai/"
-    },
-    
-    "logo": {
-        "main": "/main.svg",
-        "logoIcon": ""
-    }
+  "brandName": "Everspeak",
+  "company": {
+    "name": "Everspeak",
+    "url": "https://everspeak.ai/"
+  },
+
+  "logo": {
+    "main": "/main.svg",
+    "logoIcon": ""
+  }
 }

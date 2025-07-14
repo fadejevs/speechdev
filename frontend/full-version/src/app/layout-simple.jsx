@@ -9,33 +9,31 @@ import CssBaseline from '@mui/material/CssBaseline';
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#6366f1',
+      main: '#6366f1'
     },
     background: {
-      default: '#f8f9fa',
-    },
+      default: '#f8f9fa'
+    }
   },
   typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif'
   },
   components: {
     MuiButton: {
       styleOverrides: {
         root: {
-          textTransform: 'none',
-        },
-      },
-    },
-  },
+          textTransform: 'none'
+        }
+      }
+    }
+  }
 });
 
 export default function SimpleLayout({ children }) {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-        {children}
-      </Box>
+      <Box sx={{ display: 'flex', minHeight: '100vh' }}>{children}</Box>
     </ThemeProvider>
   );
-} 
+}

@@ -16,7 +16,6 @@ import Grid from '@mui/material/Grid2';
 import InputLabel from '@mui/material/InputLabel';
 import OutlinedInput from '@mui/material/OutlinedInput';
 
-
 // @third-party
 import { useForm } from 'react-hook-form';
 
@@ -47,12 +46,10 @@ export default function AuthRegister({ inputSx }) {
   // Add this useEffect to fetch and set the local dial code
   useEffect(() => {
     fetch('https://api.geoapify.com/v1/ipinfo?&apiKey=a108fe26f510452dae47978e1619c895')
-      .then(res => res.json())
-      .then(data => {
+      .then((res) => res.json())
+      .then((data) => {
         if (data && data.country && data.country.iso_code) {
-          const country = countries.find(
-            c => c.countryCode.toUpperCase() === data.country.iso_code.toUpperCase()
-          );
+          const country = countries.find((c) => c.countryCode.toUpperCase() === data.country.iso_code.toUpperCase());
           if (country) {
             setValue('dialcode', country.dialCode);
           }

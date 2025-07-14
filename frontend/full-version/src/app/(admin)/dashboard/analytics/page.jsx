@@ -1,15 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableContainer, 
-  TableHead, 
-  TableRow, 
+import {
+  Box,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Paper,
   Chip,
   Button,
@@ -27,7 +27,6 @@ import { useRouter } from 'next/navigation';
 import { generateUniqueId } from '@/utils/idGenerator';
 import { supabase } from '@/utils/supabase/client';
 import { syncGoogleProfile, ensureFirstLastName } from '@/utils/syncGoogleProfile';
-
 
 const formatDate = (dateString) => {
   if (!dateString || dateString === 'Not specified') return dateString;
@@ -55,9 +54,9 @@ const AnalyticsDashboard = () => {
   const paginatedTranscripts = transcripts.slice(startIndex, startIndex + itemsPerPage);
 
   const handleRowClick = (event) => {
-    if (event.status === "Live" || event.status === "Paused") {
+    if (event.status === 'Live' || event.status === 'Paused') {
       router.push(`/events/${event.id}/live`);
-    } else if (event.status === "Completed") {
+    } else if (event.status === 'Completed') {
       router.push(`/events/${event.id}/complete`);
     } else {
       router.push(`/events/${event.id}`);
@@ -77,15 +76,12 @@ const AnalyticsDashboard = () => {
 
   const handleDelete = async () => {
     if (!selectedEventId) return;
-    const { error } = await supabase
-      .from('events')
-      .delete()
-      .eq('id', selectedEventId);
+    const { error } = await supabase.from('events').delete().eq('id', selectedEventId);
     if (error) {
       console.error('Error deleting event:', error);
       return;
     }
-    setTranscripts(prev => prev.filter(t => String(t.id) !== String(selectedEventId)));
+    setTranscripts((prev) => prev.filter((t) => String(t.id) !== String(selectedEventId)));
     handleMenuClose();
   };
 
@@ -101,51 +97,41 @@ const AnalyticsDashboard = () => {
       recordEvent: event.recordEvent || false,
       status: event.status
     };
-    
+
     setEditingEvent({ ...event, formData: eventDataForEdit });
     setIsEditModalOpen(true);
   };
 
   const handleUpdateEvent = async (updatedData) => {
-    const { data, error } = await supabase
-      .from('events')
-      .update(updatedData)
-      .eq('id', editingEvent.id)
-      .select();
+    const { data, error } = await supabase.from('events').update(updatedData).eq('id', editingEvent.id).select();
     if (error) {
       console.error('Error updating event:', error);
       return;
     }
-    setTranscripts(transcripts.map(event => 
-      event.id === editingEvent.id ? data[0] : event
-    ));
+    setTranscripts(transcripts.map((event) => (event.id === editingEvent.id ? data[0] : event)));
     setIsEditModalOpen(false);
     setEditingEvent(null);
   };
 
   const handleCreateEvent = async (eventData) => {
     try {
-    const { data, error } = await supabase
-      .from('events')
-      .insert([eventData])
-      .select();
-    if (error) {
-      console.error('Error creating event:', error);
+      const { data, error } = await supabase.from('events').insert([eventData]).select();
+      if (error) {
+        console.error('Error creating event:', error);
         throw error; // Throw error to trigger catch block in modal
-    }
-      
+      }
+
       // Update local state
-    setTranscripts(prev => [data[0], ...prev]);
-      
+      setTranscripts((prev) => [data[0], ...prev]);
+
       // Navigate to the event edit page for the newly created event
       const newEventId = data[0].id;
-      
+
       // Small delay to ensure smooth transition, then navigate and close modal
       setTimeout(() => {
         setIsModalOpen(false);
         router.push(`/events/${newEventId}`);
       }, 500);
-      
     } catch (error) {
       console.error('Error in handleCreateEvent:', error);
       throw error; // Re-throw to be caught by modal
@@ -156,19 +142,17 @@ const AnalyticsDashboard = () => {
   useEffect(() => {
     const fetchEvents = async () => {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
       if (!user) {
         setTranscripts([]);
         setLoading(false);
-        console.log("No user logged in!");
+        console.log('No user logged in!');
         return;
       }
       // Fetch only events created by this user
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .eq('created_by', user.id)
-        .order('timestamp', { ascending: false });
+      const { data, error } = await supabase.from('events').select('*').eq('created_by', user.id).order('timestamp', { ascending: false });
       if (error) {
         console.error('Error fetching events:', error);
         setTranscripts([]);
@@ -186,44 +170,50 @@ const AnalyticsDashboard = () => {
   }, []);
 
   const getStatusChip = (status) => {
-    switch(status) {
+    switch (status) {
       case 'Draft event':
-        return <Chip 
-          label="Draft event" 
-          size="small" 
-          sx={{ 
-            bgcolor: '#fff5f5', // Light red background
-            color: '#ff4842',   // Red text
-            borderRadius: '16px' 
-          }} 
-        />;
+        return (
+          <Chip
+            label="Draft event"
+            size="small"
+            sx={{
+              bgcolor: '#fff5f5', // Light red background
+              color: '#ff4842', // Red text
+              borderRadius: '16px'
+            }}
+          />
+        );
       case 'Completed':
-        return <Chip 
-          label="Completed" 
-          size="small" 
-          sx={{ 
-            bgcolor: '#e8f5e9', 
-            color: '#4caf50', 
-            borderRadius: '16px' 
-          }} 
-        />;
+        return (
+          <Chip
+            label="Completed"
+            size="small"
+            sx={{
+              bgcolor: '#e8f5e9',
+              color: '#4caf50',
+              borderRadius: '16px'
+            }}
+          />
+        );
       default:
-        return <Chip 
-          label={status} 
-          size="small" 
-          sx={{ 
-            bgcolor: '#fff8e1', 
-            color: '#ff9800', 
-            borderRadius: '16px' 
-          }} 
-        />;
+        return (
+          <Chip
+            label={status}
+            size="small"
+            sx={{
+              bgcolor: '#fff8e1',
+              color: '#ff9800',
+              borderRadius: '16px'
+            }}
+          />
+        );
     }
   };
 
   // Make sure any data transformations preserve the "Not specified" values
   // For example, if you're filtering or sorting the events before display:
 
-  const processedEvents = transcripts.map(event => ({
+  const processedEvents = transcripts.map((event) => ({
     ...event,
     title: event.title || 'Not specified',
     timestamp: event.timestamp || 'Not specified',
@@ -235,10 +225,10 @@ const AnalyticsDashboard = () => {
   const renderCellValue = (value, isDefault = false) => {
     if (isDefault) {
       return (
-        <Typography 
-          variant="body2" 
-          sx={{ 
-            color: '#9e9e9e', // Light gray color for "Not specified" text
+        <Typography
+          variant="body2"
+          sx={{
+            color: '#9e9e9e' // Light gray color for "Not specified" text
           }}
         >
           {value}
@@ -247,7 +237,7 @@ const AnalyticsDashboard = () => {
     }
     return <Typography variant="body2">{value}</Typography>;
   };
-  
+
   const renderEventRow = (event) => {
     return (
       <TableRow
@@ -259,18 +249,10 @@ const AnalyticsDashboard = () => {
         <TableCell component="th" scope="row">
           {renderCellValue(event.title, event.title === 'Not specified')}
         </TableCell>
-        <TableCell>
-          {renderCellValue(formatDate(event.timestamp), event.timestamp === 'Not specified')}
-        </TableCell>
-        <TableCell>
-          {renderCellValue(event.location, event.location === 'Not specified')}
-        </TableCell>
-        <TableCell>
-          {renderCellValue(event.type, event.type === 'Not specified')}
-        </TableCell>
-        <TableCell>
-          {getStatusChip(event.status || 'Draft event')}
-        </TableCell>
+        <TableCell>{renderCellValue(formatDate(event.timestamp), event.timestamp === 'Not specified')}</TableCell>
+        <TableCell>{renderCellValue(event.location, event.location === 'Not specified')}</TableCell>
+        <TableCell>{renderCellValue(event.type, event.type === 'Not specified')}</TableCell>
+        <TableCell>{getStatusChip(event.status || 'Draft event')}</TableCell>
         <TableCell align="right">
           <IconButton
             aria-label="more"
@@ -289,11 +271,7 @@ const AnalyticsDashboard = () => {
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5">My Events</Typography>
-        <Button 
-          variant="contained" 
-          sx={{ bgcolor: '#6366f1', '&:hover': { bgcolor: '#4338ca' } }}
-          onClick={() => setIsModalOpen(true)}
-        >
+        <Button variant="contained" sx={{ bgcolor: '#6366f1', '&:hover': { bgcolor: '#4338ca' } }} onClick={() => setIsModalOpen(true)}>
           + Add New
         </Button>
       </Box>
@@ -313,14 +291,18 @@ const AnalyticsDashboard = () => {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} align="center">Loading...</TableCell>
+                <TableCell colSpan={6} align="center">
+                  Loading...
+                </TableCell>
               </TableRow>
             ) : processedEvents.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center">No events found</TableCell>
+                <TableCell colSpan={6} align="center">
+                  No events found
+                </TableCell>
               </TableRow>
             ) : (
-              processedEvents.map(event => renderEventRow(event))
+              processedEvents.map((event) => renderEventRow(event))
             )}
           </TableBody>
         </Table>
@@ -328,20 +310,16 @@ const AnalyticsDashboard = () => {
 
       {/* Pagination */}
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, gap: 1 }}>
-        <Button 
-          disabled={currentPage === 1} 
-          onClick={() => setCurrentPage(prev => prev - 1)}
-          sx={{ color: '#637381' }}
-        >
+        <Button disabled={currentPage === 1} onClick={() => setCurrentPage((prev) => prev - 1)} sx={{ color: '#637381' }}>
           ← Previous
         </Button>
-        
-        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+
+        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
           <Button
             key={page}
-            variant={currentPage === page ? "contained" : "text"}
+            variant={currentPage === page ? 'contained' : 'text'}
             onClick={() => setCurrentPage(page)}
-            sx={{ 
+            sx={{
               minWidth: '40px',
               color: currentPage === page ? 'white' : '#637381',
               bgcolor: currentPage === page ? '#6366f1' : 'transparent'
@@ -350,23 +328,15 @@ const AnalyticsDashboard = () => {
             {page}
           </Button>
         ))}
-        
-        <Button 
-          disabled={currentPage === totalPages} 
-          onClick={() => setCurrentPage(prev => prev + 1)}
-          sx={{ color: '#637381' }}
-        >
+
+        <Button disabled={currentPage === totalPages} onClick={() => setCurrentPage((prev) => prev + 1)} sx={{ color: '#637381' }}>
           Next →
         </Button>
       </Box>
 
-      <CreateEventModal 
-        open={isModalOpen}
-        handleClose={() => setIsModalOpen(false)}
-        handleCreate={handleCreateEvent}
-      />
+      <CreateEventModal open={isModalOpen} handleClose={() => setIsModalOpen(false)} handleCreate={handleCreateEvent} />
 
-      <CreateEventModal 
+      <CreateEventModal
         open={isEditModalOpen}
         handleClose={() => {
           setIsEditModalOpen(false);
@@ -377,21 +347,17 @@ const AnalyticsDashboard = () => {
         isEditing={true}
       />
 
-      <Menu
-        id={`event-menu-${selectedEventId}`}
-        anchorEl={anchorEl}
-        keepMounted
-        open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-      >
-        <MenuItem onClick={() => {
-          router.push(`/events/${selectedEventId}`);
-          handleMenuClose();
-        }}>Edit</MenuItem>
+      <Menu id={`event-menu-${selectedEventId}`} anchorEl={anchorEl} keepMounted open={Boolean(anchorEl)} onClose={handleMenuClose}>
+        <MenuItem
+          onClick={() => {
+            router.push(`/events/${selectedEventId}`);
+            handleMenuClose();
+          }}
+        >
+          Edit
+        </MenuItem>
         <MenuItem onClick={handleDelete}>Delete</MenuItem>
       </Menu>
-
-      
     </Box>
   );
 };

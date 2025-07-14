@@ -34,7 +34,15 @@ import { logout } from '@/utils/api';
 // @types
 
 // @assets
-import { IconChevronRight, IconLanguage, IconLogout, IconSettings, IconSunMoon, IconTextDirectionLtr, IconFileInvoice } from '@tabler/icons-react';
+import {
+  IconChevronRight,
+  IconLanguage,
+  IconLogout,
+  IconSettings,
+  IconSunMoon,
+  IconTextDirectionLtr,
+  IconFileInvoice
+} from '@tabler/icons-react';
 
 /***************************  HEADER - PROFILE DATA  ***************************/
 
@@ -77,7 +85,9 @@ export default function ProfileSection() {
   const getAvatarUrl = async (user) => {
     if (!user) return '';
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const {
+        data: { user: authUser }
+      } = await supabase.auth.getUser();
       if (authUser?.user_metadata?.avatar_url) {
         return authUser.user_metadata.avatar_url;
       }
@@ -112,14 +122,12 @@ export default function ProfileSection() {
 
   useEffect(() => {
     async function fetchDisplayName() {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
       if (user) {
         setDisplayName(
-          user.user_metadata?.display_name ||
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.email ||
-          'User'
+          user.user_metadata?.display_name || user.user_metadata?.full_name || user.user_metadata?.name || user.email || 'User'
         );
       }
     }
@@ -189,7 +197,7 @@ export default function ProfileSection() {
                       </ListItemIcon>
                       <ListItemText primary="Dark Theme" />
                     </ListItem>
-              
+
                     <ListItemButton sx={buttonStyle} onClick={handleInnerActionClick}>
                       <ListItemIcon>
                         <IconLanguage size={16} />
@@ -235,16 +243,13 @@ export default function ProfileSection() {
                                         cursor: 'not-allowed',
                                         pointerEvents: 'auto',
                                         '&:hover': {
-                                          backgroundColor: 'inherit',
-                                        },
+                                          backgroundColor: 'inherit'
+                                        }
                                       }}
-                                      onClick={e => e.preventDefault()}
+                                      onClick={(e) => e.preventDefault()}
                                       tabIndex={-1}
                                     >
-                                      <ListItemText
-                                        primary={item}
-                                        primaryTypographyProps={{ sx: { color: '#bdbdbd' } }}
-                                      />
+                                      <ListItemText primary={item} primaryTypographyProps={{ sx: { color: '#bdbdbd' } }} />
                                     </ListItemButton>
                                   ))}
                                 </List>

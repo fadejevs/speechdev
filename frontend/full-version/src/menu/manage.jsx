@@ -22,7 +22,7 @@ const manage = {
       url: '/dashboard/analytics',
       // icon: 'IconLayoutGrid'
       icon: 'IconStack2'
-    },
+    }
     // {
     //   id: 'account',
     //   title: <FormattedMessage id="account" />,

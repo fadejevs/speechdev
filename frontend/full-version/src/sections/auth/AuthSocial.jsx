@@ -45,8 +45,8 @@ export default function AuthSocial({ type = SocialTypes.VERTICAL, buttonSx }) {
           fullWidth
           size="small"
           color="secondary"
-          sx={{ 
-            ...(type === SocialTypes.HORIZONTAL && { '.MuiButton-startIcon': { m: 0 } }), 
+          sx={{
+            ...(type === SocialTypes.HORIZONTAL && { '.MuiButton-startIcon': { m: 0 } }),
             ...buttonSx,
             justifyContent: 'flex-start',
             gap: 1

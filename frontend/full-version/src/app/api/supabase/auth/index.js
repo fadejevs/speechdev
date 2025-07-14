@@ -6,18 +6,14 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 // Create server Supabase client without PKCE for auth operations
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  {
-    auth: {
-      flowType: 'implicit', // Use implicit flow instead of PKCE
-      detectSessionInUrl: false,
-      autoRefreshToken: false,
-      persistSession: false
-    }
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+  auth: {
+    flowType: 'implicit', // Use implicit flow instead of PKCE
+    detectSessionInUrl: false,
+    autoRefreshToken: false,
+    persistSession: false
   }
-);
+});
 
 // const supabaseServer = createSupabaseClient();
 
@@ -76,7 +72,7 @@ export async function getUser(token) {
       { status: 200 }
     );
   } catch (e) {
-    console.error("Error in Supabase getUser:", e);
+    console.error('Error in Supabase getUser:', e);
     return NextResponse.json({ error: 'Server error in getUser' }, { status: 500 });
   }
 }

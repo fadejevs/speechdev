@@ -5,7 +5,7 @@ export async function POST(request) {
     // Get client info for debugging
     const userAgent = request.headers.get('user-agent') || '';
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-    
+
     console.log('[OpenAI TTS] Request received', {
       isMobile,
       userAgent: userAgent.substring(0, 50) + '...',
@@ -14,7 +14,7 @@ export async function POST(request) {
     });
 
     const { text, voice = 'alloy', speed = 1.0 } = await request.json();
-    
+
     if (!text) {
       console.error('[OpenAI TTS] No text provided');
       return NextResponse.json({ error: 'Text is required' }, { status: 400 });
@@ -37,12 +37,12 @@ export async function POST(request) {
       speed,
       isMobile
     });
-    
+
     // Call OpenAI TTS API with enhanced error handling
     const response = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
         'User-Agent': `SpeechApp/1.0 ${isMobile ? 'Mobile' : 'Desktop'}`
       },
@@ -52,7 +52,7 @@ export async function POST(request) {
         voice: voice,
         speed: speed,
         response_format: 'mp3'
-      }),
+      })
     });
 
     if (!response.ok) {
@@ -63,11 +63,11 @@ export async function POST(request) {
         error: errorText,
         isMobile
       });
-      
+
       // Return specific error messages for debugging
       if (response.status === 401) {
         return NextResponse.json(
-          { 
+          {
             error: 'OpenAI API authentication failed. Please check your API key.',
             details: errorText,
             isMobile
@@ -75,9 +75,9 @@ export async function POST(request) {
           { status: 401 }
         );
       }
-      
+
       return NextResponse.json(
-        { 
+        {
           error: `OpenAI API error: ${response.status} ${response.statusText}`,
           details: errorText,
           isMobile
@@ -88,12 +88,12 @@ export async function POST(request) {
 
     // Return the audio stream with mobile-optimized headers
     const audioBuffer = await response.arrayBuffer();
-    
+
     console.log('[OpenAI TTS] ✅ Generated audio', {
       size: audioBuffer.byteLength,
       isMobile
     });
-    
+
     return new NextResponse(audioBuffer, {
       status: 200,
       headers: {
@@ -103,20 +103,19 @@ export async function POST(request) {
         'Access-Control-Allow-Origin': '*', // Allow mobile access
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type'
-      },
+      }
     });
-
   } catch (error) {
     console.error('[OpenAI TTS] Server error:', error);
     return NextResponse.json(
-      { 
+      {
         error: 'Internal server error',
         details: error.message
       },
       { status: 500 }
     );
   }
-} 
+}
 
 // Add OPTIONS handler for CORS preflight requests
 export async function OPTIONS(request) {
@@ -125,7 +124,7 @@ export async function OPTIONS(request) {
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+      'Access-Control-Allow-Headers': 'Content-Type'
+    }
   });
-} 
+}

@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -16,11 +16,11 @@ import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
 // Create a comprehensive language mapping from the DEEPL_LANGUAGES
 const createLanguageMap = () => {
   const map = {};
-  DEEPL_LANGUAGES.forEach(lang => {
+  DEEPL_LANGUAGES.forEach((lang) => {
     // Map DeepL codes
     const deeplCode = lang.deepl.toLowerCase();
     map[deeplCode] = lang.name;
-    
+
     // Map Azure codes
     if (lang.azure) {
       const azureCode = lang.azure.toLowerCase();
@@ -28,7 +28,7 @@ const createLanguageMap = () => {
       map[azureCode] = lang.name;
       map[azureBase] = lang.name;
     }
-    
+
     // Map base codes
     const baseCode = deeplCode.split('-')[0];
     if (!map[baseCode]) {
@@ -59,34 +59,28 @@ function formatDate(dateString) {
 }
 
 const fetchEventById = async (id) => {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`,
-    {
-      headers: {
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-      },
+  const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`, {
+    headers: {
+      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
     }
-  );
+  });
   const data = await res.json();
   return data && data.length > 0 ? data[0] : null;
 };
 
 const updateEventStatus = async (id, status) => {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`,
-    {
-      method: "PATCH",
-      headers: {
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ status }),
-    }
-  );
+  const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ status })
+  });
   const data = await res.json();
-  console.log("Update response:", res.status, data);
+  console.log('Update response:', res.status, data);
 };
 
 const EventCompletionPage = () => {
@@ -96,23 +90,17 @@ const EventCompletionPage = () => {
   const [transcripts, setTranscripts] = useState({});
 
   useEffect(() => {
-    fetchEventById(id).then(event => {
-      console.log("Fetched event from Supabase:", event);
+    fetchEventById(id).then((event) => {
+      console.log('Fetched event from Supabase:', event);
       if (event) {
         // unify shape so we always have arrays to iterate
-        const srcArr =
-          event.sourceLanguages ||
-          event.source_languages ||
-          (event.sourceLanguage ? [event.sourceLanguage] : []);
-        const tgtArr =
-          event.targetLanguages ||
-          event.target_languages ||
-          (event.targetLanguage ? [event.targetLanguage] : []);
+        const srcArr = event.sourceLanguages || event.source_languages || (event.sourceLanguage ? [event.sourceLanguage] : []);
+        const tgtArr = event.targetLanguages || event.target_languages || (event.targetLanguage ? [event.targetLanguage] : []);
 
         setEventData({
           ...event,
           sourceLanguages: srcArr,
-          targetLanguages: tgtArr,
+          targetLanguages: tgtArr
         });
       }
     });
@@ -132,8 +120,8 @@ const EventCompletionPage = () => {
   };
 
   const handleMarkComplete = async () => {
-    await updateEventStatus(id, "Completed");
-    setEventData(prev => ({ ...prev, status: "Completed" }));
+    await updateEventStatus(id, 'Completed');
+    setEventData((prev) => ({ ...prev, status: 'Completed' }));
   };
 
   if (!eventData) {
@@ -141,19 +129,20 @@ const EventCompletionPage = () => {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 },  minHeight: '100vh' }}>
-
+    <Box sx={{ p: { xs: 2, sm: 3 }, minHeight: '100vh' }}>
       {/* Back button and Create New Event button */}
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        mb: 4
-      }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 4
+        }}
+      >
         <Button
           startIcon={<ArrowBackIcon />}
           onClick={handleBackToEvents}
-          sx={{ 
+          sx={{
             color: '#212B36',
             textTransform: 'none',
             '&:hover': { bgcolor: 'rgba(33, 43, 54, 0.08)' }
@@ -161,7 +150,7 @@ const EventCompletionPage = () => {
         >
           Back To Events
         </Button>
-        
+
         <Button
           variant="contained"
           onClick={() => router.push('/dashboard/analytics')}
@@ -180,50 +169,61 @@ const EventCompletionPage = () => {
       </Box>
 
       {/* Completed Event Card */}
-      <Box sx={{ 
-        bgcolor: 'white',
-        borderRadius: 2,
-        p: 4,
-        mb: 4,
-        textAlign: 'center',
-        boxShadow: '0px 2px 4px rgba(145, 158, 171, 0.16)'
-      }}>
+      <Box
+        sx={{
+          bgcolor: 'white',
+          borderRadius: 2,
+          p: 4,
+          mb: 4,
+          textAlign: 'center',
+          boxShadow: '0px 2px 4px rgba(145, 158, 171, 0.16)'
+        }}
+      >
         {/* Illustration */}
-        <Box sx={{ 
-          mb: 2,
-          display: 'flex',
-          justifyContent: 'center'
-        }}>
+        <Box
+          sx={{
+            mb: 2,
+            display: 'flex',
+            justifyContent: 'center'
+          }}
+        >
           {/* <SelfieDoodle sx={{ 
             width: 120,
             height: 120
           }} /> */}
-             <Box sx={{ 
-                mb: 0,
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                height: 172,
-                width: 230,
-                position: 'relative'
-              }}>
-                <SelfieDoodle sx={{ 
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  maxWidth: '100%',
-                  maxHeight: '100%'
-                }} />
-              </Box>
+          <Box
+            sx={{
+              mb: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              height: 172,
+              width: 230,
+              position: 'relative'
+            }}
+          >
+            <SelfieDoodle
+              sx={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                maxWidth: '100%',
+                maxHeight: '100%'
+              }}
+            />
+          </Box>
         </Box>
 
         {/* Title */}
-        <Typography variant="h5" sx={{ 
-          fontWeight: 600, 
-          color: '#212B36',
-          mb: 1
-        }}>
+        <Typography
+          variant="h5"
+          sx={{
+            fontWeight: 600,
+            color: '#212B36',
+            mb: 1
+          }}
+        >
           Your Event Is Completed
         </Typography>
 
@@ -240,14 +240,14 @@ const EventCompletionPage = () => {
       <Box
         sx={{
           maxWidth: 1200,
-          margin: "40px auto",
-          bgcolor: "white",
+          margin: '40px auto',
+          bgcolor: 'white',
           borderRadius: 2,
-          boxShadow: "0px 2px 4px rgba(145, 158, 171, 0.16)",
+          boxShadow: '0px 2px 4px rgba(145, 158, 171, 0.16)',
           p: { xs: 2, sm: 4 },
-          display: "flex",
-          flexDirection: { xs: "column", md: "row" },
-          gap: 4,
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          gap: 4
         }}
       >
         {/* Left column: Title and description */}
@@ -266,24 +266,24 @@ const EventCompletionPage = () => {
             <Typography sx={{ fontWeight: 500 }}>Event Name</Typography>
             <TextField
               fullWidth
-              value={eventData.title || ""}
+              value={eventData.title || ''}
               InputProps={{ readOnly: true }}
               sx={{
                 mt: 1,
                 '& .MuiInputBase-root': {
-                  pointerEvents: 'none',
+                  pointerEvents: 'none'
                 },
                 '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: '#e0e0e0',
+                  borderColor: '#e0e0e0'
                 },
                 '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
                   borderColor: '#e0e0e0',
-                  boxShadow: 'none',
+                  boxShadow: 'none'
                 },
                 '& .MuiInputBase-root.Mui-focused': {
                   boxShadow: 'none',
-                  backgroundColor: 'inherit',
-                },
+                  backgroundColor: 'inherit'
+                }
               }}
             />
           </Box>
@@ -298,19 +298,19 @@ const EventCompletionPage = () => {
               sx={{
                 mt: 1,
                 '& .MuiInputBase-root': {
-                  pointerEvents: 'none',
+                  pointerEvents: 'none'
                 },
                 '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: '#e0e0e0',
+                  borderColor: '#e0e0e0'
                 },
                 '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
                   borderColor: '#e0e0e0',
-                  boxShadow: 'none',
+                  boxShadow: 'none'
                 },
                 '& .MuiInputBase-root.Mui-focused': {
                   boxShadow: 'none',
-                  backgroundColor: 'inherit',
-                },
+                  backgroundColor: 'inherit'
+                }
               }}
             />
           </Box>
@@ -323,19 +323,19 @@ const EventCompletionPage = () => {
               sx={{
                 mt: 1,
                 '& .MuiInputBase-root': {
-                  pointerEvents: 'none',
+                  pointerEvents: 'none'
                 },
                 '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: '#e0e0e0',
+                  borderColor: '#e0e0e0'
                 },
                 '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
                   borderColor: '#e0e0e0',
-                  boxShadow: 'none',
+                  boxShadow: 'none'
                 },
                 '& .MuiInputBase-root.Mui-focused': {
                   boxShadow: 'none',
-                  backgroundColor: 'inherit',
-                },
+                  backgroundColor: 'inherit'
+                }
               }}
             />
           </Box>
@@ -348,19 +348,19 @@ const EventCompletionPage = () => {
               sx={{
                 mt: 1,
                 '& .MuiInputBase-root': {
-                  pointerEvents: 'none',
+                  pointerEvents: 'none'
                 },
                 '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: '#e0e0e0',
+                  borderColor: '#e0e0e0'
                 },
                 '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
                   borderColor: '#e0e0e0',
-                  boxShadow: 'none',
+                  boxShadow: 'none'
                 },
                 '& .MuiInputBase-root.Mui-focused': {
                   boxShadow: 'none',
-                  backgroundColor: 'inherit',
-                },
+                  backgroundColor: 'inherit'
+                }
               }}
             />
           </Box>
@@ -373,19 +373,19 @@ const EventCompletionPage = () => {
               sx={{
                 mt: 1,
                 '& .MuiInputBase-root': {
-                  pointerEvents: 'none',
+                  pointerEvents: 'none'
                 },
                 '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: '#e0e0e0',
+                  borderColor: '#e0e0e0'
                 },
                 '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
                   borderColor: '#e0e0e0',
-                  boxShadow: 'none',
+                  boxShadow: 'none'
                 },
                 '& .MuiInputBase-root.Mui-focused': {
                   boxShadow: 'none',
-                  backgroundColor: 'inherit',
-                },
+                  backgroundColor: 'inherit'
+                }
               }}
             />
           </Box>
@@ -393,18 +393,23 @@ const EventCompletionPage = () => {
       </Box>
 
       {/* Languages Section */}
-      <Box sx={{ 
-        mt: 4,
-        bgcolor: 'white',
-        borderRadius: 2,
-        p: 3,
-        boxShadow: '0px 2px 4px rgba(145, 158, 171, 0.16)'
-      }}>
-        <Typography variant="h6" sx={{ 
-          fontWeight: 600,
-          color: '#212B36',
-          mb: 1
-        }}>
+      <Box
+        sx={{
+          mt: 4,
+          bgcolor: 'white',
+          borderRadius: 2,
+          p: 3,
+          boxShadow: '0px 2px 4px rgba(145, 158, 171, 0.16)'
+        }}
+      >
+        <Typography
+          variant="h6"
+          sx={{
+            fontWeight: 600,
+            color: '#212B36',
+            mb: 1
+          }}
+        >
           Published Languages
         </Typography>
 
@@ -418,25 +423,26 @@ const EventCompletionPage = () => {
           {eventData.sourceLanguages.map((lang, i) => (
             <Box
               key={`src-${lang}-${i}`}
-              sx={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
                 alignItems: 'center',
                 py: 2,
                 borderBottom: '1px solid #F2F3F5'
-              }}>
+              }}
+            >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="subtitle1">
-                  {getFullLanguageName(getBaseLangCode(lang))}
-                </Typography>
-                <Box sx={{ 
-                  bgcolor: '#EEF2FF', 
-                  color: '#6366F1', 
-                  px: 1, 
-                  py: 0.5, 
-                  borderRadius: 1,
-                  fontSize: '12px'
-                }}>
+                <Typography variant="subtitle1">{getFullLanguageName(getBaseLangCode(lang))}</Typography>
+                <Box
+                  sx={{
+                    bgcolor: '#EEF2FF',
+                    color: '#6366F1',
+                    px: 1,
+                    py: 0.5,
+                    borderRadius: 1,
+                    fontSize: '12px'
+                  }}
+                >
                   Source
                 </Box>
               </Box>
@@ -451,7 +457,7 @@ const EventCompletionPage = () => {
             const baseLang = getBaseLangCode(lang).toUpperCase(); // privKeys are uppercase
             // Extract all translations for this language from privmap
             const translationLines = (transcripts.privmap || [])
-              .map(item => {
+              .map((item) => {
                 const idx = item.privKeys.indexOf(baseLang);
                 return idx !== -1 ? item.privValues[idx] : null;
               })
@@ -460,25 +466,26 @@ const EventCompletionPage = () => {
             return (
               <Box
                 key={`tgt-${lang}-${i}`}
-                sx={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
                   alignItems: 'center',
                   py: 2,
                   borderBottom: '1px solid #F2F3F5'
-                }}>
+                }}
+              >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="subtitle1">
-                    {getFullLanguageName(getBaseLangCode(lang))}
-                  </Typography>
-                  <Box sx={{ 
-                    bgcolor: '#E5F7FF', 
-                    color: '#0EA5E9', 
-                    px: 1, 
-                    py: 0.5, 
-                    borderRadius: 1,
-                    fontSize: '12px'
-                  }}>
+                  <Typography variant="subtitle1">{getFullLanguageName(getBaseLangCode(lang))}</Typography>
+                  <Box
+                    sx={{
+                      bgcolor: '#E5F7FF',
+                      color: '#0EA5E9',
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      fontSize: '12px'
+                    }}
+                  >
                     Translation
                   </Box>
                 </Box>
@@ -518,11 +525,9 @@ const EventCompletionPage = () => {
                       }
                     }}
                   >
-                    <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
-                      Download
-                    </Box>
+                    <Box sx={{ display: { xs: 'none', sm: 'block' } }}>Download</Box>
                   </Button>
-                  <IconButton 
+                  <IconButton
                     size="small"
                     sx={{
                       color: '#637381',
@@ -541,4 +546,4 @@ const EventCompletionPage = () => {
   );
 };
 
-export default EventCompletionPage; 
+export default EventCompletionPage;

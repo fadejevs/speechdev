@@ -4,21 +4,21 @@ import axios from 'axios';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
 
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_BASE_URL
 });
 
 // Map language names to Azure language codes
 const languageCodeMap = {
-  'English': 'en-US',
-  'Spanish': 'es-ES',
-  'Latvian': 'lv-LV',
-  'German': 'de-DE',
-  'French': 'fr-FR',
-  'Russian': 'ru-RU',
-  'Chinese': 'zh-CN',
-  'Japanese': 'ja-JP',
-  'Italian': 'it-IT',
-  'Portuguese': 'pt-PT'
+  English: 'en-US',
+  Spanish: 'es-ES',
+  Latvian: 'lv-LV',
+  German: 'de-DE',
+  French: 'fr-FR',
+  Russian: 'ru-RU',
+  Chinese: 'zh-CN',
+  Japanese: 'ja-JP',
+  Italian: 'it-IT',
+  Portuguese: 'pt-PT'
 };
 
 const transcriptionService = {
@@ -26,7 +26,7 @@ const transcriptionService = {
   speechToText: async (audioBlob, filename, language) => {
     const formData = new FormData();
     formData.append('file', audioBlob, filename);
-    
+
     // Convert language name to code if needed
     const languageCode = languageCodeMap[language] || language;
     formData.append('language', languageCode);
@@ -36,8 +36,8 @@ const transcriptionService = {
     try {
       const response = await apiClient.post('/speech-to-text', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+          'Content-Type': 'multipart/form-data'
+        }
       });
       console.log('Speech recognition response:', response.data);
       return response.data;
@@ -46,26 +46,28 @@ const transcriptionService = {
       throw error.response ? error.response.data : new Error('Network error or server unavailable');
     }
   },
-  
+
   // Translation service using your existing backend
   translateText: async (text, targetLang) => {
     // Convert language name to code if needed
     const targetCode = languageCodeMap[targetLang] || targetLang;
-    
+
     // Extract just the language code without region if it has a hyphen
     const simplifiedTargetCode = targetCode.includes('-') ? targetCode.split('-')[0] : targetCode;
-    
-    console.log(`translateText: Converting target language '${targetLang}' to code '${targetCode}' (simplified: '${simplifiedTargetCode}')`);
-    
+
+    console.log(
+      `translateText: Converting target language '${targetLang}' to code '${targetCode}' (simplified: '${simplifiedTargetCode}')`
+    );
+
     try {
       console.log(`Sending translation request for text: "${text.substring(0, 30)}..." to target language: ${simplifiedTargetCode}`);
-      
+
       const response = await axios.post(`${API_BASE_URL}/translate`, {
         text: text,
         source_language: 'auto', // Auto-detect source language
         target_language: simplifiedTargetCode // Use simplified code (e.g., 'es' instead of 'es-ES')
       });
-      
+
       console.log(`Translation response:`, response.data);
       return response.data;
     } catch (error) {
@@ -77,7 +79,7 @@ const transcriptionService = {
       throw error;
     }
   },
-  
+
   // Get transcript history
   getTranscriptHistory: async () => {
     try {
@@ -88,7 +90,7 @@ const transcriptionService = {
       throw error;
     }
   },
-  
+
   // Store transcript
   storeTranscript: async (originalText, translatedText, sourceLanguage, targetLanguage) => {
     try {
@@ -98,7 +100,7 @@ const transcriptionService = {
         source_language: sourceLanguage,
         target_language: targetLanguage
       });
-      
+
       return response.data;
     } catch (error) {
       console.error('Store transcript error:', error);
@@ -107,4 +109,4 @@ const transcriptionService = {
   }
 };
 
-export default transcriptionService; 
+export default transcriptionService;

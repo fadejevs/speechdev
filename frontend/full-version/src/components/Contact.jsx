@@ -54,16 +54,12 @@ export default function Contact({
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCountry, setSelectedCountry] = useState(
-    countries.find((item) => item.dialCode === (dialCode || '+1')) || countries[0]
-  );
+  const [selectedCountry, setSelectedCountry] = useState(countries.find((item) => item.dialCode === (dialCode || '+1')) || countries[0]);
 
   const open = Boolean(anchorEl);
   const id = open ? 'dialcode-popper' : undefined;
 
-  const filteredCountries = countries.filter((country) =>
-    country.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredCountries = countries.filter((country) => country.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const handleSearchChange = (e) => setSearchTerm(e.target.value);
 

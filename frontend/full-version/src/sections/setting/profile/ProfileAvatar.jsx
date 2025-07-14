@@ -32,8 +32,10 @@ export default function ProfileAvatar() {
   useEffect(() => {
     async function getAvatar() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        
+        const {
+          data: { user }
+        } = await supabase.auth.getUser();
+
         // First check for custom uploaded avatar
         if (user?.user_metadata?.avatar_url) {
           setAvatar(user.user_metadata.avatar_url);
@@ -76,9 +78,7 @@ export default function ProfileAvatar() {
       // 1. Upload to Supabase Storage
       const fileExt = file.name.split('.').pop();
       const filePath = `${userData.id}/${userData.id}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, { upsert: true });
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
@@ -88,10 +88,10 @@ export default function ProfileAvatar() {
 
       // 3. Update user metadata
       const { error: updateError } = await supabase.auth.updateUser({
-        data: { 
+        data: {
           avatar_url: publicUrl,
           // Preserve other metadata
-          ...userData.user_metadata,
+          ...userData.user_metadata
         }
       });
 
@@ -99,10 +99,7 @@ export default function ProfileAvatar() {
 
       // 4. Update profiles table if it exists
       try {
-        await supabase
-          .from('profiles')
-          .update({ avatar_url: publicUrl })
-          .eq('id', userData.id);
+        await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', userData.id);
       } catch (err) {
         console.log('Profile table update failed:', err);
         // Don't throw error as this is optional
@@ -111,7 +108,6 @@ export default function ProfileAvatar() {
       // 5. Update local state and refresh user data
       setAvatar(publicUrl);
       await refreshUser();
-
     } catch (err) {
       console.error('Avatar upload error:', err);
       alert('Avatar upload failed: ' + err.message);
@@ -147,19 +143,12 @@ export default function ProfileAvatar() {
   return (
     <>
       <ListItemAvatar sx={{ mr: 2 }}>
-        <Avatar 
-          src={avatar || undefined} 
-          alt="Profile Avatar" 
-          size={AvatarSize.XL}
-        >
+        <Avatar src={avatar || undefined} alt="Profile Avatar" size={AvatarSize.XL}>
           {getDisplayName(userData)?.[0]}
         </Avatar>
       </ListItemAvatar>
       <Stack direction="row" sx={{ gap: 1, alignItems: 'center' }}>
-        <ListItemText
-          primary={getDisplayName(userData)}
-          secondary={userData?.role || "User"}
-        />
+        <ListItemText primary={getDisplayName(userData)} secondary={userData?.role || 'User'} />
         {showAvatarControls && (
           <>
             <ListItemText {...getRootProps()}>
@@ -176,13 +165,7 @@ export default function ProfileAvatar() {
             </ListItemText>
             {avatar && avatar !== '/assets/images/users/avatar-1.png' && (
               <Tooltip title="Remove Avatar">
-                <IconButton 
-                  color="error" 
-                  onClick={handleRemoveAvatar} 
-                  size="small" 
-                  aria-label="delete" 
-                  disabled={uploading}
-                >
+                <IconButton color="error" onClick={handleRemoveAvatar} size="small" aria-label="delete" disabled={uploading}>
                   <IconTrash size={16} stroke={1.5} />
                 </IconButton>
               </Tooltip>
