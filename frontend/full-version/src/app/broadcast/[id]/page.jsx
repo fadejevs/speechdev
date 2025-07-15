@@ -133,41 +133,42 @@ export default function BroadcastPage() {
     socket.on('realtime_transcription', async (data) => {
       setLiveTranscriptionLang(data.source_language || '');
 
+      const handleFinalTranscription = async (text) => {
+        if (!text || !translationLanguageRef.current) return;
+
+        const targetLang = getLanguageCode(translationLanguageRef.current);
+        const langCode = getBaseLangCode(targetLang);
+        const translations = await fetchTranslations(text, langCode);
+        const translatedText = translations[langCode];
+
+        if (translatedText?.trim()) {
+          if (autoSpeakLangRef.current === langCode) {
+            queueForTTS(translatedText.trim(), langCode);
+          }
+          const newTranslation = {
+            id: Date.now() + Math.random(),
+            text: translatedText.trim(),
+            language: targetLang,
+            timestamp: Date.now()
+          };
+          setPersistedTranslations((prev) => [...prev, newTranslation]);
+        }
+      };
+
       if (data.is_final) {
         setCurrentInterimCaption('');
         if (data.text?.trim()) {
           const newCaption = { id: Date.now() + Math.random(), text: data.text.trim(), timestamp: Date.now() };
           setPersistedCaptions((prev) => [...prev, newCaption]);
-        }
-
-        if (data.text?.trim() && translationLanguageRef.current) {
-          const targetLang = getLanguageCode(translationLanguageRef.current);
-          const langCode = getBaseLangCode(targetLang);
-          const translations = await fetchTranslations(data.text.trim(), langCode);
-          const translatedText = translations[langCode];
-
-          if (translatedText?.trim()) {
-            if (autoSpeakLangRef.current) {
-              queueForTTS(translatedText.trim(), langCode);
-            }
-            setLiveTranslations(translations);
-            setRealtimeTranslations({});
-            const newTranslation = {
-              id: Date.now() + Math.random(),
-              text: translatedText.trim(),
-              language: targetLang,
-              timestamp: Date.now()
-            };
-            setPersistedTranslations((prev) => [...prev, newTranslation]);
-          }
+          handleFinalTranscription(data.text.trim());
         }
       } else {
         setCurrentInterimCaption(data.text || '');
+        // Still fetch and display interim translations for a responsive UI
         if (data.text?.trim() && translationLanguageRef.current) {
           const targetLang = getLanguageCode(translationLanguageRef.current);
           const langCode = getBaseLangCode(targetLang);
-          const translations = await fetchTranslations(data.text, langCode);
-          setRealtimeTranslations(translations);
+          fetchTranslations(data.text, langCode).then(setRealtimeTranslations);
         }
       }
     });

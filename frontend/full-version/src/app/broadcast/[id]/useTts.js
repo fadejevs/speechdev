@@ -120,7 +120,6 @@ const processOpenAITTSQueue = async (eventData) => {
     const { text, lang, resolve } = openAITTSQueue.shift();
     const success = await speakWithOpenAIImmediate(text, lang, eventData);
     resolve(success);
-    await new Promise((res) => setTimeout(res, 100));
   }
   isProcessingOpenAIQueue = false;
 };
@@ -350,8 +349,16 @@ export const useTts = (eventData) => {
           if (isMobile()) {
             if (keepAliveInterval.current) clearInterval(keepAliveInterval.current);
             keepAliveInterval.current = setInterval(() => {
-              if (!isAudioPlaying) playSilentAudio();
-            }, 15000);
+              if (!isAudioPlaying) {
+                  console.log('[Audio Keep-Alive] Pinging audio session (8s interval).');
+                  playSilentAudio();
+              }
+              // Add a check for a "stuck" audio context
+              if (audioContextRef.current && audioContextRef.current.state !== 'running') {
+                  console.warn('[Audio Keep-Alive] Audio context seems stuck. Attempting to resume.');
+                  audioContextRef.current.resume().catch(() => {});
+              }
+            }, 8000); // More aggressive 8-second interval
           }
         } finally {
           setTtsLoading(false);
@@ -362,12 +369,26 @@ export const useTts = (eventData) => {
   );
 
   useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && autoSpeakLang && isMobile()) {
+        console.log('[Visibility] App became visible. Re-pinging audio session.');
+        playSilentAudio();
+        // Also try to resume the audio context just in case
+        if (audioContextRef.current && audioContextRef.current.state !== 'running') {
+            audioContextRef.current.resume().catch(() => {});
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     // Cleanup on unmount
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (keepAliveInterval.current) clearInterval(keepAliveInterval.current);
       if (mobileTtsTimeout.current) clearTimeout(mobileTtsTimeout.current);
     };
-  }, []);
+  }, [autoSpeakLang]);
 
   return {
     ttsLoading,
