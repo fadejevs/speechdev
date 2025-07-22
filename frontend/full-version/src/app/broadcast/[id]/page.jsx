@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Box, Typography, CircularProgress, Paper, Button, Menu, MenuItem, IconButton, useMediaQuery, useTheme, Fab } from '@mui/material';
+import { Box, Typography, CircularProgress, Paper, Button, Menu, MenuItem, IconButton, useMediaQuery, useTheme, Fab, keyframes } from '@mui/material';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -43,6 +43,32 @@ const fetchTranslations = async (text, lang) => {
     return {};
   }
 };
+
+// Define a more sophisticated shimmer animation
+const shimmer = keyframes`
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+`;
+
+// Define a pulse animation for the interim text
+const pulse = keyframes`
+  0% {
+    transform: scale(0.95);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.7;
+  }
+`;
 
 export default function BroadcastPage() {
   const { id } = useParams();
@@ -156,15 +182,38 @@ export default function BroadcastPage() {
       };
 
       if (data.is_final) {
+        // When a final text arrives, clear BOTH interim states
         setCurrentInterimCaption('');
+        setRealtimeTranslations({}); // FIX: Clear the interim translation state
+
         if (data.text?.trim()) {
-          const newCaption = { id: Date.now() + Math.random(), text: data.text.trim(), timestamp: Date.now() };
-          setPersistedCaptions((prev) => [...prev, newCaption]);
-          handleFinalTranscription(data.text.trim());
+          const newCaption = {
+            id: data.chunk_ids ? data.chunk_ids[0] : crypto.randomUUID(), // Use first ID for simplicity
+            text: data.text.trim(),
+            timestamp: Date.now(),
+            isContextEnhanced: data.is_context_enhanced || false,
+            chunkIds: data.chunk_ids || [],
+            replacesChunkIds: data.replaces_chunk_ids || []
+          };
+
+          setPersistedCaptions((prev) => {
+            let captions = [...prev];
+            // If this is an enhanced replacement, remove the old chunks first
+            if (newCaption.isContextEnhanced && newCaption.replacesChunkIds.length > 0) {
+              captions = captions.filter(c => !newCaption.replacesChunkIds.includes(c.id));
+            }
+            // Add the new caption
+            captions.push(newCaption);
+            return captions;
+          });
+
+          if (!data.is_context_enhanced) {
+            handleFinalTranscription(data.text.trim());
+          }
         }
       } else {
+        // This is an interim update
         setCurrentInterimCaption(data.text || '');
-        // Still fetch and display interim translations for a responsive UI
         if (data.text?.trim() && translationLanguageRef.current) {
           const targetLang = getLanguageCode(translationLanguageRef.current);
           const langCode = getBaseLangCode(targetLang);
@@ -186,9 +235,11 @@ export default function BroadcastPage() {
   }, [id, queueForTTS]);
 
   useEffect(() => {
+    // Only clear translations when the translation language changes
+    // Don't clear when just toggling TTS on/off (autoSpeakLang)
     setPersistedTranslations([]);
     spokenSentences.current.clear();
-  }, [translationLanguage, autoSpeakLang, spokenSentences]);
+  }, [translationLanguage, spokenSentences]); // Removed autoSpeakLang from dependencies
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -200,16 +251,37 @@ export default function BroadcastPage() {
     return () => clearInterval(intervalId);
   }, []);
 
+  // Define currentInterimTranslation from the realtimeTranslations state
+  const currentInterimTranslation = useMemo(() => {
+    if (translationLanguage && realtimeTranslations) {
+      const targetLang = getLanguageCode(translationLanguage);
+      const langCode = getBaseLangCode(targetLang);
+      return realtimeTranslations[langCode] || '';
+    }
+    return '';
+  }, [realtimeTranslations, translationLanguage]);
+
   const displayedCaption = useMemo(() => {
-    const finalTexts = persistedCaptions.map((c) => c.text).join(' ');
-    let fullCaption = finalTexts;
+    // Combine final, persisted captions into a single block
+    const final_text = persistedCaptions
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map((c) => c.text)
+      .join(' ')
+      .trim();
+
+    // The full caption starts with the final text
+    let fullCaption = final_text;
+
+    // Append the interim text, but only if it's new information
     if (currentInterimCaption) {
       const interimTrimmed = currentInterimCaption.trim();
-      if (interimTrimmed && !finalTexts.includes(interimTrimmed)) {
-        fullCaption = finalTexts ? `${finalTexts} ${interimTrimmed}` : interimTrimmed;
+      // A simple check to see if the final text already contains the start of the interim text
+      if (interimTrimmed && !final_text.endsWith(interimTrimmed.substring(0, 10))) {
+        fullCaption = fullCaption ? `${fullCaption} ${interimTrimmed}` : interimTrimmed;
       }
     }
-    return fullCaption.trim();
+    
+    return fullCaption;
   }, [persistedCaptions, currentInterimCaption]);
 
   const displayedTranslation = useMemo(() => {
@@ -388,17 +460,32 @@ export default function BroadcastPage() {
                         : 'Waiting for connection...'}
                   </Typography>
                 </Box>
+              ) : persistedTranslations.length === 0 && !currentInterimTranslation ? (
+                <Typography variant="body1" sx={{ color: 'text.secondary', fontSize: { xs: '1rem', sm: '1.125rem' } }}>
+                  {getPlaceholderText(translationLanguage)}
+                </Typography>
               ) : (
                 <Typography
                   variant="body1"
                   sx={{
-                    color: displayedTranslation ? 'text.primary' : 'text.secondary',
+                    color: 'text.primary',
                     fontSize: { xs: '1.1rem', sm: '1.25rem' },
                     lineHeight: 1.6,
-                    fontWeight: 400
+                    fontWeight: 400,
+                    whiteSpace: 'pre-wrap'
                   }}
                 >
-                  {displayedTranslation || getPlaceholderText(translationLanguage)}
+                  {persistedTranslations.map(t => t.text).join(' ')}
+                  <Typography
+                    component="span"
+                    sx={{
+                      color: 'text.secondary',
+                      animation: `${pulse} 1.5s infinite ease-in-out`,
+                      fontSize: 'inherit' // FIX: Inherit font size from parent
+                    }}
+                  >
+                    {` ${currentInterimTranslation}`}
+                  </Typography>
                 </Typography>
               )}
             </Box>
@@ -504,9 +591,29 @@ export default function BroadcastPage() {
               </Box>
             </Box>
             <Box sx={{ p: 3, minHeight: '200px' }}>
-              <Typography variant="body1" sx={{ color: displayedCaption ? 'text.primary' : 'text.secondary', pl: 2, pt: 2 }}>
-                {displayedCaption || 'Waiting for live transcription...'}
-              </Typography>
+              {persistedCaptions.length === 0 && !currentInterimCaption ? (
+                <Typography variant="body1" sx={{ color: 'text.secondary', pl: 2, pt: 2 }}>
+                  Waiting for live transcription...
+                </Typography>
+              ) : (
+                <Typography variant="body1" sx={{ color: 'text.primary', pl: 2, pt: 2, whiteSpace: 'pre-wrap' }}>
+                  {persistedCaptions.map(c => c.text).join(' ')}
+                  <Typography
+                    component="span"
+                    sx={{
+                      backgroundImage: 'linear-gradient(90deg, #9e9e9e,rgb(65, 65, 65),rgb(136, 136, 136))',
+                      backgroundSize: '200% auto',
+                      backgroundClip: 'text',
+                      WebkitBackgroundClip: 'text',
+                      textFillColor: 'transparent',
+                      WebkitTextFillColor: 'transparent',
+                      animation: `${shimmer} 2s linear infinite`,
+                    }}
+                  >
+                    {` ${currentInterimCaption}`}
+                  </Typography>
+                </Typography>
+              )}
             </Box>
           </Box>
           <Box
@@ -560,13 +667,38 @@ export default function BroadcastPage() {
             </Box>
             <Box sx={{ p: 3, minHeight: '200px' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Typography variant="body1" sx={{ color: displayedTranslation ? 'text.primary' : 'text.secondary', flex: 1, pl: 2, pt: 2 }}>
-                  {displayedTranslation || getPlaceholderText(translationLanguage)}
-                </Typography>
+                {persistedTranslations.length === 0 && !currentInterimTranslation ? (
+                  <Typography variant="body1" sx={{ color: 'text.secondary', flex: 1, pl: 2, pt: 2 }}>
+                    {getPlaceholderText(translationLanguage)}
+                  </Typography>
+                ) : (
+                  <Typography variant="body1" sx={{ color: 'text.primary', flex: 1, pl: 2, pt: 2, whiteSpace: 'pre-wrap' }}>
+                    {persistedTranslations.map(t => t.text).join(' ')}
+                    <Typography
+                      component="span"
+                      sx={{
+                        backgroundImage: 'linear-gradient(90deg, #9e9e9e, #eeeeee, #9e9e9e)',
+                        backgroundSize: '200% auto',
+                        backgroundClip: 'text',
+                        WebkitBackgroundClip: 'text',
+                        textFillColor: 'transparent',
+                        WebkitTextFillColor: 'transparent',
+                        animation: `${shimmer} 2s linear infinite`,
+                      }}
+                    >
+                      {` ${currentInterimTranslation}`}
+                    </Typography>
+                  </Typography>
+                )}
                 {/* Enhanced TTS Button with better mobile/tablet handling */}
-                {translationLanguage && displayedTranslation && (
+                {(persistedTranslations.length > 0 || !!currentInterimTranslation) && (
                   <IconButton
                     onClick={() => {
+                      // **FIX**: Only speak the final, persisted translations
+                      const fullTranslationText = persistedTranslations.map(t => t.text).join(' ').trim();
+
+                      if (!fullTranslationText) return;
+                      
                       if (isMobile()) {
                         handleMobilePlayToggle(translationLanguage);
                       } else {
@@ -578,9 +710,7 @@ export default function BroadcastPage() {
                           stopTts();
                         } else {
                           setAutoSpeakLang(langCode);
-                          if (displayedTranslation) {
-                            queueForTTS(displayedTranslation, langCode);
-                          }
+                          queueForTTS(fullTranslationText, langCode);
                         }
                       }
                     }}

@@ -38,6 +38,7 @@
     "lodash-es": "4.17.21",
     "microsoft-cognitiveservices-speech-sdk": "^1.43.1",
     "next": "15.0.3",
+    "onnxruntime-web": "^1.22.0",
     "react": "18.3.1",
     "react-device-detect": "2.2.3",
     "react-dom": "18.3.1",

@@ -28,6 +28,7 @@ import SelfieDoodle from '@/images/illustration/SelfieDoodle';
 import io from 'socket.io-client';
 import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
 import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
+import { useLLMProcessor } from './hooks/useLLMProcessor';
 
 // language lookup
 const languages = DEEPL_LANGUAGES.map((l) => ({
@@ -124,6 +125,9 @@ export default function EventLivePage() {
   const [audioInputDevices, setAudioInputDevices] = useState([]);
   const [selectedAudioInput, setSelectedAudioInput] = useState('');
   const [anchorEl, setAnchorEl] = useState(null);
+
+  // LLM Processing Hook
+  const llmProcessor = useLLMProcessor(eventData, socketRef);
 
   useEffect(() => {
     setLoading(true);
@@ -277,11 +281,16 @@ export default function EventLivePage() {
         speechConfig.enableDictation(); // Enable dictation mode for better continuous recognition
         speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Don't filter any speech
 
-        // AGGRESSIVE TIMEOUT SETTINGS for faster TTS response (like mobile Web Speech API)
-        // Make Azure send final results much faster instead of waiting for long pauses
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '200'); // Default: 2000ms -> 300ms
-        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '100'); // Default: 5000ms -> 300ms
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, '300'); // Default: 15000ms -> 800ms
+        // Ultra-aggressive Azure timeout settings for immediate transcription
+        // Make Azure send results much faster for continuous speech
+        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '200'); // Even faster: 200ms
+        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '500'); // Even faster: 500ms
+        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, '1000'); // Faster: 1s max wait
+        
+        // Additional speed optimizations
+        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, '1000'); // Faster initial timeout
+        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationStrategy, 'Default'); // Use default segmentation
+        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EnableAudioLogging, 'false'); // Disable logging for speed
 
         // Add target languages
         (eventData.targetLanguages || []).forEach((lang) => {
@@ -293,39 +302,52 @@ export default function EventLivePage() {
 
         recognizerRef.current = recognizer;
 
-        // Handle recognition errors - NO FALLBACK, just fail gracefully
+        // Add phrase list for better recognition of specific words.
+        // To use this, add a `phraseList` array to your event data in Supabase.
+        // e.g., eventData.phraseList = ["Speechmatics", "Ralf's awesome app"]
+        if (eventData.phraseList && Array.isArray(eventData.phraseList) && eventData.phraseList.length > 0) {
+          const phraseListGrammar = SpeechSDK.PhraseListGrammar.fromRecognizer(recognizer);
+          phraseListGrammar.addPhrases(eventData.phraseList);
+          console.log('[Azure] Added phrase list to recognizer:', eventData.phraseList);
+        }
+
+        // Handle recognition errors with a restart mechanism
         recognizer.canceled = (s, e) => {
           console.log('[Live] Recognition canceled. Reason:', e.reason);
           if (e.reason === SpeechSDK.CancellationReason.Error) {
             console.error(`[Live] Recognition error: ${e.errorDetails}`);
+            let isFatal = false;
 
-            // Check if this is a language support error (1007)
-            if (e.errorDetails.includes('1007') || e.errorDetails.includes('not supported')) {
-              console.error(`[Azure] ❌ Language ${azureLanguageCode} is not supported in region ${process.env.NEXT_PUBLIC_AZURE_REGION}`);
-              console.error('[Azure] 💡 Try changing your Azure region to West Europe or North Europe');
-              console.error('[Azure] 💡 Or contact your Azure administrator to verify language support in your region');
+            // Check for fatal errors that we should not recover from
+            if (
+              e.errorDetails.includes('1007') || // Unsupported language
+              e.errorDetails.includes('not supported') ||
+              e.errorCode === SpeechSDK.CancellationErrorCode.AuthenticationFailure ||
+              e.errorCode === SpeechSDK.CancellationErrorCode.Forbidden
+            ) {
+              console.error(`[Azure] ❌ FATAL ERROR: Language, authentication, or permission issue.`);
+              console.error('[Azure] 💡 Check your Azure key, region, and language support. Will not restart.');
+              isFatal = true;
             }
 
-            console.error('[Live] Recognition failed - stopping without retry');
-
-            if (recognizerRef.current) {
-              recognizerRef.current.stopContinuousRecognitionAsync(
-                () => {
-                  console.log('[Live] Recognition stopped due to error');
-                },
-                (err) => console.error('[Live] Error stopping recognition:', err)
-              );
+            if (!isFatal) {
+              console.log('[Live] Non-fatal error detected. Restarting recognizer...');
+              restartRecognizer();
             }
           }
         };
 
         recognizer.recognizing = (_s, evt) => {
           const text = evt.result.text;
+          
+          console.log('[Admin] ⚡ Real-time (interim):', text);
+          
+          // Send interim results to participants for live feedback
           if (text && socketRef.current && socketRef.current.connected) {
             socketRef.current.emit('realtime_transcription', {
-              text,
-              is_final: false,
-              source_language: sourceLanguage,
+              text: text,
+              is_final: false, // Mark as interim
+              source_language: azureLanguageCode,
               room_id: eventData.id
             });
           }
@@ -333,21 +355,15 @@ export default function EventLivePage() {
 
         recognizer.recognized = (_s, evt) => {
           const text = evt.result.text;
-          const translations = evt.result.translations ? Object.fromEntries(Object.entries(evt.result.translations)) : {};
-          if (text && socketRef.current && socketRef.current.connected) {
-            socketRef.current.emit('realtime_transcription', {
-              text,
-              is_final: true,
-              source_language: sourceLanguage,
-              room_id: eventData.id,
-              translations
-            });
+          const rawTranslations = evt.result.translations ? Object.fromEntries(Object.entries(evt.result.translations)) : {};
+          
+          console.log('[Admin] ✅ Raw recognized:', text);
+          console.log('[Admin] 📝 Raw translations (not sent):', rawTranslations);
+          
+          // Add to buffer for processing
+          if (text) { // Only process if there is text
+            llmProcessor.addToBuffer(text, sourceLanguage, rawTranslations, handleNewTranscription);
           }
-          handleNewTranscription({
-            text,
-            source_language: sourceLanguage,
-            translations
-          });
         };
 
         // Start recognition with proper error handling
@@ -355,27 +371,43 @@ export default function EventLivePage() {
           () => console.log('[Live] Recognition started successfully'),
           (err) => {
             console.error('[Live] Failed to start recognition:', err);
-            // If start fails, try to restart after a short delay
-            setTimeout(() => {
-              if (recognizerRef.current) {
-                recognizerRef.current.stopContinuousRecognitionAsync(
-                  () => {
-                    startRecognizer();
-                  },
-                  (stopErr) => console.error('[Live] Error stopping failed recognition:', stopErr)
-                );
-              }
-            }, 1000);
+            // If start fails, it's likely a configuration issue, but we can still try to restart
+            restartRecognizer();
           }
         );
       };
 
+      const restartRecognizer = () => {
+        if (recognizerRef.current) {
+          console.log('[Live] Stopping current recognizer...');
+          recognizerRef.current.stopContinuousRecognitionAsync(
+            () => {
+              console.log('[Live] Previous recognizer stopped. Restarting in 2 seconds...');
+              recognizerRef.current = null; // Clear ref before restarting
+              setTimeout(startRecognizer, 2000);
+            },
+            (err) => {
+              console.error('[Live] Error stopping recognizer, but attempting restart anyway in 2 seconds...', err);
+              recognizerRef.current = null; // Clear ref before restarting
+              setTimeout(startRecognizer, 2000);
+            }
+          );
+        } else {
+          console.log('[Live] No active recognizer. Starting in 2 seconds...');
+          setTimeout(startRecognizer, 2000);
+        }
+      };
+
       if (eventData.status === 'Live') {
+        llmProcessor.startProcessing();
         startRecognizer();
       }
     });
 
     return () => {
+      // Stop LLM processing first
+      llmProcessor.stopProcessing();
+      
       if (recognizerRef.current) {
         recognizerRef.current.stopContinuousRecognitionAsync(
           () => (recognizerRef.current = null),
@@ -385,6 +417,7 @@ export default function EventLivePage() {
           }
         );
       }
+      
       socket.close();
     };
     // Add sourceLanguages to dependencies
@@ -422,6 +455,9 @@ export default function EventLivePage() {
   };
   const handleCompleteEvent = async () => {
     try {
+      // Stop LLM processing immediately to save tokens
+      llmProcessor.stopProcessing();
+      
       await updateEventStatus(eventData.id, 'Completed');
       setEventData((prev) => ({ ...prev, status: 'Completed' }));
       if (socketRef.current && socketRef.current.connected) {
@@ -444,17 +480,26 @@ export default function EventLivePage() {
       await updateEventStatus(eventData.id, newStatus);
       setEventData((prev) => ({ ...prev, status: newStatus }));
 
-      if (newStatus === 'Paused' && recognizerRef.current) {
-        recognizerRef.current.stopContinuousRecognitionAsync(
-          () => {
-            recognizerRef.current = null;
-          },
-          (err) => {
-            console.error('Stop recognition error:', err);
-            recognizerRef.current = null;
-          }
-        );
+      if (newStatus === 'Paused') {
+        // Stop LLM processing to save tokens
+        llmProcessor.stopProcessing();
+        
+        if (recognizerRef.current) {
+          recognizerRef.current.stopContinuousRecognitionAsync(
+            () => {
+              recognizerRef.current = null;
+            },
+            (err) => {
+              console.error('Stop recognition error:', err);
+              recognizerRef.current = null;
+            }
+          );
+        }
+      } else {
+        // Resume: activate LLM processing
+        llmProcessor.startProcessing();
       }
+      
       if (socketRef.current && socketRef.current.connected) {
         socketRef.current.emit('update_event_status', {
           room_id: eventData.id,
