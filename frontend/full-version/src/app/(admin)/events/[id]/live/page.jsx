@@ -378,24 +378,24 @@ export default function EventLivePage() {
       };
 
       const restartRecognizer = () => {
-        if (recognizerRef.current) {
+              if (recognizerRef.current) {
           console.log('[Live] Stopping current recognizer...');
-          recognizerRef.current.stopContinuousRecognitionAsync(
-            () => {
+                recognizerRef.current.stopContinuousRecognitionAsync(
+                  () => {
               console.log('[Live] Previous recognizer stopped. Restarting in 2 seconds...');
               recognizerRef.current = null; // Clear ref before restarting
               setTimeout(startRecognizer, 2000);
-            },
+                  },
             (err) => {
               console.error('[Live] Error stopping recognizer, but attempting restart anyway in 2 seconds...', err);
               recognizerRef.current = null; // Clear ref before restarting
               setTimeout(startRecognizer, 2000);
             }
-          );
+                );
         } else {
           console.log('[Live] No active recognizer. Starting in 2 seconds...');
           setTimeout(startRecognizer, 2000);
-        }
+          }
       };
 
       if (eventData.status === 'Live') {
@@ -485,16 +485,16 @@ export default function EventLivePage() {
         llmProcessor.stopProcessing();
         
         if (recognizerRef.current) {
-          recognizerRef.current.stopContinuousRecognitionAsync(
-            () => {
-              recognizerRef.current = null;
-            },
-            (err) => {
-              console.error('Stop recognition error:', err);
-              recognizerRef.current = null;
-            }
-          );
-        }
+        recognizerRef.current.stopContinuousRecognitionAsync(
+          () => {
+            recognizerRef.current = null;
+          },
+          (err) => {
+            console.error('Stop recognition error:', err);
+            recognizerRef.current = null;
+          }
+        );
+      }
       } else {
         // Resume: activate LLM processing
         llmProcessor.startProcessing();

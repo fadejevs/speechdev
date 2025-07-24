@@ -208,7 +208,7 @@ export default function BroadcastPage() {
           });
 
           if (!data.is_context_enhanced) {
-            handleFinalTranscription(data.text.trim());
+          handleFinalTranscription(data.text.trim());
           }
         }
       } else {
@@ -612,7 +612,7 @@ export default function BroadcastPage() {
                   >
                     {` ${currentInterimCaption}`}
                   </Typography>
-                </Typography>
+              </Typography>
               )}
             </Box>
           </Box>
@@ -688,7 +688,7 @@ export default function BroadcastPage() {
                     >
                       {` ${currentInterimTranslation}`}
                     </Typography>
-                  </Typography>
+                </Typography>
                 )}
                 {/* Enhanced TTS Button with better mobile/tablet handling */}
                 {(persistedTranslations.length > 0 || !!currentInterimTranslation) && (
