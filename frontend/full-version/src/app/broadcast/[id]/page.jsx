@@ -159,13 +159,36 @@ export default function BroadcastPage() {
     socket.on('realtime_transcription', async (data) => {
       setLiveTranscriptionLang(data.source_language || '');
 
-      const handleFinalTranscription = async (text) => {
+      const handleFinalTranscription = async (text, adminTranslations = {}) => {
         if (!text || !translationLanguageRef.current) return;
 
         const targetLang = getLanguageCode(translationLanguageRef.current);
         const langCode = getBaseLangCode(targetLang);
-        const translations = await fetchTranslations(text, langCode);
-        const translatedText = translations[langCode];
+        
+        // 🚀 SMART FIX: Use admin's processed translations first
+        let translatedText = null;
+        const startTime = Date.now(); // Performance tracking
+        
+        // Try to get translation from admin's smart processing
+        if (adminTranslations && Object.keys(adminTranslations).length > 0) {
+          // Check various possible language code formats
+          translatedText = adminTranslations[langCode] || 
+                          adminTranslations[targetLang] || 
+                          adminTranslations[langCode.toUpperCase()] ||
+                          adminTranslations[targetLang.toUpperCase()];
+          
+          if (translatedText) {
+            console.log(`[Mobile Optimized] ✅ Using admin's smart translation for ${langCode} (${Date.now() - startTime}ms):`, translatedText);
+          }
+        }
+        
+        // Fallback to individual API call only if admin translation unavailable
+        if (!translatedText) {
+          console.log(`[Mobile Fallback] 🔄 Admin translation not available for ${langCode}, fetching individually...`);
+          const fallbackTranslations = await fetchTranslations(text, langCode);
+          translatedText = fallbackTranslations[langCode];
+          console.log(`[Mobile Fallback] ⚠️ Individual API call completed in ${Date.now() - startTime}ms`);
+        }
 
         if (translatedText?.trim()) {
           if (autoSpeakLangRef.current === langCode) {
@@ -175,7 +198,9 @@ export default function BroadcastPage() {
             id: Date.now() + Math.random(),
             text: translatedText.trim(),
             language: targetLang,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            source: adminTranslations && Object.keys(adminTranslations).length > 0 ? 'admin_smart' : 'mobile_fallback',
+            processingTimeMs: Date.now() - startTime
           };
           setPersistedTranslations((prev) => [...prev, newTranslation]);
         }
@@ -184,7 +209,7 @@ export default function BroadcastPage() {
       if (data.is_final) {
         // When a final text arrives, clear BOTH interim states
         setCurrentInterimCaption('');
-        setRealtimeTranslations({}); // FIX: Clear the interim translation state
+        setRealtimeTranslations({}); // Clear the interim translation state
 
         if (data.text?.trim()) {
           const newCaption = {
@@ -207,17 +232,41 @@ export default function BroadcastPage() {
             return captions;
           });
 
+          // 🚀 OPTIMIZED: Pass admin's smart translations to avoid duplicate processing
           if (!data.is_context_enhanced) {
-          handleFinalTranscription(data.text.trim());
+            handleFinalTranscription(data.text.trim(), data.translations || {});
           }
         }
       } else {
         // This is an interim update
         setCurrentInterimCaption(data.text || '');
+        
+        // 🚀 SMART INTERIM HANDLING: Use admin translations if available, otherwise fallback
         if (data.text?.trim() && translationLanguageRef.current) {
           const targetLang = getLanguageCode(translationLanguageRef.current);
           const langCode = getBaseLangCode(targetLang);
-          fetchTranslations(data.text, langCode).then(setRealtimeTranslations);
+          const interimStartTime = Date.now();
+          
+          // Check if admin already provided translations for this interim text
+          if (data.translations && Object.keys(data.translations).length > 0) {
+            const adminTranslation = data.translations[langCode] || 
+                                   data.translations[targetLang] || 
+                                   data.translations[langCode.toUpperCase()] ||
+                                   data.translations[targetLang.toUpperCase()];
+            
+            if (adminTranslation) {
+              console.log(`[Mobile Interim] ✅ Instant admin translation (${Date.now() - interimStartTime}ms):`, adminTranslation);
+              setRealtimeTranslations({ [langCode]: adminTranslation });
+              return; // Skip the individual API call
+            }
+          }
+          
+          // Fallback: Only make individual API call if admin translation not available
+          console.log(`[Mobile Interim] 🔄 No admin translation available, fetching individually for interim text...`);
+          fetchTranslations(data.text, langCode).then((translations) => {
+            console.log(`[Mobile Interim] ⚠️ Individual interim API call completed in ${Date.now() - interimStartTime}ms`);
+            setRealtimeTranslations(translations);
+          });
         }
       }
     });
