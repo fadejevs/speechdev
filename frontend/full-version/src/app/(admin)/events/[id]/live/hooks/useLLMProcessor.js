@@ -69,9 +69,9 @@ export const useLLMProcessor = (eventData, socketRef) => {
     const avgPause = speechPatternRef.current.avgPauseLength;
     const bufferLength = buffer.reduce((acc, chunk) => acc + chunk.text.length, 0);
 
-    // Base timing rules
-    const MIN_WAIT = 800; // Always wait at least 800ms
-    const MAX_WAIT = 4000; // Never wait more than 4s
+    // Base timing rules - optimized for responsiveness
+    const MIN_WAIT = 1000; // Always wait at least 1000ms
+    const MAX_WAIT = 5000; // Never wait more than 5s
     const OPTIMAL_LENGTH = 150; // Target around 150 characters
 
     // Dynamic timing based on:
@@ -113,19 +113,11 @@ export const useLLMProcessor = (eventData, socketRef) => {
 
       if (!currentText) return { cleaned: '', newContext: context };
 
-      const systemPrompt = `You are an expert at cleaning and contextualizing real-time speech transcriptions. Your goal is to produce smooth, natural, and coherent text.
+      const systemPrompt = `You MUST fix this speech transcription and return ONLY the cleaned speech text in ${sourceLanguage}. Fix unclear sentences, fix punctuation, improve coherence, remove stutters. NEVER return system messages, meta-commentary, questions, greetings, or anything the speaker didn't say.
 
-CRITICAL RULES:
-1. **CONTEXT AWARENESS**: Use the previous context to understand the flow of conversation
-2. **NO REPETITION**: If current text overlaps with context, seamlessly continue without repeating
-3. **NATURAL FLOW**: Output should read as smooth, continuous speech
-4. **PRESERVE LANGUAGE**: Output must be 100% in **${sourceLanguage}** - no translation
-5. **NO COMMENTARY**: Only output the cleaned, flowing text
-6. **MAINTAIN MEANING**: Keep all important information and intent
+${contextText ? `Context: "${contextText}"` : ''}
 
-${contextText ? `Previous context: "${contextText}"` : 'No previous context.'}
-
-Clean and contextualize this current speech fragment:`;
+RETURN ONLY THE CLEANED SPEECH:`;
 
       try {
         const response = await fetch('/api/openai-chat', {
@@ -139,8 +131,8 @@ Clean and contextualize this current speech fragment:`;
               { role: 'system', content: systemPrompt },
               { role: 'user', content: currentText }
             ],
-            max_tokens: 600,
-            temperature: 0.1
+            max_tokens: 300,
+            temperature: 0.0
           })
         });
 
@@ -150,7 +142,10 @@ Clean and contextualize this current speech fragment:`;
         }
 
         const data = await response.json();
-        const cleaned = data.choices?.[0]?.message?.content?.trim() || textArray.join(' ');
+        const llmResponse = data.choices?.[0]?.message?.content?.trim() || '';
+        
+        // Safety check: if LLM response looks suspicious, use original
+        const cleaned = passesQualityCheck(llmResponse) ? llmResponse : textArray.join(' ');
 
         // Extract sentences for context (keep last 1-2 sentences)
         const sentences = cleaned.split(/[.!?]+/).filter((s) => s.trim().length > 10);
@@ -175,13 +170,31 @@ Clean and contextualize this current speech fragment:`;
     if (cleanText.length < 3) return false;
     if (cleanText.length > 1000) return false; // Suspiciously long
 
-    // Content filters
+    // Content filters - block unwanted LLM responses
     const rejectPatterns = [
       /^(um+|uh+|er+|ah+)$/i, // Just filler words
       /^[^a-zA-Z]*$/, // No letters (just punctuation/numbers)
       /no text provided/i,
       /please provide/i,
-      /i (can't|cannot) (understand|hear)/i
+      /i (can't|cannot) (understand|hear)/i,
+      // Block system/meta messages
+      /not sufficient/i,
+      /insufficient text/i,
+      /unable to process/i,
+      /error|warning/i,
+      /cannot transcribe/i,
+      // Block conversational additions
+      /how can i help/i,
+      /anything else/i,
+      /is there/i,
+      /thank you/i,
+      /you're welcome/i,
+      /hi there|hello there/i,
+      // Block questions the speaker didn't ask
+      /\?.*\?/,  // Multiple questions
+      /what.*\?.*how.*\?/i, // Question combos
+      // Block if it starts with obvious LLM responses
+      /^(sorry|unfortunately|i'm|i am|as an ai)/i
     ];
 
     return !rejectPatterns.some((pattern) => pattern.test(cleanText));

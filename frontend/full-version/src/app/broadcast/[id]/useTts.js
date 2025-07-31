@@ -334,6 +334,7 @@ export const useTts = (eventData) => {
       } else {
         setTtsLoading(true);
         try {
+          // **FIX**: Clear spoken sentences to allow replay
           spokenSentences.current.clear();
           mobileTtsQueue.current = [];
           isMobileSpeaking.current = false;

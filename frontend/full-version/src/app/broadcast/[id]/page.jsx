@@ -758,6 +758,8 @@ export default function BroadcastPage() {
                           setAutoSpeakLang(null);
                           stopTts();
                         } else {
+                          // **FIX**: Clear spoken sentences to allow replay
+                          spokenSentences.current.clear();
                           setAutoSpeakLang(langCode);
                           queueForTTS(fullTranslationText, langCode);
                         }
