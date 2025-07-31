@@ -12,6 +12,7 @@ import SelfieDoodle from '@/images/illustration/SelfieDoodle';
 import TextField from '@mui/material/TextField';
 import DownloadIcon from '@mui/icons-material/Download';
 import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
+import { formatDate } from '@/utils/dateUtils';
 
 // Create a comprehensive language mapping from the DEEPL_LANGUAGES
 const createLanguageMap = () => {
@@ -48,15 +49,7 @@ const getFullLanguageName = (code) => {
 
 const getBaseLangCode = (code) => code?.split('-')[0]?.toLowerCase() || code;
 
-function formatDate(dateString) {
-  if (!dateString) return '';
-  // Handle DD.MM.YYYY format
-  const [day, month, year] = dateString.split('.');
-  if (!day || !month || !year) return dateString; // fallback if format is unexpected
-  const date = new Date(`${year}-${month}-${day}`);
-  // Format as DD.MM.YYYY
-  return date.toLocaleDateString('en-GB');
-}
+
 
 const fetchEventById = async (id) => {
   const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`, {

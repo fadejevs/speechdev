@@ -21,6 +21,7 @@ import { ThemeDirection } from '@/config';
 import EmptySearch from '@/components/header/empty-state/EmptySearch';
 import MainCard from '@/components/MainCard';
 import { supabase } from '@/utils/supabase/client';
+import { formatDate } from '@/utils/dateUtils';
 import { AvatarSize } from '@/enum';
 
 // @assets
@@ -148,12 +149,7 @@ export default function SearchBar() {
     setIsEmptySearch(true);
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString || dateString === 'Not specified') return 'No date';
-    const date = new Date(dateString);
-    if (isNaN(date)) return 'No date';
-    return date.toLocaleDateString();
-  };
+
 
   const getStatusChip = (status) => {
     switch (status) {
