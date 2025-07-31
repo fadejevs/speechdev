@@ -17,6 +17,9 @@ let isAudioPlaying = false;
 let openAITTSQueue = [];
 let isProcessingOpenAIQueue = false;
 
+// Real API call with monitoring integration
+import { monitoredApiCall } from '@/utils/monitoredFetch';
+
 const speakWithOpenAIImmediate = async (text, lang, eventData) => {
   try {
     isAudioPlaying = true;
@@ -59,17 +62,13 @@ const speakWithOpenAIImmediate = async (text, lang, eventData) => {
     const voiceType = eventData?.ttsVoice || 'female';
     const voice = getVoiceForLanguage(lang, voiceType);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    const response = await fetch('/api/openai-tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voice, speed: 1 }),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
+    // Use monitored API call for TTS with timeout
+    const response = await Promise.race([
+      monitoredApiCall.textToSpeech(text, voice, 1),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('TTS timeout')), 10000)
+      )
+    ]);
 
     if (!response.ok) {
       isAudioPlaying = false;

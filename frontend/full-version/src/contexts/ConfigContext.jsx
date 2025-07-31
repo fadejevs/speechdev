@@ -10,8 +10,11 @@ import useLocalStorage from '@/hooks/useLocalStorage';
 // @types
 
 // @initial
+// Remove i18n from config since locale switching is disabled
+const { i18n, ...configWithoutI18n } = defaultConfig;
+
 const initialState = {
-  ...defaultConfig,
+  ...configWithoutI18n,
   onChangeCurrentTheme: () => {},
   onChangeThemeDirection: () => {},
   onChangeThemeMode: () => {}

@@ -12,6 +12,8 @@ import SelfieDoodle from '@/images/illustration/SelfieDoodle';
 import TextField from '@mui/material/TextField';
 import DownloadIcon from '@mui/icons-material/Download';
 import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
+import { formatDate } from '@/utils/dateUtils';
+import { monitoredApiCall } from '@/utils/monitoredFetch';
 
 // Create a comprehensive language mapping from the DEEPL_LANGUAGES
 const createLanguageMap = () => {
@@ -48,39 +50,25 @@ const getFullLanguageName = (code) => {
 
 const getBaseLangCode = (code) => code?.split('-')[0]?.toLowerCase() || code;
 
-function formatDate(dateString) {
-  if (!dateString) return '';
-  // Handle DD.MM.YYYY format
-  const [day, month, year] = dateString.split('.');
-  if (!day || !month || !year) return dateString; // fallback if format is unexpected
-  const date = new Date(`${year}-${month}-${day}`);
-  // Format as DD.MM.YYYY
-  return date.toLocaleDateString('en-GB');
-}
+
 
 const fetchEventById = async (id) => {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`, {
-    headers: {
-      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
-    }
-  });
-  const data = await res.json();
-  return data && data.length > 0 ? data[0] : null;
+  try {
+    const { data } = await monitoredApiCall.supabase('events', `id=eq.${id}&select=*`);
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    console.error('Error fetching event:', error);
+    return null;
+  }
 };
 
 const updateEventStatus = async (id, status) => {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`, {
-    method: 'PATCH',
-    headers: {
-      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ status })
-  });
-  const data = await res.json();
-  console.log('Update response:', res.status, data);
+  try {
+    const { data } = await monitoredApiCall.supabase('events', `id=eq.${id}`, 'PATCH', { status });
+    console.log('Update response:', data);
+  } catch (error) {
+    console.error('Error updating event status:', error);
+  }
 };
 
 const EventCompletionPage = () => {

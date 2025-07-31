@@ -12,7 +12,7 @@ export default async function Dashboard({ params }) {
 
 // Return a list of `params` to populate the [slug] dynamic segment
 export async function generateStaticParams() {
-  const response = ['overview', 'use-behavior', 'performance'];
+  const response = ['overview', 'use-behavior', 'performance', 'everspeak'];
 
   return response.map((tab) => ({
     tab: tab

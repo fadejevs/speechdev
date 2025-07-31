@@ -18,26 +18,21 @@ import { useTts } from './useTts';
 const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
 
 const fetchEventById = async (id) => {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`, {
-    headers: {
-      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
-    }
-  });
-  const data = await res.json();
-  return data && data.length > 0 ? data[0] : null;
+  try {
+    const { data } = await monitoredApiCall.supabase('events', `id=eq.${id}&select=*`);
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    console.error('Error fetching event:', error);
+    return null;
+  }
 };
 
-// This is a simplified fetchTranslations function. In a real app, this would also be extracted.
+// Real API call with monitoring integration
+import { monitoredApiCall } from '@/utils/monitoredFetch';
+
 const fetchTranslations = async (text, lang) => {
   try {
-    const res = await fetch('/api/translate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, target_lang: lang.toUpperCase() })
-    });
-    if (!res.ok) return {};
-    const { translation } = await res.json();
+    const { translation } = await monitoredApiCall.translate(text, lang.toUpperCase());
     return { [lang]: translation };
   } catch (e) {
     return {};

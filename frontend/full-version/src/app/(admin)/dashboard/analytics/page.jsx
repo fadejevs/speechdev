@@ -27,14 +27,7 @@ import { useRouter } from 'next/navigation';
 import { generateUniqueId } from '@/utils/idGenerator';
 import { supabase } from '@/utils/supabase/client';
 import { syncGoogleProfile, ensureFirstLastName } from '@/utils/syncGoogleProfile';
-
-const formatDate = (dateString) => {
-  if (!dateString || dateString === 'Not specified') return dateString;
-  const date = new Date(dateString);
-  if (isNaN(date)) return dateString;
-  // Use ISO format for hydration consistency
-  return date.toISOString().split('T')[0];
-};
+import { formatDate } from '@/utils/dateUtils';
 
 const AnalyticsDashboard = () => {
   const [transcripts, setTranscripts] = useState([]);

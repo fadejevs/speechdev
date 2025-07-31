@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { monitoredApiCall } from '@/utils/monitoredFetch';
 
 export const useLLMProcessor = (eventData, socketRef) => {
   const [, setBuffer] = useState([]);
@@ -128,20 +129,14 @@ ${contextText ? `Previous context: "${contextText}"` : 'No previous context.'}
 Clean and contextualize this current speech fragment:`;
 
       try {
-        const response = await fetch('/api/openai-chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: currentText }
-            ],
-            max_tokens: 600,
-            temperature: 0.1
-          })
+        const response = await monitoredApiCall.openaiChat({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: currentText }
+          ],
+          max_tokens: 600,
+          temperature: 0.1
         });
 
         if (!response.ok) {

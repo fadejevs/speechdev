@@ -22,6 +22,7 @@ import EmptySearch from '@/components/header/empty-state/EmptySearch';
 import MainCard from '@/components/MainCard';
 import { supabase } from '@/utils/supabase/client';
 import { AvatarSize } from '@/enum';
+import { formatDate } from '@/utils/dateUtils';
 
 // @assets
 import { IconCommand, IconSearch, IconCalendar, IconMapPin } from '@tabler/icons-react';
@@ -148,12 +149,7 @@ export default function SearchBar() {
     setIsEmptySearch(true);
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString || dateString === 'Not specified') return 'No date';
-    const date = new Date(dateString);
-    if (isNaN(date)) return 'No date';
-    return date.toLocaleDateString();
-  };
+
 
   const getStatusChip = (status) => {
     switch (status) {

@@ -88,7 +88,7 @@ export default function EventsLayout({ children }) {
             <Typography>My Events</Typography>
           </Box>
 
-          <Box sx={{ mt: 'auto', p: 2, bgcolor: '#f1f5f9', borderRadius: 2 }}>
+          {/* <Box sx={{ mt: 'auto', p: 2, bgcolor: '#f1f5f9', borderRadius: 2 }}>
             <Typography variant="subtitle2">Upgrade your plan</Typography>
             <Typography variant="caption" sx={{ display: 'block', mb: 2 }}>
               Cupiditate omnis at veniam atque sint fugiat quia ut. Harum exce.
@@ -96,7 +96,7 @@ export default function EventsLayout({ children }) {
             <Button variant="contained" size="small" sx={{ bgcolor: '#6366f1', '&:hover': { bgcolor: '#4338ca' } }}>
               Upgrade Now
             </Button>
-          </Box>
+          </Box> */}
         </Box>
 
         {/* Main content area */}

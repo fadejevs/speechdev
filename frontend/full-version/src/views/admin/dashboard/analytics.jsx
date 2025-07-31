@@ -14,7 +14,7 @@ import Box from '@mui/material/Box';
 
 // @project
 import { handlerActiveItem, useGetMenuMaster } from '@/states/menu';
-import { AnalyticsOverview, AnalyticsPerformance, AnalyticsUserBehavior } from '@/sections/dashboard/analytics';
+import { AnalyticsOverview, AnalyticsPerformance, AnalyticsUserBehavior, EverspeakOverview } from '@/sections/dashboard/analytics';
 
 /***************************  DASHBOARD - ANALYTICS  ***************************/
 
@@ -35,14 +35,16 @@ export default function DashboardAnalytics({ tab = 'overview' }) {
   return (
     <Stack sx={{ gap: 4 }}>
       <Tabs variant="scrollable" scrollButtons="auto" value={tab} onChange={handleChange} aria-label="analytics tabs">
-        <Tab label="Overview" value="overview" />
+        {/* <Tab label="Overview" value="overview" />
         <Tab label="User Behavior" value="use-behavior" />
-        <Tab label="Performance" value="performance" />
+        <Tab label="Performance" value="performance" /> */}
+        <Tab label="Everspeak" value="everspeak" />
       </Tabs>
       <Box>
         {tab === 'overview' && <AnalyticsOverview />}
         {tab === 'use-behavior' && <AnalyticsUserBehavior />}
         {tab === 'performance' && <AnalyticsPerformance />}
+        {tab === 'everspeak' && <EverspeakOverview />}
       </Box>
     </Stack>
   );

@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
+import { formatDate } from '@/utils/dateUtils';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import CreateEventModal from '@/components/events/CreateEventModal';
 
@@ -194,11 +195,7 @@ const EventsPage = () => {
                   </TableCell>
                   <TableCell>{transcript.original_text}</TableCell>
                   <TableCell>
-                    {transcript.timestamp instanceof Date
-                      ? transcript.timestamp.toLocaleDateString()
-                      : transcript.timestamp && transcript.timestamp.seconds
-                        ? new Date(transcript.timestamp.seconds * 1000).toLocaleDateString()
-                        : new Date(transcript.timestamp).toLocaleDateString()}
+                    {formatDate(transcript.timestamp)}
                   </TableCell>
                   <TableCell>{locations[index % locations.length]}</TableCell>
                   <TableCell>{index % 2 === 0 ? 'Online' : 'On-site'}</TableCell>

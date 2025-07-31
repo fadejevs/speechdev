@@ -28,6 +28,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { formatDate as formatDateUtil } from '@/utils/dateUtils';
 import CloseIcon from '@mui/icons-material/Close';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import dayjs from 'dayjs';
@@ -45,6 +46,7 @@ import ListItemButton from '@mui/material/ListItemButton';
 import Autocomplete from '@mui/material/Autocomplete';
 import CircularProgress from '@mui/material/CircularProgress';
 import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
+import { monitoredApiCall } from '@/utils/monitoredFetch';
 
 const languages = DEEPL_LANGUAGES.map((l) => ({
   code: l.deepl, // Use DeepL code as primary for consistency
@@ -114,22 +116,13 @@ const getLanguageName = (code) => {
 const GEOAPIFY_API_KEY = 'a108fe26f510452dae47978e1619c895'; // <-- Use your real Geoapify API key
 
 const updateEventStatus = async (id, status) => {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`, {
-    method: 'PATCH',
-    headers: {
-      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation'
-    },
-    body: JSON.stringify({ status })
-  });
-  if (!res.ok) {
-    const error = await res.text();
-    throw new Error(error);
+  try {
+    const { data } = await monitoredApiCall.supabase('events', `id=eq.${id}`, 'PATCH', { status });
+    return data[0];
+  } catch (error) {
+    console.error('Error updating event status:', error);
+    throw error;
   }
-  const data = await res.json();
-  return data[0];
 };
 
 const EditEventPage = () => {
@@ -216,13 +209,7 @@ const EditEventPage = () => {
     const fetchEvent = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`, {
-          headers: {
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
-          }
-        });
-        const data = await res.json();
+        const { data } = await monitoredApiCall.supabase('events', `id=eq.${id}&select=*`);
         // console.log('Fetched event data:', data);
         if (data && data.length > 0) {
           const event = data[0];
@@ -378,22 +365,8 @@ const EditEventPage = () => {
         status: eventData.status || 'Draft event'
       };
 
-      // Update the event in Supabase
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-          Prefer: 'return=representation'
-        },
-        body: JSON.stringify(updateData)
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || 'Failed to update event');
-      }
+      // Update the event in Supabase using monitored call
+      await monitoredApiCall.supabase('events', `id=eq.${id}`, 'PATCH', updateData);
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);

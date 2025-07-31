@@ -28,6 +28,7 @@ import SelfieDoodle from '@/images/illustration/SelfieDoodle';
 import io from 'socket.io-client';
 import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
 import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
+import { monitoredApiCall } from '@/utils/monitoredFetch';
 import { useLLMProcessor } from './hooks/useLLMProcessor';
 
 // language lookup
@@ -84,22 +85,13 @@ const getLanguageName = (code) => {
 const getBaseLangCode = (code) => code?.split('-')[0]?.toLowerCase() || code;
 
 const updateEventStatus = async (id, status) => {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`, {
-    method: 'PATCH',
-    headers: {
-      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation'
-    },
-    body: JSON.stringify({ status })
-  });
-  if (!res.ok) {
-    const error = await res.text();
-    throw new Error(error);
+  try {
+    const { data } = await monitoredApiCall.supabase('events', `id=eq.${id}`, 'PATCH', { status });
+    return data[0];
+  } catch (error) {
+    console.error('Error updating event status:', error);
+    throw error;
   }
-  const data = await res.json();
-  return data[0];
 };
 
 export default function EventLivePage() {
@@ -135,13 +127,7 @@ export default function EventLivePage() {
 
     const fetchEvent = async () => {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`, {
-          headers: {
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
-          }
-        });
-        const data = await res.json();
+        const { data } = await monitoredApiCall.supabase('events', `id=eq.${id}&select=*`);
         if (!data || data.length === 0) throw new Error(`Event ${id} not found`);
         setEventData(data[0]);
       } catch (e) {

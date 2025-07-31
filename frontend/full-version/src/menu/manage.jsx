@@ -15,13 +15,18 @@ const manage = {
   type: 'group',
   children: [
     {
-      id: 'dashboard',
-      // title: <FormattedMessage id="Dashboard" />,
+      id: 'events',
       title: <FormattedMessage id="My Events" />,
       type: 'item',
       url: '/dashboard/analytics',
-      // icon: 'IconLayoutGrid'
       icon: 'IconStack2'
+    },
+    {
+      id: 'system-analytics',
+      title: <FormattedMessage id="System Analytics" />,
+      type: 'item',
+      url: '/dashboard/analytics/everspeak',
+      icon: 'IconChartAreaLine'
     }
     // {
     //   id: 'account',

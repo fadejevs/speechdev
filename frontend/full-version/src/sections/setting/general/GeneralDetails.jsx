@@ -23,41 +23,6 @@ import SettingCard from '@/components/cards/SettingCard';
 // @assets
 import { IconDotsVertical } from '@tabler/icons-react';
 
-/***************************   GENERAL - LANGUAGE  ***************************/
-
-function SettingsLanguage({ selectedTags = 'English', setSelectedTags, isDisabled = false }) {
-  const [language, setLanguage] = useState(selectedTags);
-  const languageList = ['English', 'Spanish', 'German'];
-
-  return (
-    <Box sx={{ width: 1 }}>
-      <InputLabel>Language</InputLabel>
-      <Autocomplete
-        options={languageList}
-        value={language}
-        onChange={(_event, newValue) => {
-          if (typeof newValue === 'string') {
-            setLanguage(newValue);
-            if (setSelectedTags) setSelectedTags(newValue);
-          }
-        }}
-        disabled={isDisabled}
-        disableClearable
-        renderOption={({ key: optionKey, ...optionProps }, option) => (
-          <li key={optionKey} {...optionProps}>
-            {option}
-          </li>
-        )}
-        renderInput={(params) => <TextField {...params} slotProps={{ htmlInput: { ...params.inputProps, 'aria-label': 'language' } }} />}
-        sx={{ width: 1 }}
-      />
-      <FormHelperText>
-        This is the language you will see. It doesn&apos;t affect the language your customers see on your online store.
-      </FormHelperText>
-    </Box>
-  );
-}
-
 /***************************   GENERAL - TIMEZONE  ***************************/
 
 function SettingsTimezone({ selectedTags, setSelectedTags, isDisabled = false }) {
@@ -137,9 +102,7 @@ export default function GeneralDetails() {
             </Stack>
           </Stack>
         </ListItem>
-        <ListItem sx={listStyle} divider>
-          <SettingsLanguage />
-        </ListItem>
+
         <ListItem sx={listStyle} divider>
           <SettingsTimezone />
         </ListItem>
@@ -161,7 +124,5 @@ export default function GeneralDetails() {
     </SettingCard>
   );
 }
-
-SettingsLanguage.propTypes = { selectedTags: PropTypes.string, setSelectedTags: PropTypes.func, isDisabled: PropTypes.bool };
 
 SettingsTimezone.propTypes = { selectedTags: PropTypes.string, setSelectedTags: PropTypes.func, isDisabled: PropTypes.bool };
