@@ -170,7 +170,7 @@ const CreateEventModal = ({ open, handleClose, handleCreate, initialData = null,
         title: eventData.name || 'Not specified',
         description: eventData.description || 'Not specified',
         location: eventData.location || 'Not specified',
-        timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : 'Not specified',
+        timestamp: eventData.date ? eventData.date.format('YYYY-MM-DD') : 'Not specified',
         type: eventData.eventType || 'Not specified',
         sourceLanguages: eventData.sourceLanguages || [],
         targetLanguages: eventData.targetLanguages || [],
@@ -657,8 +657,9 @@ const CreateEventModal = ({ open, handleClose, handleCreate, initialData = null,
   };
 
   const handleDateSelect = (day) => {
-    const selectedDate = `${day < 10 ? '0' + day : day}.${currentMonth + 1 < 10 ? '0' + (currentMonth + 1) : currentMonth + 1}.${currentYear}`;
-    setEventData((prev) => ({ ...prev, date: dayjs(selectedDate) }));
+    // Create date object directly instead of string formatting
+    const selectedDate = dayjs().year(currentYear).month(currentMonth).date(day);
+    setEventData((prev) => ({ ...prev, date: selectedDate }));
     setShowCalendar(false);
   };
 
@@ -861,6 +862,7 @@ const CreateEventModal = ({ open, handleClose, handleCreate, initialData = null,
                   label="Event Date"
                   value={eventData.date}
                   onChange={(newDate) => setEventData((prev) => ({ ...prev, date: newDate }))}
+                  format="YYYY-MM-DD"
                   slotProps={{
                     textField: {
                       fullWidth: true,

@@ -27,14 +27,15 @@ import { useRouter } from 'next/navigation';
 import { generateUniqueId } from '@/utils/idGenerator';
 import { supabase } from '@/utils/supabase/client';
 import { syncGoogleProfile, ensureFirstLastName } from '@/utils/syncGoogleProfile';
+import { formatDate } from '@/utils/dateUtils';
 
-const formatDate = (dateString) => {
-  if (!dateString || dateString === 'Not specified') return dateString;
-  const date = new Date(dateString);
-  if (isNaN(date)) return dateString;
-  // Use ISO format for hydration consistency
-  return date.toISOString().split('T')[0];
+// Helper function to capitalize first letter
+const capitalizeFirstLetter = (str) => {
+  if (!str || str === 'Not specified') return str;
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 };
+
+// Remove local formatDate function - now using global one
 
 const AnalyticsDashboard = () => {
   const [transcripts, setTranscripts] = useState([]);
@@ -251,7 +252,7 @@ const AnalyticsDashboard = () => {
         </TableCell>
         <TableCell>{renderCellValue(formatDate(event.timestamp), event.timestamp === 'Not specified')}</TableCell>
         <TableCell>{renderCellValue(event.location, event.location === 'Not specified')}</TableCell>
-        <TableCell>{renderCellValue(event.type, event.type === 'Not specified')}</TableCell>
+        <TableCell>{renderCellValue(capitalizeFirstLetter(event.type), event.type === 'Not specified')}</TableCell>
         <TableCell>{getStatusChip(event.status || 'Draft event')}</TableCell>
         <TableCell align="right">
           <IconButton

@@ -176,7 +176,7 @@ const EditEventPage = () => {
     const formatDate = (date) => {
       if (!date) return null;
       if (typeof date === 'string') return date;
-      if (dayjs.isDayjs(date)) return date.format('DD.MM.YYYY');
+      if (dayjs.isDayjs(date)) return date.format('YYYY-MM-DD');
       return null;
     };
 
@@ -239,9 +239,15 @@ const EditEventPage = () => {
           // --- Fix date parsing for DatePicker ---
           let date = null;
           if (event.timestamp && event.timestamp !== 'Not specified') {
-            date = dayjs(event.timestamp);
+            // Try YYYY-MM-DD format first (new format)
+            date = dayjs(event.timestamp, 'YYYY-MM-DD');
             if (!date.isValid()) {
+              // Fallback to DD.MM.YYYY format (legacy)
               date = dayjs(event.timestamp, 'DD.MM.YYYY');
+            }
+            if (!date.isValid()) {
+              // Last resort - let dayjs auto-parse
+              date = dayjs(event.timestamp);
             }
           }
 
@@ -264,7 +270,7 @@ const EditEventPage = () => {
           // Store original data for comparison - convert dayjs to strings for consistent comparison
           const originalData = {
             ...fetchedEventData,
-            date: fetchedEventData.date ? fetchedEventData.date.format('DD.MM.YYYY') : null,
+            date: fetchedEventData.date ? fetchedEventData.date.format('YYYY-MM-DD') : null,
             startTime: fetchedEventData.startTime ? fetchedEventData.startTime.format('HH:mm') : null,
             endTime: fetchedEventData.endTime ? fetchedEventData.endTime.format('HH:mm') : null
           };
@@ -367,12 +373,12 @@ const EditEventPage = () => {
         title: eventData.name || 'Not specified',
         description: eventData.description || 'Not specified',
         location: eventData.location || 'Not specified',
-        timestamp: eventData.date ? eventData.date.format('DD.MM.YYYY') : 'Not specified',
+        timestamp: eventData.date ? eventData.date.format('YYYY-MM-DD') : 'Not specified',
         type: eventData.type || 'Not specified',
         sourceLanguages: formattedSourceLanguages,
         targetLanguages: formattedTargetLanguages,
         recordEvent: eventData.recordEvent ?? false,
-        ttsVoice: eventData.ttsVoice || 'female',
+        tts_voice: eventData.ttsVoice || 'female', // FIXED: Use snake_case column name
         startTime: validStartTime,
         endTime: validEndTime,
         status: eventData.status || 'Draft event'
@@ -401,7 +407,7 @@ const EditEventPage = () => {
       // Update the original data after successful save - convert to same format
       const updatedOriginalData = {
         ...eventData,
-        date: eventData.date ? eventData.date.format('DD.MM.YYYY') : null,
+        date: eventData.date ? eventData.date.format('YYYY-MM-DD') : null,
         startTime: eventData.startTime ? eventData.startTime.format('HH:mm') : null,
         endTime: eventData.endTime ? eventData.endTime.format('HH:mm') : null
       };
@@ -808,7 +814,7 @@ const EditEventPage = () => {
                           : null
                       }
                       onChange={(newDate) => setEventData((prev) => ({ ...prev, date: newDate }))}
-                      format="DD.MM.YYYY"
+                      format="YYYY-MM-DD"
                       slotProps={{
                         textField: {
                           fullWidth: true,
@@ -1428,6 +1434,10 @@ const EditEventPage = () => {
           variant="contained"
           onClick={async () => {
             try {
+              // First save any pending changes (including date changes)
+              await handleSaveChanges();
+              
+              // Then start the event
               await updateEventStatus(id, 'Live');
               handleCloseStartDialog();
               router.push(`/events/${id}/live`);

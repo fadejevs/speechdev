@@ -115,12 +115,16 @@ export default function EventLivePage() {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Auto-pause tracking
+  const [wasAutoPaused, setWasAutoPaused] = useState(false);
+
   // Add this state to track the media recorder and stream
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [audioStream, setAudioStream] = useState(null);
 
   const socketRef = useRef(null);
   const recognizerRef = useRef(null);
+  const hasCheckedInitialAutoPause = useRef(false); // Track if we've already done initial auto-pause check
 
   const [audioInputDevices, setAudioInputDevices] = useState([]);
   const [selectedAudioInput, setSelectedAudioInput] = useState('');
@@ -155,6 +159,56 @@ export default function EventLivePage() {
     fetchEvent();
   }, [id]);
 
+  // Reset auto-pause check when event ID changes
+  useEffect(() => {
+    hasCheckedInitialAutoPause.current = false;
+  }, [id]);
+
+  // AUTO-PAUSE ON RELOAD: Prevent AudioContext issues (ONLY on initial load)
+  useEffect(() => {
+    const autoPauseIfLive = async () => {
+      // Only auto-pause if this is the FIRST time we're checking AND event is Live
+      if (eventData && eventData.status === 'Live' && !hasCheckedInitialAutoPause.current) {
+        hasCheckedInitialAutoPause.current = true; // Mark that we've checked
+        console.log('[Auto-Pause] Initial page load with Live event - auto-pausing to require user gesture');
+        
+        try {
+          // Update to Paused status
+          await updateEventStatus(eventData.id, 'Paused');
+          setEventData((prev) => ({ ...prev, status: 'Paused' }));
+          setWasAutoPaused(true); // Set auto-pause flag
+          
+          // Notify participants with retry logic
+          const notifyParticipants = () => {
+            if (socketRef.current && socketRef.current.connected) {
+              socketRef.current.emit('update_event_status', {
+                room_id: eventData.id,
+                status: 'Paused'
+              });
+              console.log('[Auto-Pause] ✅ Participants notified of auto-pause');
+            } else {
+              // Retry after a short delay if socket not ready
+              setTimeout(notifyParticipants, 1000);
+            }
+          };
+          
+          notifyParticipants();
+          console.log('[Auto-Pause] ✅ Event auto-paused on initial load. Admin must manually resume.');
+        } catch (error) {
+          console.error('[Auto-Pause] Failed to auto-pause:', error);
+        }
+      } else if (eventData && !hasCheckedInitialAutoPause.current) {
+        // Mark that we've done the initial check even if status wasn't Live
+        hasCheckedInitialAutoPause.current = true;
+        console.log('[Auto-Pause] Initial check completed - event status:', eventData.status);
+      }
+    };
+
+    if (eventData) {
+      autoPauseIfLive();
+    }
+  }, [eventData?.id]); // Only run when event ID changes (initial load)
+
   useEffect(() => {
     // Use the first source language if available
     const sourceLanguage =
@@ -166,247 +220,299 @@ export default function EventLivePage() {
     const socket = io('https://speechdev.onrender.com', { transports: ['websocket'] });
     socketRef.current = socket;
 
+    // Add global timeout tracking for cleanup
+    const timeouts = [];
+    const clearAllTimeouts = () => {
+      timeouts.forEach(id => clearTimeout(id));
+      timeouts.length = 0;
+    };
+
+    // Prevent infinite restart loops
+    let restartCount = 0;
+    const MAX_RESTARTS = 5;
+
     socket.on('connect', () => {
-      // Socket connected
+      console.log('[WebSocket] Connected successfully to', 'https://speechdev.onrender.com');
+      // setSocketConnected(true); // This state is not defined in the original file
+      // setConnectionStatus('connected'); // This state is not defined in the original file
+      socket.emit('join_room', { room: id });
+    });
 
-      const startRecognizer = () => {
-        if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-          alert('Azure Speech key/region not set');
-          return;
+    socket.on('connect_error', (err) => {
+      console.error('[WebSocket] Connection error:', err);
+      // setSocketConnected(false); // This state is not defined in the original file
+      // setConnectionStatus('disconnected'); // This state is not defined in the original file
+    });
+
+    socket.on('disconnect', () => {
+      console.log('[WebSocket] Disconnected from server');
+      // setSocketConnected(false); // This state is not defined in the original file
+      // setConnectionStatus('disconnected'); // This state is not defined in the original file
+    });
+
+    socket.on('realtime_transcription', (data) => {
+      console.log('[Live] Received realtime transcription:', data);
+      // Send interim results to participants for live feedback
+      if (data.text && socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit('realtime_transcription', {
+          text: data.text,
+          is_final: false, // Mark as interim
+          source_language: azureLanguageCode,
+          room_id: eventData.id
+        });
+      }
+    });
+
+    const startRecognizer = () => {
+      if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
+        alert('Azure Speech key/region not set');
+        return;
+      }
+
+      // Azure Speech SDK language mapping and validation
+      const azureSpeechLanguageMap = {
+        en: 'en-US',
+        es: 'es-ES',
+        fr: 'fr-FR',
+        de: 'de-DE',
+        it: 'it-IT',
+        pt: 'pt-PT',
+        ru: 'ru-RU',
+        ja: 'ja-JP',
+        ko: 'ko-KR',
+        zh: 'zh-CN',
+        ar: 'ar-SA',
+        hi: 'hi-IN',
+        tr: 'tr-TR',
+        nl: 'nl-NL',
+        pl: 'pl-PL',
+        sv: 'sv-SE',
+        no: 'nb-NO',
+        da: 'da-DK',
+        fi: 'fi-FI',
+        cs: 'cs-CZ',
+        hu: 'hu-HU',
+        ro: 'ro-RO',
+        sk: 'sk-SK',
+        bg: 'bg-BG',
+        hr: 'hr-HR',
+        sl: 'sl-SI',
+        et: 'et-EE',
+        lv: 'lv-LV', // Latvian
+        lt: 'lt-LT', // Lithuanian
+        uk: 'uk-UA',
+        he: 'he-IL',
+        th: 'th-TH',
+        vi: 'vi-VN',
+        id: 'id-ID',
+        ms: 'ms-MY',
+        fa: 'fa-IR',
+        Latvian: 'lv-LV',
+        English: 'en-US',
+        Spanish: 'es-ES',
+        French: 'fr-FR',
+        German: 'de-DE'
+      };
+
+      // DEBUGGING: Show exactly what we received
+      console.log('[Azure] Raw sourceLanguage from event data:', sourceLanguage);
+      console.log('[Azure] Event sourceLanguages array:', eventData?.sourceLanguages);
+
+      // Map to proper Azure language code
+      let azureLanguageCode = sourceLanguage;
+
+      // Try direct mapping first
+      if (azureSpeechLanguageMap[sourceLanguage]) {
+        azureLanguageCode = azureSpeechLanguageMap[sourceLanguage];
+        console.log('[Azure] Direct mapping found:', sourceLanguage, '→', azureLanguageCode);
+      }
+      // If it's already in xx-XX format, use it
+      else if (sourceLanguage && sourceLanguage.includes('-')) {
+        azureLanguageCode = sourceLanguage;
+        console.log('[Azure] Using language code as-is:', azureLanguageCode);
+      }
+      // If it's just a base code, map it
+      else if (sourceLanguage) {
+        const baseCode = sourceLanguage.split('-')[0].toLowerCase();
+        if (azureSpeechLanguageMap[baseCode]) {
+          azureLanguageCode = azureSpeechLanguageMap[baseCode];
+          console.log('[Azure] Base code mapping:', baseCode, '→', azureLanguageCode);
         }
+      }
 
-        // Azure Speech SDK language mapping and validation
-        const azureSpeechLanguageMap = {
-          en: 'en-US',
-          es: 'es-ES',
-          fr: 'fr-FR',
-          de: 'de-DE',
-          it: 'it-IT',
-          pt: 'pt-PT',
-          ru: 'ru-RU',
-          ja: 'ja-JP',
-          ko: 'ko-KR',
-          zh: 'zh-CN',
-          ar: 'ar-SA',
-          hi: 'hi-IN',
-          tr: 'tr-TR',
-          nl: 'nl-NL',
-          pl: 'pl-PL',
-          sv: 'sv-SE',
-          no: 'nb-NO',
-          da: 'da-DK',
-          fi: 'fi-FI',
-          cs: 'cs-CZ',
-          hu: 'hu-HU',
-          ro: 'ro-RO',
-          sk: 'sk-SK',
-          bg: 'bg-BG',
-          hr: 'hr-HR',
-          sl: 'sl-SI',
-          et: 'et-EE',
-          lv: 'lv-LV', // Latvian
-          lt: 'lt-LT', // Lithuanian
-          uk: 'uk-UA',
-          he: 'he-IL',
-          th: 'th-TH',
-          vi: 'vi-VN',
-          id: 'id-ID',
-          ms: 'ms-MY',
-          fa: 'fa-IR',
-          Latvian: 'lv-LV',
-          English: 'en-US',
-          Spanish: 'es-ES',
-          French: 'fr-FR',
-          German: 'de-DE'
-        };
+      // Final validation - NO FALLBACK TO ENGLISH!
+      if (!azureLanguageCode || (!azureLanguageCode.includes('-') && azureLanguageCode === sourceLanguage)) {
+        console.error('[Azure] Could not map language:', sourceLanguage);
+        console.error('[Azure] Available mappings:', Object.keys(azureSpeechLanguageMap));
+        // Don't fall back to English - that defeats the purpose!
+        // Use whatever we have and let Azure tell us if it's wrong
+        azureLanguageCode = sourceLanguage;
+      }
 
-        // DEBUGGING: Show exactly what we received
-        console.log('[Azure] Raw sourceLanguage from event data:', sourceLanguage);
-        console.log('[Azure] Event sourceLanguages array:', eventData?.sourceLanguages);
+      console.log('[Azure] Final language code for Azure Speech SDK:', azureLanguageCode);
+      console.log('[Azure] Region:', process.env.NEXT_PUBLIC_AZURE_REGION);
+      console.log('[Azure] Key exists:', !!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY);
 
-        // Map to proper Azure language code
-        let azureLanguageCode = sourceLanguage;
-
-        // Try direct mapping first
-        if (azureSpeechLanguageMap[sourceLanguage]) {
-          azureLanguageCode = azureSpeechLanguageMap[sourceLanguage];
-          console.log('[Azure] Direct mapping found:', sourceLanguage, '→', azureLanguageCode);
-        }
-        // If it's already in xx-XX format, use it
-        else if (sourceLanguage && sourceLanguage.includes('-')) {
-          azureLanguageCode = sourceLanguage;
-          console.log('[Azure] Using language code as-is:', azureLanguageCode);
-        }
-        // If it's just a base code, map it
-        else if (sourceLanguage) {
-          const baseCode = sourceLanguage.split('-')[0].toLowerCase();
-          if (azureSpeechLanguageMap[baseCode]) {
-            azureLanguageCode = azureSpeechLanguageMap[baseCode];
-            console.log('[Azure] Base code mapping:', baseCode, '→', azureLanguageCode);
-          }
-        }
-
-        // Final validation - NO FALLBACK TO ENGLISH!
-        if (!azureLanguageCode || (!azureLanguageCode.includes('-') && azureLanguageCode === sourceLanguage)) {
-          console.error('[Azure] Could not map language:', sourceLanguage);
-          console.error('[Azure] Available mappings:', Object.keys(azureSpeechLanguageMap));
-          // Don't fall back to English - that defeats the purpose!
-          // Use whatever we have and let Azure tell us if it's wrong
-          azureLanguageCode = sourceLanguage;
-        }
-
-        console.log('[Azure] Final language code for Azure Speech SDK:', azureLanguageCode);
-        console.log('[Azure] Region:', process.env.NEXT_PUBLIC_AZURE_REGION);
-        console.log('[Azure] Key exists:', !!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY);
-
-        // Test Azure service connectivity
-        try {
-          const testConfig = SpeechSDK.SpeechConfig.fromSubscription(
-            process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-            process.env.NEXT_PUBLIC_AZURE_REGION
-          );
-          console.log('[Azure] Basic config created successfully');
-        } catch (configError) {
-          console.error('[Azure] Failed to create basic config:', configError);
-        }
-
-        const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(
+      // Test Azure service connectivity
+      try {
+        const testConfig = SpeechSDK.SpeechConfig.fromSubscription(
           process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
           process.env.NEXT_PUBLIC_AZURE_REGION
         );
+        console.log('[Azure] Basic config created successfully');
+      } catch (configError) {
+        console.error('[Azure] Failed to create basic config:', configError);
+      }
 
-        // Configure speech settings
-        console.log(`[Azure] Using language code: ${azureLanguageCode}`);
-        speechConfig.speechRecognitionLanguage = azureLanguageCode;
-        speechConfig.enableDictation(); // Enable dictation mode for better continuous recognition
-        speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Don't filter any speech
+      const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(
+        process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
+        process.env.NEXT_PUBLIC_AZURE_REGION
+      );
 
-        // Ultra-aggressive Azure timeout settings for immediate transcription
-        // Make Azure send results much faster for continuous speech
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '200'); // Even faster: 200ms
-        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '500'); // Even faster: 500ms
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, '1000'); // Faster: 1s max wait
-        
-        // Additional speed optimizations
-        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, '1000'); // Faster initial timeout
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationStrategy, 'Default'); // Use default segmentation
-        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EnableAudioLogging, 'false'); // Disable logging for speed
+      // Configure speech settings
+      console.log(`[Azure] Using language code: ${azureLanguageCode}`);
+      speechConfig.speechRecognitionLanguage = azureLanguageCode;
+      speechConfig.enableDictation(); // Enable dictation mode for better continuous recognition
+      speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Don't filter any speech
 
-        // Add target languages
-        (eventData.targetLanguages || []).forEach((lang) => {
-          speechConfig.addTargetLanguage(lang);
-        });
+      // Production-stable Azure settings - balanced for reliability and responsiveness
+      speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '500'); // Stable: 800ms
+      speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '1200'); // Allow natural pauses
+      speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, '2000'); // Max 3s for reliability
+      speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, '2000'); // Stable start
+      speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EnableAudioLogging, 'false');
 
-        const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-        const recognizer = new SpeechSDK.TranslationRecognizer(speechConfig, audioConfig);
+      // Add target languages
+      (eventData.targetLanguages || []).forEach((lang) => {
+        speechConfig.addTargetLanguage(lang);
+      });
 
-        recognizerRef.current = recognizer;
+      const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+      const recognizer = new SpeechSDK.TranslationRecognizer(speechConfig, audioConfig);
 
-        // Add phrase list for better recognition of specific words.
-        // To use this, add a `phraseList` array to your event data in Supabase.
-        // e.g., eventData.phraseList = ["Speechmatics", "Ralf's awesome app"]
-        if (eventData.phraseList && Array.isArray(eventData.phraseList) && eventData.phraseList.length > 0) {
-          const phraseListGrammar = SpeechSDK.PhraseListGrammar.fromRecognizer(recognizer);
-          phraseListGrammar.addPhrases(eventData.phraseList);
-          console.log('[Azure] Added phrase list to recognizer:', eventData.phraseList);
-        }
+      recognizerRef.current = recognizer;
 
-        // Handle recognition errors with a restart mechanism
-        recognizer.canceled = (s, e) => {
-          console.log('[Live] Recognition canceled. Reason:', e.reason);
-          if (e.reason === SpeechSDK.CancellationReason.Error) {
-            console.error(`[Live] Recognition error: ${e.errorDetails}`);
-            let isFatal = false;
+      // Add phrase list for better recognition of specific words.
+      // To use this, add a `phraseList` array to your event data in Supabase.
+      // e.g., eventData.phraseList = ["Speechmatics", "Ralf's awesome app"]
+      if (eventData.phraseList && Array.isArray(eventData.phraseList) && eventData.phraseList.length > 0) {
+        const phraseListGrammar = SpeechSDK.PhraseListGrammar.fromRecognizer(recognizer);
+        phraseListGrammar.addPhrases(eventData.phraseList);
+        console.log('[Azure] Added phrase list to recognizer:', eventData.phraseList);
+      }
 
-            // Check for fatal errors that we should not recover from
-            if (
-              e.errorDetails.includes('1007') || // Unsupported language
-              e.errorDetails.includes('not supported') ||
-              e.errorCode === SpeechSDK.CancellationErrorCode.AuthenticationFailure ||
-              e.errorCode === SpeechSDK.CancellationErrorCode.Forbidden
-            ) {
-              console.error(`[Azure] ❌ FATAL ERROR: Language, authentication, or permission issue.`);
-              console.error('[Azure] 💡 Check your Azure key, region, and language support. Will not restart.');
-              isFatal = true;
-            }
+      // Handle recognition errors with a restart mechanism
+      recognizer.canceled = (s, e) => {
+        console.log('[Live] Recognition canceled. Reason:', e.reason);
+        if (e.reason === SpeechSDK.CancellationReason.Error) {
+          console.error(`[Live] Recognition error: ${e.errorDetails}`);
+          let isFatal = false;
 
-            if (!isFatal) {
-              console.log('[Live] Non-fatal error detected. Restarting recognizer...');
-              restartRecognizer();
-            }
+          // Check for fatal errors that we should not recover from
+          if (
+            e.errorDetails.includes('1007') || // Unsupported language
+            e.errorDetails.includes('not supported') ||
+            e.errorCode === SpeechSDK.CancellationErrorCode.AuthenticationFailure ||
+            e.errorCode === SpeechSDK.CancellationErrorCode.Forbidden
+          ) {
+            console.error(`[Azure] ❌ FATAL ERROR: Language, authentication, or permission issue.`);
+            console.error('[Azure] 💡 Check your Azure key, region, and language support. Will not restart.');
+            isFatal = true;
           }
-        };
 
-        recognizer.recognizing = (_s, evt) => {
-          const text = evt.result.text;
-          
-          console.log('[Admin] ⚡ Real-time (interim):', text);
-          
-          // Send interim results to participants for live feedback
-          if (text && socketRef.current && socketRef.current.connected) {
-            socketRef.current.emit('realtime_transcription', {
-              text: text,
-              is_final: false, // Mark as interim
-              source_language: azureLanguageCode,
-              room_id: eventData.id
-            });
-          }
-        };
-
-        recognizer.recognized = (_s, evt) => {
-          const text = evt.result.text;
-          const rawTranslations = evt.result.translations ? Object.fromEntries(Object.entries(evt.result.translations)) : {};
-          
-          console.log('[Admin] ✅ Raw recognized:', text);
-          console.log('[Admin] 📝 Raw translations (not sent):', rawTranslations);
-          
-          // Add to buffer for processing
-          if (text) { // Only process if there is text
-            llmProcessor.addToBuffer(text, sourceLanguage, rawTranslations, handleNewTranscription);
-          }
-        };
-
-        // Start recognition with proper error handling
-        recognizer.startContinuousRecognitionAsync(
-          () => console.log('[Live] Recognition started successfully'),
-          (err) => {
-            console.error('[Live] Failed to start recognition:', err);
-            // If start fails, it's likely a configuration issue, but we can still try to restart
+          if (!isFatal) {
+            console.log('[Live] Non-fatal error detected. Restarting recognizer...');
             restartRecognizer();
           }
-        );
+        }
       };
 
-      const restartRecognizer = () => {
-              if (recognizerRef.current) {
+      recognizer.recognizing = (_s, evt) => {
+        const text = evt.result.text;
+        
+        console.log('[Admin] ⚡ Real-time (interim):', text);
+        
+        // Send interim results to participants for live feedback
+        if (text && socketRef.current && socketRef.current.connected) {
+          socketRef.current.emit('realtime_transcription', {
+            text: text,
+            is_final: false, // Mark as interim
+            source_language: azureLanguageCode,
+            room_id: eventData.id
+          });
+        }
+      };
+
+      recognizer.recognized = (_s, evt) => {
+        const text = evt.result.text;
+        const rawTranslations = evt.result.translations ? Object.fromEntries(Object.entries(evt.result.translations)) : {};
+        
+        console.log('[Admin] ✅ Raw recognized:', text);
+        console.log('[Admin] �� Raw translations (not sent):', rawTranslations);
+        
+        // Add to buffer for processing
+        if (text) { // Only process if there is text
+          llmProcessor.addToBuffer(text, sourceLanguage, rawTranslations, handleNewTranscription);
+        }
+      };
+
+      // Start recognition with proper error handling
+      recognizer.startContinuousRecognitionAsync(
+        () => {
+          console.log('[Live] Recognition started successfully');
+          restartCount = 0; // Reset restart counter on successful start
+        },
+        (err) => {
+          console.error('[Live] Failed to start recognition:', err);
+          // If start fails, it's likely a configuration issue, but we can still try to restart
+          restartRecognizer();
+        }
+      );
+    };
+
+    const restartRecognizer = () => {
+        if (restartCount >= MAX_RESTARTS) {
+          console.error('[Live] Max restart attempts reached. Stopping automatic restarts.');
+          return;
+        }
+        
+        restartCount++;
+        console.log(`[Live] Restart attempt ${restartCount}/${MAX_RESTARTS}`);
+        
+        if (recognizerRef.current) {
           console.log('[Live] Stopping current recognizer...');
-                recognizerRef.current.stopContinuousRecognitionAsync(
-                  () => {
+          recognizerRef.current.stopContinuousRecognitionAsync(
+            () => {
               console.log('[Live] Previous recognizer stopped. Restarting in 2 seconds...');
-              recognizerRef.current = null; // Clear ref before restarting
-              setTimeout(startRecognizer, 2000);
-                  },
+              recognizerRef.current = null;
+              const timeoutId = setTimeout(startRecognizer, 2000);
+              timeouts.push(timeoutId);
+            },
             (err) => {
               console.error('[Live] Error stopping recognizer, but attempting restart anyway in 2 seconds...', err);
-              recognizerRef.current = null; // Clear ref before restarting
-              setTimeout(startRecognizer, 2000);
+              recognizerRef.current = null;
+              const timeoutId = setTimeout(startRecognizer, 2000);
+              timeouts.push(timeoutId);
             }
-                );
+          );
         } else {
           console.log('[Live] No active recognizer. Starting in 2 seconds...');
-          setTimeout(startRecognizer, 2000);
-          }
+          const timeoutId = setTimeout(startRecognizer, 2000);
+          timeouts.push(timeoutId);
+        }
       };
 
-      if (eventData.status === 'Live') {
-        llmProcessor.startProcessing();
-        startRecognizer();
-      }
-    });
+    if (eventData.status === 'Live') {
+      llmProcessor.startProcessing();
+      startRecognizer();
+    }
 
     return () => {
       // Stop LLM processing first
       llmProcessor.stopProcessing();
+      
+      // Clear all pending timeouts to prevent memory leaks
+      clearAllTimeouts();
       
       if (recognizerRef.current) {
         recognizerRef.current.stopContinuousRecognitionAsync(
@@ -418,10 +524,10 @@ export default function EventLivePage() {
         );
       }
       
-      socket.close();
+      socket.disconnect();
     };
-    // Add sourceLanguages to dependencies
-  }, [eventData?.id, eventData?.sourceLanguage, eventData?.sourceLanguages, eventData?.status]);
+    // Optimized dependencies - only re-run when event ID or status changes
+  }, [eventData?.id, eventData?.status]);
 
   // Fetch audio input devices on mount
   useEffect(() => {
@@ -496,8 +602,9 @@ export default function EventLivePage() {
         );
       }
       } else {
-        // Resume: activate LLM processing
+        // Resume: activate LLM processing and clear auto-pause flag
         llmProcessor.startProcessing();
+        setWasAutoPaused(false); // Clear auto-pause notification
       }
       
       if (socketRef.current && socketRef.current.connected) {
@@ -653,6 +760,23 @@ export default function EventLivePage() {
           </Button>
         </Box>
       </Box>
+
+      {/* Auto-pause notification */}
+      {wasAutoPaused && eventData?.status === 'Paused' && (
+        <Alert 
+          severity="info" 
+          sx={{ 
+            mb: { xs: 3, sm: 4 },
+            '& .MuiAlert-message': {
+              fontSize: { xs: '0.875rem', sm: '1rem' }
+            }
+          }}
+          onClose={() => setWasAutoPaused(false)}
+        >
+          <strong>Event Auto-Paused:</strong> The event was automatically paused due to a browser refresh. 
+          Click "Resume Event" to start transcription.
+        </Alert>
+      )}
 
       {/* Live indicator card */}
       <Box

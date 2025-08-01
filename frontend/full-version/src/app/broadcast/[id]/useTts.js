@@ -56,7 +56,7 @@ const speakWithOpenAIImmediate = async (text, lang, eventData) => {
       return voiceMap[voiceType]?.[langCode] || voiceMap[voiceType]?.default || 'alloy';
     };
 
-    const voiceType = eventData?.ttsVoice || 'female';
+    const voiceType = eventData?.tts_voice || 'female';
     const voice = getVoiceForLanguage(lang, voiceType);
 
     const controller = new AbortController();
@@ -137,6 +137,9 @@ const swapToOpenAIAudio = async (audioElement, text, lang, eventData) => {
     tempKeepAlive = setInterval(playSilentAudio, 4000);
 
     const getVoiceForLanguage = (langCode, voiceType = 'female') => {
+      // Normalize language code (e.g., 'en-US' -> 'en')
+      const normalizedLang = langCode ? langCode.split('-')[0].toLowerCase() : 'en';
+      
       const voiceMap = {
         female: {
           en: 'nova',
@@ -151,6 +154,18 @@ const swapToOpenAIAudio = async (audioElement, text, lang, eventData) => {
           ru: 'shimmer',
           ar: 'nova',
           hi: 'shimmer',
+          // Add more languages for broader support
+          lv: 'nova',    // Latvian
+          lt: 'nova',    // Lithuanian  
+          et: 'nova',    // Estonian
+          pl: 'shimmer', // Polish
+          cs: 'shimmer', // Czech
+          sk: 'shimmer', // Slovak
+          hu: 'nova',    // Hungarian
+          ro: 'nova',    // Romanian
+          bg: 'shimmer', // Bulgarian
+          hr: 'nova',    // Croatian
+          sl: 'nova',    // Slovenian
           default: 'nova'
         },
         male: {
@@ -166,14 +181,43 @@ const swapToOpenAIAudio = async (audioElement, text, lang, eventData) => {
           ru: 'onyx',
           ar: 'echo',
           hi: 'onyx',
+          // Add more languages for broader support
+          lv: 'echo',    // Latvian
+          lt: 'echo',    // Lithuanian
+          et: 'echo',    // Estonian  
+          pl: 'onyx',    // Polish
+          cs: 'onyx',    // Czech
+          sk: 'onyx',    // Slovak
+          hu: 'echo',    // Hungarian
+          ro: 'echo',    // Romanian
+          bg: 'onyx',    // Bulgarian
+          hr: 'echo',    // Croatian
+          sl: 'echo',    // Slovenian
           default: 'echo'
         }
       };
-      return voiceMap[voiceType]?.[langCode] || voiceMap[voiceType]?.default || 'alloy';
+      
+      console.log('[TTS Debug] SwapToOpenAI - Language normalization:', {
+        originalLang: langCode,
+        normalizedLang,
+        voiceType,
+        availableVoices: Object.keys(voiceMap[voiceType])
+      });
+      
+      return voiceMap[voiceType]?.[normalizedLang] || voiceMap[voiceType]?.default || 'alloy';
     };
 
-    const voiceType = eventData?.ttsVoice || 'female';
+    const voiceType = eventData?.tts_voice || 'female';
     const voice = getVoiceForLanguage(lang, voiceType);
+    
+    // DEBUG: Log voice selection details for SwapToOpenAI
+    console.log('[TTS Debug] SwapToOpenAI - Voice selection:', {
+      lang,
+      voiceType,
+      selectedVoice: voice,
+      eventDataTtsVoice: eventData?.tts_voice,
+      hasEventData: !!eventData
+    });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -257,6 +301,14 @@ const speakTextMobileQueued = async (text, lang, eventData, audioContextRef) => 
 };
 
 export const useTts = (eventData) => {
+  // DEBUG: Log eventData received by useTts
+  console.log('[useTts Debug] Received eventData:', {
+    hasEventData: !!eventData,
+    eventId: eventData?.id,
+    ttsVoice: eventData?.tts_voice,
+    timestamp: new Date().toISOString()
+  });
+
   const [ttsLoading, setTtsLoading] = useState(false);
   const [autoSpeakLang, setAutoSpeakLang] = useState(null);
 
@@ -297,24 +349,47 @@ export const useTts = (eventData) => {
     if (isMobileSpeaking.current || mobileTtsQueue.current.length === 0) return;
 
     isMobileSpeaking.current = true;
-    const item = mobileTtsQueue.current.shift();
-
-    await speakTextMobileQueued(item.text, item.lang, eventData, audioContextRef);
+    
+    while (mobileTtsQueue.current.length > 0 && autoSpeakLang) {
+      const item = mobileTtsQueue.current.shift();
+      
+      try {
+        await speakTextMobileQueued(item.text, item.lang, eventData, audioContextRef);
+        // Small delay for natural flow
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error('[Mobile TTS] Error processing item:', error);
+        // Continue with next item even if one fails
+      }
+    }
 
     isMobileSpeaking.current = false;
-    if (mobileTtsQueue.current.length > 0) {
-      mobileTtsTimeout.current = setTimeout(processMobileQueue, 150);
+    
+    // Check if new items were added while processing
+    if (mobileTtsQueue.current.length > 0 && autoSpeakLang) {
+      setTimeout(processMobileQueue, 50);
     }
-  }, [eventData]);
+  }, [eventData, autoSpeakLang]);
 
   const queueForTTS = useCallback(
     (text, lang) => {
+      // DEBUG: Log when TTS is triggered and what eventData looks like
+      console.log('[queueForTTS Debug] TTS triggered:', {
+        text: text.substring(0, 50) + '...',
+        lang,
+        hasEventData: !!eventData,
+        eventDataTtsVoice: eventData?.tts_voice,
+        isMobile: isMobile(),
+        timestamp: new Date().toISOString()
+      });
+
       if (spokenSentences.current.has(text)) return;
       spokenSentences.current.add(text);
 
       if (isMobile()) {
         if (text && text.trim().length >= 10) {
           mobileTtsQueue.current.push({ text: text.trim(), lang });
+          // Always trigger processing - the function will handle if already speaking
           if (!isMobileSpeaking.current) {
             processMobileQueue();
           }

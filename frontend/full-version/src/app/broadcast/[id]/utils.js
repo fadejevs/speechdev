@@ -154,7 +154,11 @@ export const playSilentAudio = () => {
   const audio = new Audio(audioUrl);
   audio.volume = 0;
   audio.play().catch(() => {});
-  setTimeout(() => { try { URL.revokeObjectURL(audioUrl); } catch {} }, 1000);
+  setTimeout(() => {
+    try {
+      URL.revokeObjectURL(audioUrl);
+    } catch {}
+  }, 1000);
 };
 
 export const initializeAudioContext = () => {

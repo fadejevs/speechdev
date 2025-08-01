@@ -114,6 +114,14 @@ export default function BroadcastPage() {
     setLoading(true);
     fetchEventById(id).then((ev) => {
       if (ev) {
+        // DEBUG: Log the fetched event data to see if tts_voice is correct
+        console.log('[Broadcast Debug] Fetched event data:', {
+          id: ev.id,
+          title: ev.title,
+          tts_voice: ev.tts_voice,
+          fullEventData: ev
+        });
+        
         setEventData(ev);
         if (ev.sourceLanguages?.length) {
           setAvailableSourceLanguages(ev.sourceLanguages);
@@ -133,27 +141,43 @@ export default function BroadcastPage() {
     if (socketRef.current) return;
 
     const socket = io(SOCKET_URL, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'], // Add polling fallback
       reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 10
+      reconnectionDelay: 500, // Faster reconnection
+      reconnectionDelayMax: 5000, // Max 5s delay
+      reconnectionAttempts: Infinity, // Never give up
+      timeout: 10000, // 10s connection timeout
+      forceNew: true, // Force new connection
+      autoConnect: true,
+      upgrade: true // Allow transport upgrades
     });
     socketRef.current = socket;
 
     socket.on('connect', () => {
+      console.log('[WebSocket] Connected successfully to', SOCKET_URL);
       setSocketConnected(true);
       setConnectionStatus('connected');
       socket.emit('join_room', { room: id });
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
+      console.log('[WebSocket] Disconnected:', reason);
       setSocketConnected(false);
       setConnectionStatus('disconnected');
     });
 
-    socket.on('connect_error', () => {
+    socket.on('connect_error', (error) => {
+      console.error('[WebSocket] Connection error:', error.message || error);
       setSocketConnected(false);
       setConnectionStatus('error');
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('[WebSocket] Reconnected after', attemptNumber, 'attempts');
+    });
+
+    socket.on('reconnect_attempt', (attemptNumber) => {
+      console.log('[WebSocket] Reconnection attempt', attemptNumber);
     });
 
     socket.on('realtime_transcription', async (data) => {
@@ -239,34 +263,24 @@ export default function BroadcastPage() {
         }
       } else {
         // This is an interim update
-        setCurrentInterimCaption(data.text || '');
-        
-        // 🚀 SMART INTERIM HANDLING: Use admin translations if available, otherwise fallback
-        if (data.text?.trim() && translationLanguageRef.current) {
-          const targetLang = getLanguageCode(translationLanguageRef.current);
-          const langCode = getBaseLangCode(targetLang);
-          const interimStartTime = Date.now();
+        // PRODUCTION FIX: Only show interim text, don't translate it (expensive!)
+        if (data.text?.trim()) {
+          setCurrentInterimCaption(data.text);
           
-          // Check if admin already provided translations for this interim text
-          if (data.translations && Object.keys(data.translations).length > 0) {
+          // Only use admin translations if available, NO API calls for interim
+          if (data.translations && translationLanguageRef.current) {
+            const targetLang = getLanguageCode(translationLanguageRef.current);
+            const langCode = getBaseLangCode(targetLang);
             const adminTranslation = data.translations[langCode] || 
-                                   data.translations[targetLang] || 
-                                   data.translations[langCode.toUpperCase()] ||
-                                   data.translations[targetLang.toUpperCase()];
+                                   data.translations[targetLang];
             
             if (adminTranslation) {
-              console.log(`[Mobile Interim] ✅ Instant admin translation (${Date.now() - interimStartTime}ms):`, adminTranslation);
               setRealtimeTranslations({ [langCode]: adminTranslation });
-              return; // Skip the individual API call
+            } else {
+              // Clear interim translation if no admin translation
+              setRealtimeTranslations({});
             }
           }
-          
-          // Fallback: Only make individual API call if admin translation not available
-          console.log(`[Mobile Interim] 🔄 No admin translation available, fetching individually for interim text...`);
-          fetchTranslations(data.text, langCode).then((translations) => {
-            console.log(`[Mobile Interim] ⚠️ Individual interim API call completed in ${Date.now() - interimStartTime}ms`);
-            setRealtimeTranslations(translations);
-          });
         }
       }
     });
