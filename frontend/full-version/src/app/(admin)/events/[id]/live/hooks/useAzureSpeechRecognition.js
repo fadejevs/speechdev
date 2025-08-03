@@ -155,19 +155,20 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
         );
 
         // Configure speech settings
-        speechConfig.speechRecognitionLanguage = azureLanguageCode;
+        console.log(`[Azure] Using language code: ${currentAzureLanguageCode}`);
+        speechConfig.speechRecognitionLanguage = currentAzureLanguageCode;
         speechConfig.enableDictation(); // Enable dictation mode for better continuous recognition
         speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Don't filter any speech
 
         // Balanced timeout settings for smooth continuous recognition
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '500'); // Balanced segmentation: 500ms
-        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '800'); // Reasonable finalization: 800ms
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, '1000'); // Max wait: 1s
-        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, '900'); // Quick start: 900ms
+        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '400'); // Increased to 400ms to allow more interim text during speech
+        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '800'); // Increased to 800ms for longer pause before finalizing
+        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, '1000'); // Matching older version for max wait
+        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, '1000'); // Matching older version for quicker start
 
         // Additional optimizations for speed and responsiveness
         speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_RecoMode, 'INTERACTIVE'); // Interactive mode for faster response
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationStrategy, 'Semantic'); // Semantic segmentation for better flow
+        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationStrategy, 'Default'); // Matching older version's setting for better flow
         speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EnableAudioLogging, 'false');
 
         // Add target languages
@@ -193,7 +194,6 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
         // Simple interim tracking - non-blocking approach
         let lastInterimText = '';
         let interimFallbackTimeout = null;
-        let processingState = 'idle'; // Track if we're currently processing - will be used for logging
 
         // Add phrase list for better recognition of specific words.
         if (eventData.phraseList && Array.isArray(eventData.phraseList) && eventData.phraseList.length > 0) {
@@ -255,36 +255,32 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
                 clearTimeout(interimFallbackTimeout);
               }
 
-              // Simple fallback: if no final result comes within 2 seconds, process interim
+              // Simple fallback: if no final result comes within 1 second, process interim
               // But only if the text is substantial enough (>15 chars)
               if (text.length > 15) {
                 interimFallbackTimeout = setTimeout(() => {
                   // Double-check we still have the same text and haven't gotten a final result
                   if (lastInterimText === text && lastInterimText.trim().length > 0) {
-                    console.log('Processing fallback due to timeout, state:', processingState);
-                    processingState = 'fallback-processing';
                     // Use setTimeout to ensure this doesn't block Azure's recognition loop
                     setTimeout(() => {
                       llmProcessor.addToBuffer(text, sourceLanguage, {}, handleNewTranscription);
-                      setTimeout(() => {
-                        processingState = 'idle';
-                      }, 100); // Reset state after processing
+                      lastInterimText = ''; // Clear to prevent re-processing
                     }, 0);
-                    lastInterimText = ''; // Clear to prevent re-processing
                   }
-                }, 2000); // 2 second timeout - more responsive
+                }, 3000); // Increased to 3 seconds for more time to accumulate interim text
               }
             }
           }
 
-          // Send interim results to participants for live feedback
+          // Send interim results to participants for live feedback - immediate emission
           if (text && socketRef.current && socketRef.current.connected) {
             socketRef.current.emit('realtime_transcription', {
               text: text,
               is_final: false, // Mark as interim
-              source_language: azureLanguageCode,
+              source_language: currentAzureLanguageCode,
               room_id: eventData.id
             });
+            console.log('[Azure] Interim sent:', text.substring(0, 15) + (text.length > 15 ? '...' : ''));
           }
         };
 
@@ -303,16 +299,11 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
             // Reset interim tracking since we got a successful final result
             lastInterimText = '';
 
-            // Track processing state
-            processingState = 'normal-processing';
-
-            // Add to buffer for processing (non-blocking)
-            setTimeout(() => {
-              llmProcessor.addToBuffer(text, sourceLanguage, rawTranslations, handleNewTranscription);
-              setTimeout(() => {
-                processingState = 'idle';
-              }, 100); // Reset state after processing
-            }, 0);
+            // Immediate handoff to LLM processor - no blocking of Azure recognition
+            // NOTE: Only send to LLM processor, let it emit the final cleaned transcript
+            // Don't emit raw final transcript to avoid duplication with LLM processed version
+            llmProcessor.addToBuffer(text, sourceLanguage, rawTranslations, handleNewTranscription);
+            console.log('[Azure] Final sent to LLM processor (immediate):', text.substring(0, 15) + (text.length > 15 ? '...' : ''));
           }
         };
 
@@ -321,14 +312,21 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
           () => {
             restartCount = 0; // Reset restart counter on successful start
             // Note: Don't clear connecting state here - wait for first audio detection
+            console.log('[Azure] Continuous recognition started successfully.');
+            // Periodic check disabled to match older working version
+            console.log('[Azure] Periodic activity check disabled to prevent microphone access issues.');
           },
           (err) => {
-            console.error('[Live] Failed to start recognition:', err);
+            console.error('[Azure] Failed to start recognition:', err);
             // Clear connecting state on start failure
             setIsRecognizerConnecting(false);
             setRecognizerReady(false);
             // If start fails, it's likely a configuration issue, but we can still try to restart
-            restartRecognizer();
+            try {
+              restartRecognizer();
+            } catch (error) {
+              console.error('[Azure] Error during initial recognizer restart:', error);
+            }
           }
         );
       };
@@ -367,7 +365,7 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
 
       return startRecognizer;
     },
-    [eventData, selectedAudioInput, llmProcessor, handleNewTranscription, setIsRecognizerConnecting, setRecognizerReady]
+    [eventData, selectedAudioInput, llmProcessor, handleNewTranscription, setIsRecognizerConnecting, setRecognizerReady, currentAzureLanguageCode]
   );
 
   const cleanup = useCallback(() => {
@@ -376,13 +374,28 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
     setRecognizerReady(false);
 
     if (recognizerRef.current) {
+      console.log('[Azure] Cleaning up recognizer to release microphone resources.');
       recognizerRef.current.stopContinuousRecognitionAsync(
-        () => (recognizerRef.current = null),
+        () => {
+          console.log('[Azure] Recognizer stopped successfully, microphone released.');
+          recognizerRef.current = null;
+        },
         (err) => {
-          console.error('Stop recognition error:', err);
+          console.error('[Azure] Stop recognition error:', err);
           recognizerRef.current = null;
         }
       );
+      // Additional attempt to ensure audio source is released
+      try {
+        if (recognizerRef.current && recognizerRef.current.audioSource) {
+          recognizerRef.current.audioSource.turnOff();
+          console.log('[Azure] Audio source turned off explicitly.');
+        }
+      } catch (error) {
+        console.error('[Azure] Error turning off audio source:', error);
+      }
+    } else {
+      console.log('[Azure] No recognizer to clean up.');
     }
   }, [setIsRecognizerConnecting, setRecognizerReady]);
 
