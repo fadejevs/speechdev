@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Box, Typography, CircularProgress, Paper, Button, Menu, MenuItem, IconButton, useMediaQuery, useTheme, Fab, keyframes } from '@mui/material';
+import { Box, Typography, CircularProgress, Paper, Button, Menu, MenuItem, IconButton, useMediaQuery, useTheme, Fab, keyframes, Chip } from '@mui/material';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -96,7 +96,18 @@ export default function BroadcastPage() {
   const [liveTranslations, setLiveTranslations] = useState({});
   const [realtimeTranslations, setRealtimeTranslations] = useState({});
 
-  const { ttsLoading, autoSpeakLang, setAutoSpeakLang, queueForTTS, handleMobilePlayToggle, spokenSentences, stopTts } = useTts(eventData);
+  const { 
+    ttsLoading, 
+    autoSpeakLang, 
+    setAutoSpeakLang, 
+    queueForTTS, 
+    handleMobilePlayToggle, 
+    spokenSentences, 
+    stopTts,
+    mobileAutoPlayFailed,
+    pendingBatchCount,
+    playBatch
+  } = useTts(eventData);
 
   const translationLanguageRef = useRef(translationLanguage);
   useEffect(() => {
@@ -114,14 +125,6 @@ export default function BroadcastPage() {
     setLoading(true);
     fetchEventById(id).then((ev) => {
       if (ev) {
-        // DEBUG: Log the fetched event data to see if tts_voice is correct
-        console.log('[Broadcast Debug] Fetched event data:', {
-          id: ev.id,
-          title: ev.title,
-          tts_voice: ev.tts_voice,
-          fullEventData: ev
-        });
-        
         setEventData(ev);
         if (ev.sourceLanguages?.length) {
           setAvailableSourceLanguages(ev.sourceLanguages);
@@ -441,6 +444,30 @@ export default function BroadcastPage() {
     );
   }
 
+  // Mobile TTS Autoplay Failure Prompt
+  if (isMobileView && mobileAutoPlayFailed && pendingBatchCount > 0) {
+    return (
+      <Box sx={{ position: 'fixed', bottom: 16, left: 16, right: 16, zIndex: 1000, display: 'flex', justifyContent: 'center' }}>
+        <Paper elevation={3} sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(99, 102, 241, 0.08)', maxWidth: '100%', textAlign: 'center' }}>
+          <Typography variant="body2" sx={{ mb: 1, color: 'text.primary' }}>
+            {pendingBatchCount} translation(s) waiting. Tap Play to listen.
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            startIcon={<PlayArrowIcon />}
+            onClick={playBatch}
+            disabled={ttsLoading}
+            sx={{ borderRadius: 2 }}
+          >
+            {ttsLoading ? 'Playing...' : 'Play Now'}
+          </Button>
+        </Paper>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <Box
@@ -753,35 +780,76 @@ export default function BroadcastPage() {
                     </Typography>
                 </Typography>
                 )}
-                {/* Enhanced TTS Button with better mobile/tablet handling */}
+                {/* Smart TTS Button with Mobile Batch Support */}
                 {(persistedTranslations.length > 0 || !!currentInterimTranslation) && (
-                  <IconButton
-                    onClick={() => {
-                      // **FIX**: Only speak the final, persisted translations
-                      const fullTranslationText = persistedTranslations.map(t => t.text).join(' ').trim();
-
-                      if (!fullTranslationText) return;
-                      
-                      if (isMobile()) {
-                        handleMobilePlayToggle(translationLanguage);
-                      } else {
-                        const targetLang = getLanguageCode(translationLanguage);
-                        const langCode = getBaseLangCode(targetLang);
-
-                        if (autoSpeakLang) {
-                          setAutoSpeakLang(null);
-                          stopTts();
+                  <Box sx={{ position: 'relative' }}>
+                    {/* Mobile Batch Indicator */}
+                    {isMobileView && mobileAutoPlayFailed && pendingBatchCount > 0 && (
+                      <Chip
+                        label={`${pendingBatchCount} ready`}
+                        size="small"
+                        color="primary"
+                        sx={{
+                          position: 'absolute',
+                          top: -8,
+                          right: -8,
+                          fontSize: '0.75rem',
+                          height: 20,
+                          minWidth: 50,
+                          zIndex: 1,
+                          animation: `${pulse} 2s ease-in-out infinite`,
+                          bgcolor: '#6366F1',
+                          color: 'white',
+                          '& .MuiChip-label': {
+                            px: 1
+                          }
+                        }}
+                      />
+                    )}
+                    
+                    <IconButton
+                      onClick={() => {
+                        if (isMobile()) {
+                          handleMobilePlayToggle(translationLanguage);
                         } else {
-                          // **FIX**: Clear spoken sentences to allow replay
-                          spokenSentences.current.clear();
-                          setAutoSpeakLang(langCode);
-                          queueForTTS(fullTranslationText, langCode);
+                          // Desktop unchanged
+                          const fullTranslationText = persistedTranslations.map(t => t.text).join(' ').trim();
+                          if (!fullTranslationText) return;
+                          
+                          const targetLang = getLanguageCode(translationLanguage);
+                          const langCode = getBaseLangCode(targetLang);
+
+                          if (autoSpeakLang) {
+                            setAutoSpeakLang(null);
+                            stopTts();
+                          } else {
+                            spokenSentences.current.clear();
+                            setAutoSpeakLang(langCode);
+                            queueForTTS(fullTranslationText, langCode);
+                          }
                         }
-                      }
-                    }}
-                  >
-                    <VolumeUpIcon color={autoSpeakLang ? 'primary' : 'inherit'} />
-                  </IconButton>
+                      }}
+                      disabled={ttsLoading}
+                      sx={{
+                        position: 'relative',
+                        '&:hover': {
+                          bgcolor: isMobileView && mobileAutoPlayFailed && pendingBatchCount > 0 ? 'rgba(99, 102, 241, 0.08)' : 'rgba(0, 0, 0, 0.04)'
+                        }
+                      }}
+                    >
+                      {ttsLoading ? (
+                        <CircularProgress size={24} sx={{ color: '#6366F1' }} />
+                      ) : (
+                        <VolumeUpIcon 
+                          color={
+                            autoSpeakLang ? 'primary' : 
+                            (isMobileView && mobileAutoPlayFailed && pendingBatchCount > 0) ? 'primary' : 
+                            'inherit'
+                          } 
+                        />
+                      )}
+                    </IconButton>
+                  </Box>
                 )}
               </Box>
             </Box>

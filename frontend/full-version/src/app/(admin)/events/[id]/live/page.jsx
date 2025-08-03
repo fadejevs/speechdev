@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
 import Box from '@mui/material/Box';
@@ -25,10 +25,13 @@ import MenuItem from '@mui/material/MenuItem';
 
 import SelfieDoodle from '@/images/illustration/SelfieDoodle';
 
-import io from 'socket.io-client';
-import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
 import { DEEPL_LANGUAGES } from '@/utils/deeplLanguages';
 import { useLLMProcessor } from './hooks/useLLMProcessor';
+import { useAudioDevices } from './hooks/useAudioDevices';
+import { useAutoPause } from './hooks/useAutoPause';
+import { useEventStatus } from './hooks/useEventStatus';
+import { useAzureSpeechRecognition } from './hooks/useAzureSpeechRecognition';
+import { useEventWebSocket } from './hooks/useEventWebSocket';
 
 // language lookup
 const languages = DEEPL_LANGUAGES.map((l) => ({
@@ -83,25 +86,6 @@ const getLanguageName = (code) => {
 
 const getBaseLangCode = (code) => code?.split('-')[0]?.toLowerCase() || code;
 
-const updateEventStatus = async (id, status) => {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}`, {
-    method: 'PATCH',
-    headers: {
-      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation'
-    },
-    body: JSON.stringify({ status })
-  });
-  if (!res.ok) {
-    const error = await res.text();
-    throw new Error(error);
-  }
-  const data = await res.json();
-  return data[0];
-};
-
 export default function EventLivePage() {
   const { id } = useParams();
   const router = useRouter();
@@ -115,24 +99,63 @@ export default function EventLivePage() {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Auto-pause tracking
-  const [wasAutoPaused, setWasAutoPaused] = useState(false);
+  // Connection state tracking
+  const [isRecognizerConnecting, setIsRecognizerConnecting] = useState(false);
+  const [recognizerReady, setRecognizerReady] = useState(false);
 
-  // Add this state to track the media recorder and stream
-  const [mediaRecorder, setMediaRecorder] = useState(null);
-  const [audioStream, setAudioStream] = useState(null);
+  // Initialize hooks in proper order to avoid circular dependencies
+  // WebSocket and LLM first
+  const webSocket = useEventWebSocket(eventData);
+  const llmProcessor = useLLMProcessor(eventData, webSocket.socketRef);
+  
+  // Audio Devices Hook (independent initialization)
+  const audioDevices = useAudioDevices();
+  
+  // Speech Recognition Hook (uses current selected audio input)
+  const speechRecognition = useAzureSpeechRecognition(
+    eventData,
+    audioDevices.selectedAudioInput,
+    llmProcessor,
+    setIsRecognizerConnecting,
+    setRecognizerReady
+  );
+  
+  // Auto-pause Hook
+  const autoPause = useAutoPause(eventData, setEventData, webSocket.socketRef);
 
-  const socketRef = useRef(null);
-  const recognizerRef = useRef(null);
-  const hasCheckedInitialAutoPause = useRef(false); // Track if we've already done initial auto-pause check
+  // Event Status Hook
+  const eventStatus = useEventStatus(
+    eventData,
+    setEventData,
+    webSocket.socketRef,
+    llmProcessor,
+    speechRecognition.recognizerRef,
+    setIsRecognizerConnecting,
+    setRecognizerReady,
+    autoPause.setWasAutoPaused,
+    { hasError: webSocket.hasError, retry: webSocket.retry } // WebSocket retry functionality
+  );
 
-  const [audioInputDevices, setAudioInputDevices] = useState([]);
-  const [selectedAudioInput, setSelectedAudioInput] = useState('');
-  const [anchorEl, setAnchorEl] = useState(null);
+  // Cleanup on unmount to prevent memory leaks and multiple instances
+  useEffect(() => {
+    return () => {
+      if (speechRecognition.recognizerRef.current) {
+        speechRecognition.recognizerRef.current.stopContinuousRecognitionAsync(
+          () => {
+            speechRecognition.recognizerRef.current = null;
+          },
+          (err) => {
+            console.error('[Page] ❌ Error cleaning up recognizer on unmount:', err);
+            speechRecognition.recognizerRef.current = null;
+          }
+        );
+      }
+      llmProcessor.stopProcessing();
+      webSocket.cleanup();
+    };
+  }, []); // Empty dependency array for unmount only
 
-  // LLM Processing Hook
-  const llmProcessor = useLLMProcessor(eventData, socketRef);
-
+  // Fetch event data
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -159,395 +182,87 @@ export default function EventLivePage() {
     fetchEvent();
   }, [id]);
 
-  // Reset auto-pause check when event ID changes
+  // Initialize speech recognizer when websocket is ready
   useEffect(() => {
-    hasCheckedInitialAutoPause.current = false;
-  }, [id]);
+    if (!webSocket.socketRef.current) return;
 
-  // AUTO-PAUSE ON RELOAD: Prevent AudioContext issues (ONLY on initial load)
-  useEffect(() => {
-    const autoPauseIfLive = async () => {
-      // Only auto-pause if this is the FIRST time we're checking AND event is Live
-      if (eventData && eventData.status === 'Live' && !hasCheckedInitialAutoPause.current) {
-        hasCheckedInitialAutoPause.current = true; // Mark that we've checked
-        console.log('[Auto-Pause] Initial page load with Live event - auto-pausing to require user gesture');
-        
-        try {
-          // Update to Paused status
-          await updateEventStatus(eventData.id, 'Paused');
-          setEventData((prev) => ({ ...prev, status: 'Paused' }));
-          setWasAutoPaused(true); // Set auto-pause flag
-          
-          // Notify participants with retry logic
-          const notifyParticipants = () => {
-            if (socketRef.current && socketRef.current.connected) {
-              socketRef.current.emit('update_event_status', {
-                room_id: eventData.id,
-                status: 'Paused'
-              });
-              console.log('[Auto-Pause] ✅ Participants notified of auto-pause');
-            } else {
-              // Retry after a short delay if socket not ready
-              setTimeout(notifyParticipants, 1000);
-            }
-          };
-          
-          notifyParticipants();
-          console.log('[Auto-Pause] ✅ Event auto-paused on initial load. Admin must manually resume.');
-        } catch (error) {
-          console.error('[Auto-Pause] Failed to auto-pause:', error);
-        }
-      } else if (eventData && !hasCheckedInitialAutoPause.current) {
-        // Mark that we've done the initial check even if status wasn't Live
-        hasCheckedInitialAutoPause.current = true;
-        console.log('[Auto-Pause] Initial check completed - event status:', eventData.status);
-      }
-    };
-
-    if (eventData) {
-      autoPauseIfLive();
+    // Only initialize if not already done to prevent multiple instances
+    if (speechRecognition.startRecognizerRef.current) {
+      return;
     }
-  }, [eventData?.id]); // Only run when event ID changes (initial load)
 
+    // Create the startRecognizer function with the websocket reference
+    const startRecognizer = speechRecognition.createStartRecognizer(webSocket.socketRef);
+    speechRecognition.startRecognizerRef.current = startRecognizer;
+  }, [webSocket.socketRef.current]);
+
+  // Start/stop recognition based on event status
   useEffect(() => {
-    // Use the first source language if available
-    const sourceLanguage =
-      eventData?.sourceLanguage || (Array.isArray(eventData?.sourceLanguages) ? eventData.sourceLanguages[0] : undefined);
+    if (!eventData) return;
 
-    if (!eventData || !sourceLanguage) return;
-
-    // Connecting to socket server
-    const socket = io('https://speechdev.onrender.com', { transports: ['websocket'] });
-    socketRef.current = socket;
-
-    // Add global timeout tracking for cleanup
-    const timeouts = [];
-    const clearAllTimeouts = () => {
-      timeouts.forEach(id => clearTimeout(id));
-      timeouts.length = 0;
-    };
-
-    // Prevent infinite restart loops
-    let restartCount = 0;
-    const MAX_RESTARTS = 5;
-
-    socket.on('connect', () => {
-      console.log('[WebSocket] Connected successfully to', 'https://speechdev.onrender.com');
-      // setSocketConnected(true); // This state is not defined in the original file
-      // setConnectionStatus('connected'); // This state is not defined in the original file
-      socket.emit('join_room', { room: id });
-    });
-
-    socket.on('connect_error', (err) => {
-      console.error('[WebSocket] Connection error:', err);
-      // setSocketConnected(false); // This state is not defined in the original file
-      // setConnectionStatus('disconnected'); // This state is not defined in the original file
-    });
-
-    socket.on('disconnect', () => {
-      console.log('[WebSocket] Disconnected from server');
-      // setSocketConnected(false); // This state is not defined in the original file
-      // setConnectionStatus('disconnected'); // This state is not defined in the original file
-    });
-
-    socket.on('realtime_transcription', (data) => {
-      console.log('[Live] Received realtime transcription:', data);
-      // Send interim results to participants for live feedback
-      if (data.text && socketRef.current && socketRef.current.connected) {
-        socketRef.current.emit('realtime_transcription', {
-          text: data.text,
-          is_final: false, // Mark as interim
-          source_language: azureLanguageCode,
-          room_id: eventData.id
-        });
-      }
-    });
-
-    const startRecognizer = () => {
-      if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
-        alert('Azure Speech key/region not set');
-        return;
-      }
-
-      // Azure Speech SDK language mapping and validation
-      const azureSpeechLanguageMap = {
-        en: 'en-US',
-        es: 'es-ES',
-        fr: 'fr-FR',
-        de: 'de-DE',
-        it: 'it-IT',
-        pt: 'pt-PT',
-        ru: 'ru-RU',
-        ja: 'ja-JP',
-        ko: 'ko-KR',
-        zh: 'zh-CN',
-        ar: 'ar-SA',
-        hi: 'hi-IN',
-        tr: 'tr-TR',
-        nl: 'nl-NL',
-        pl: 'pl-PL',
-        sv: 'sv-SE',
-        no: 'nb-NO',
-        da: 'da-DK',
-        fi: 'fi-FI',
-        cs: 'cs-CZ',
-        hu: 'hu-HU',
-        ro: 'ro-RO',
-        sk: 'sk-SK',
-        bg: 'bg-BG',
-        hr: 'hr-HR',
-        sl: 'sl-SI',
-        et: 'et-EE',
-        lv: 'lv-LV', // Latvian
-        lt: 'lt-LT', // Lithuanian
-        uk: 'uk-UA',
-        he: 'he-IL',
-        th: 'th-TH',
-        vi: 'vi-VN',
-        id: 'id-ID',
-        ms: 'ms-MY',
-        fa: 'fa-IR',
-        Latvian: 'lv-LV',
-        English: 'en-US',
-        Spanish: 'es-ES',
-        French: 'fr-FR',
-        German: 'de-DE'
-      };
-
-      // DEBUGGING: Show exactly what we received
-      console.log('[Azure] Raw sourceLanguage from event data:', sourceLanguage);
-      console.log('[Azure] Event sourceLanguages array:', eventData?.sourceLanguages);
-
-      // Map to proper Azure language code
-      let azureLanguageCode = sourceLanguage;
-
-      // Try direct mapping first
-      if (azureSpeechLanguageMap[sourceLanguage]) {
-        azureLanguageCode = azureSpeechLanguageMap[sourceLanguage];
-        console.log('[Azure] Direct mapping found:', sourceLanguage, '→', azureLanguageCode);
-      }
-      // If it's already in xx-XX format, use it
-      else if (sourceLanguage && sourceLanguage.includes('-')) {
-        azureLanguageCode = sourceLanguage;
-        console.log('[Azure] Using language code as-is:', azureLanguageCode);
-      }
-      // If it's just a base code, map it
-      else if (sourceLanguage) {
-        const baseCode = sourceLanguage.split('-')[0].toLowerCase();
-        if (azureSpeechLanguageMap[baseCode]) {
-          azureLanguageCode = azureSpeechLanguageMap[baseCode];
-          console.log('[Azure] Base code mapping:', baseCode, '→', azureLanguageCode);
-        }
-      }
-
-      // Final validation - NO FALLBACK TO ENGLISH!
-      if (!azureLanguageCode || (!azureLanguageCode.includes('-') && azureLanguageCode === sourceLanguage)) {
-        console.error('[Azure] Could not map language:', sourceLanguage);
-        console.error('[Azure] Available mappings:', Object.keys(azureSpeechLanguageMap));
-        // Don't fall back to English - that defeats the purpose!
-        // Use whatever we have and let Azure tell us if it's wrong
-        azureLanguageCode = sourceLanguage;
-      }
-
-      console.log('[Azure] Final language code for Azure Speech SDK:', azureLanguageCode);
-      console.log('[Azure] Region:', process.env.NEXT_PUBLIC_AZURE_REGION);
-      console.log('[Azure] Key exists:', !!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY);
-
-      // Test Azure service connectivity
-      try {
-        const testConfig = SpeechSDK.SpeechConfig.fromSubscription(
-          process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-          process.env.NEXT_PUBLIC_AZURE_REGION
-        );
-        console.log('[Azure] Basic config created successfully');
-      } catch (configError) {
-        console.error('[Azure] Failed to create basic config:', configError);
-      }
-
-      const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(
-        process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY,
-        process.env.NEXT_PUBLIC_AZURE_REGION
-      );
-
-      // Configure speech settings
-      console.log(`[Azure] Using language code: ${azureLanguageCode}`);
-      speechConfig.speechRecognitionLanguage = azureLanguageCode;
-      speechConfig.enableDictation(); // Enable dictation mode for better continuous recognition
-      speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Don't filter any speech
-
-      // Production-stable Azure settings - balanced for reliability and responsiveness
-      speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '500'); // Stable: 800ms
-      speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '1200'); // Allow natural pauses
-      speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, '2000'); // Max 3s for reliability
-      speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, '2000'); // Stable start
-      speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EnableAudioLogging, 'false');
-
-      // Add target languages
-      (eventData.targetLanguages || []).forEach((lang) => {
-        speechConfig.addTargetLanguage(lang);
-      });
-
-      const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-      const recognizer = new SpeechSDK.TranslationRecognizer(speechConfig, audioConfig);
-
-      recognizerRef.current = recognizer;
-
-      // Add phrase list for better recognition of specific words.
-      // To use this, add a `phraseList` array to your event data in Supabase.
-      // e.g., eventData.phraseList = ["Speechmatics", "Ralf's awesome app"]
-      if (eventData.phraseList && Array.isArray(eventData.phraseList) && eventData.phraseList.length > 0) {
-        const phraseListGrammar = SpeechSDK.PhraseListGrammar.fromRecognizer(recognizer);
-        phraseListGrammar.addPhrases(eventData.phraseList);
-        console.log('[Azure] Added phrase list to recognizer:', eventData.phraseList);
-      }
-
-      // Handle recognition errors with a restart mechanism
-      recognizer.canceled = (s, e) => {
-        console.log('[Live] Recognition canceled. Reason:', e.reason);
-        if (e.reason === SpeechSDK.CancellationReason.Error) {
-          console.error(`[Live] Recognition error: ${e.errorDetails}`);
-          let isFatal = false;
-
-          // Check for fatal errors that we should not recover from
-          if (
-            e.errorDetails.includes('1007') || // Unsupported language
-            e.errorDetails.includes('not supported') ||
-            e.errorCode === SpeechSDK.CancellationErrorCode.AuthenticationFailure ||
-            e.errorCode === SpeechSDK.CancellationErrorCode.Forbidden
-          ) {
-            console.error(`[Azure] ❌ FATAL ERROR: Language, authentication, or permission issue.`);
-            console.error('[Azure] 💡 Check your Azure key, region, and language support. Will not restart.');
-            isFatal = true;
-          }
-
-          if (!isFatal) {
-            console.log('[Live] Non-fatal error detected. Restarting recognizer...');
-            restartRecognizer();
-          }
-        }
-      };
-
-      recognizer.recognizing = (_s, evt) => {
-        const text = evt.result.text;
-        
-        console.log('[Admin] ⚡ Real-time (interim):', text);
-        
-        // Send interim results to participants for live feedback
-        if (text && socketRef.current && socketRef.current.connected) {
-          socketRef.current.emit('realtime_transcription', {
-            text: text,
-            is_final: false, // Mark as interim
-            source_language: azureLanguageCode,
-            room_id: eventData.id
-          });
-        }
-      };
-
-      recognizer.recognized = (_s, evt) => {
-        const text = evt.result.text;
-        const rawTranslations = evt.result.translations ? Object.fromEntries(Object.entries(evt.result.translations)) : {};
-        
-        console.log('[Admin] ✅ Raw recognized:', text);
-        console.log('[Admin] �� Raw translations (not sent):', rawTranslations);
-        
-        // Add to buffer for processing
-        if (text) { // Only process if there is text
-          llmProcessor.addToBuffer(text, sourceLanguage, rawTranslations, handleNewTranscription);
-        }
-      };
-
-      // Start recognition with proper error handling
-      recognizer.startContinuousRecognitionAsync(
+    // Always stop any existing recognizer first to prevent doubling
+    if (speechRecognition.recognizerRef.current) {
+      speechRecognition.recognizerRef.current.stopContinuousRecognitionAsync(
         () => {
-          console.log('[Live] Recognition started successfully');
-          restartCount = 0; // Reset restart counter on successful start
+          speechRecognition.recognizerRef.current = null;
         },
         (err) => {
-          console.error('[Live] Failed to start recognition:', err);
-          // If start fails, it's likely a configuration issue, but we can still try to restart
-          restartRecognizer();
+          console.error('[Page] Error stopping previous recognizer:', err);
+          speechRecognition.recognizerRef.current = null;
         }
       );
-    };
+    }
 
-    const restartRecognizer = () => {
-        if (restartCount >= MAX_RESTARTS) {
-          console.error('[Live] Max restart attempts reached. Stopping automatic restarts.');
-          return;
-        }
-        
-        restartCount++;
-        console.log(`[Live] Restart attempt ${restartCount}/${MAX_RESTARTS}`);
-        
-        if (recognizerRef.current) {
-          console.log('[Live] Stopping current recognizer...');
-          recognizerRef.current.stopContinuousRecognitionAsync(
-            () => {
-              console.log('[Live] Previous recognizer stopped. Restarting in 2 seconds...');
-              recognizerRef.current = null;
-              const timeoutId = setTimeout(startRecognizer, 2000);
-              timeouts.push(timeoutId);
-            },
-            (err) => {
-              console.error('[Live] Error stopping recognizer, but attempting restart anyway in 2 seconds...', err);
-              recognizerRef.current = null;
-              const timeoutId = setTimeout(startRecognizer, 2000);
-              timeouts.push(timeoutId);
-            }
-          );
-        } else {
-          console.log('[Live] No active recognizer. Starting in 2 seconds...');
-          const timeoutId = setTimeout(startRecognizer, 2000);
-          timeouts.push(timeoutId);
-        }
-      };
-
+    // Start recognition when event is live
     if (eventData.status === 'Live') {
       llmProcessor.startProcessing();
-      startRecognizer();
-    }
-
-    return () => {
-      // Stop LLM processing first
+      
+      // Add a small delay to ensure previous recognizer is fully stopped
+      setTimeout(() => {
+        if (speechRecognition.startRecognizerRef.current) {
+          speechRecognition.startRecognizerRef.current(audioDevices.selectedAudioInput);
+        }
+      }, 100);
+    } else {
+      // Stop processing when not live
       llmProcessor.stopProcessing();
-      
-      // Clear all pending timeouts to prevent memory leaks
-      clearAllTimeouts();
-      
-      if (recognizerRef.current) {
-        recognizerRef.current.stopContinuousRecognitionAsync(
-          () => (recognizerRef.current = null),
-          (err) => {
-            console.error('Stop recognition error:', err);
-            recognizerRef.current = null;
-          }
-        );
-      }
-      
-      socket.disconnect();
-    };
-    // Optimized dependencies - only re-run when event ID or status changes
+    }
   }, [eventData?.id, eventData?.status]);
 
-  // Fetch audio input devices on mount
-  useEffect(() => {
-    async function getAudioDevices() {
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = devices.filter((device) => device.kind === 'audioinput');
-        setAudioInputDevices(audioInputs);
-        if (!selectedAudioInput && audioInputs.length > 0) {
-          setSelectedAudioInput(audioInputs[0].deviceId);
+  // Handler for switching audio devices
+  const handleSwitchAudioDevice = (deviceId) => {
+    audioDevices.setSelectedAudioInput(deviceId);
+    
+    // If event is live and recognizer is running, restart with new device
+    if (eventData?.status === 'Live' && speechRecognition.recognizerRef.current) {
+      // Stop current recognizer
+      speechRecognition.recognizerRef.current.stopContinuousRecognitionAsync(
+        () => {
+          speechRecognition.recognizerRef.current = null;
+          
+          // Start new recognizer with selected device after a brief delay
+          setTimeout(() => {
+            if (speechRecognition.startRecognizerRef.current) {
+              speechRecognition.startRecognizerRef.current(deviceId);
+            }
+          }, 500);
+        },
+        (err) => {
+          console.error('[Audio] Error stopping recognizer for device switch:', err);
+          speechRecognition.recognizerRef.current = null;
+          
+          // Still try to start with new device
+          setTimeout(() => {
+            if (speechRecognition.startRecognizerRef.current) {
+              speechRecognition.startRecognizerRef.current(deviceId);
+            }
+          }, 500);
         }
-      } catch (err) {
-        console.error('Error accessing audio devices:', err);
-      }
+      );
     }
-    getAudioDevices();
-  }, []);
+  };
 
-  const handleBackToEvents = () => router.push('/dashboard/analytics');
+  // Share dialog handlers
   const handleOpenShareDialog = () => setShareDialogOpen(true);
   const handleCloseShareDialog = () => {
     setShareDialogOpen(false);
@@ -559,103 +274,9 @@ export default function EventLivePage() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-  const handleCompleteEvent = async () => {
-    try {
-      // Stop LLM processing immediately to save tokens
-      llmProcessor.stopProcessing();
-      
-      await updateEventStatus(eventData.id, 'Completed');
-      setEventData((prev) => ({ ...prev, status: 'Completed' }));
-      if (socketRef.current && socketRef.current.connected) {
-        socketRef.current.emit('update_event_status', {
-          room_id: eventData.id,
-          status: 'Completed'
-        });
-      }
-      // Redirect to the complete page
-      router.push(`/events/${eventData.id}/complete`);
-    } catch (e) {
-      console.error('Failed to complete event:', e);
-    }
-  };
-  const handlePauseResumeEvent = async () => {
-    try {
-      const newStatus = eventData.status === 'Paused' ? 'Live' : 'Paused';
 
-      // Update in Supabase
-      await updateEventStatus(eventData.id, newStatus);
-      setEventData((prev) => ({ ...prev, status: newStatus }));
 
-      if (newStatus === 'Paused') {
-        // Stop LLM processing to save tokens
-        llmProcessor.stopProcessing();
-        
-        if (recognizerRef.current) {
-        recognizerRef.current.stopContinuousRecognitionAsync(
-          () => {
-            recognizerRef.current = null;
-          },
-          (err) => {
-            console.error('Stop recognition error:', err);
-            recognizerRef.current = null;
-          }
-        );
-      }
-      } else {
-        // Resume: activate LLM processing and clear auto-pause flag
-        llmProcessor.startProcessing();
-        setWasAutoPaused(false); // Clear auto-pause notification
-      }
-      
-      if (socketRef.current && socketRef.current.connected) {
-        socketRef.current.emit('update_event_status', {
-          room_id: eventData.id,
-          status: newStatus
-        });
-      }
-    } catch (e) {
-      console.error('Failed to update event status:', e);
-    }
-  };
 
-  const handleNewTranscription = (data) => {
-    // Only record if enabled
-    if (eventData.recordEvent) {
-      const key = `transcripts_${String(eventData.id)}`;
-      const transcripts = JSON.parse(localStorage.getItem(key) || '{}');
-      // Save source transcription
-      if (data.text && data.source_language) {
-        const lang = data.source_language.split('-')[0].toLowerCase();
-        transcripts[lang] = transcripts[lang] || [];
-        transcripts[lang].push(data.text);
-      }
-      // Save translations
-      if (data.translations) {
-        Object.entries(data.translations).forEach(([lang, txt]) => {
-          const baseLang = lang.split('-')[0].toLowerCase();
-          transcripts[baseLang] = transcripts[baseLang] || [];
-          transcripts[baseLang].push(txt);
-        });
-      }
-      localStorage.setItem(key, JSON.stringify(transcripts));
-    }
-    // ... your existing UI update logic ...
-  };
-
-  // Handler for opening/closing the menu
-  const handleMenuOpen = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
-  // Handler for selecting a device
-  const handleSelectInput = (deviceId) => {
-    setSelectedAudioInput(deviceId);
-    handleMenuClose();
-    // TODO: If you want to re-initialize the recognizer with the new input, do it here
-  };
 
   if (loading) {
     return (
@@ -712,7 +333,7 @@ export default function EventLivePage() {
       >
         <Button
           startIcon={<ArrowBackIcon />}
-          onClick={handleBackToEvents}
+          onClick={() => router.push('/dashboard/analytics')}
           sx={{
             color: '#212B36',
             textTransform: 'none',
@@ -727,42 +348,55 @@ export default function EventLivePage() {
           sx={{
             display: 'flex',
             gap: { xs: 1, sm: 2 },
-            width: { xs: '100%', sm: 'auto' }
+            width: { xs: '100%', sm: 'auto' },
+            alignItems: 'center'
           }}
         >
+
           <Button
             variant="outlined"
-            onClick={handlePauseResumeEvent}
+            onClick={eventStatus.handlePauseResumeEvent}
+            disabled={!webSocket.isConnected && !webSocket.hasError}
             sx={{
               textTransform: 'none',
               px: { xs: 2, sm: 3 },
               py: 1,
               borderRadius: '8px',
               flex: { xs: 1, sm: 'initial' },
-              fontSize: { xs: '0.875rem', sm: '1rem' }
+              fontSize: { xs: '0.875rem', sm: '1rem' },
+              opacity: (!webSocket.isConnected && !webSocket.hasError) ? 0.6 : 1
             }}
           >
-            {eventData?.status === 'Paused' ? 'Resume Event' : 'Pause Event'}
+            {webSocket.isConnecting 
+              ? 'Connecting...'
+              : webSocket.hasError 
+                ? 'Connection Failed - Retry?'
+                : eventData?.status === 'Paused' 
+                  ? 'Resume Event' 
+                  : 'Pause Event'
+            }
           </Button>
           <Button
             variant="contained"
-            onClick={handleCompleteEvent}
+            onClick={eventStatus.handleCompleteEvent}
+            disabled={webSocket.isConnecting}
             sx={{
               textTransform: 'none',
               px: { xs: 2, sm: 3 },
               py: 1,
               borderRadius: '8px',
               flex: { xs: 1, sm: 'initial' },
-              fontSize: { xs: '0.875rem', sm: '1rem' }
+              fontSize: { xs: '0.875rem', sm: '1rem' },
+              opacity: webSocket.isConnecting ? 0.6 : 1
             }}
           >
-            Complete Event
+            {webSocket.isConnecting ? 'Connecting...' : 'Complete Event'}
           </Button>
         </Box>
       </Box>
 
       {/* Auto-pause notification */}
-      {wasAutoPaused && eventData?.status === 'Paused' && (
+      {autoPause.wasAutoPaused && eventData?.status === 'Paused' && (
         <Alert 
           severity="info" 
           sx={{ 
@@ -771,7 +405,7 @@ export default function EventLivePage() {
               fontSize: { xs: '0.875rem', sm: '1rem' }
             }
           }}
-          onClose={() => setWasAutoPaused(false)}
+          onClose={() => autoPause.setWasAutoPaused(false)}
         >
           <strong>Event Auto-Paused:</strong> The event was automatically paused due to a browser refresh. 
           Click "Resume Event" to start transcription.
@@ -934,6 +568,7 @@ export default function EventLivePage() {
                 }
               }}
             />
+
           </Box>
           <Box
             sx={{
@@ -945,7 +580,7 @@ export default function EventLivePage() {
             <Button
               size="small"
               endIcon={<ArrowDropDownIcon />}
-              onClick={handleMenuOpen}
+              onClick={audioDevices.handleMenuOpen}
               sx={{
                 textTransform: 'none',
                 fontSize: { xs: '0.875rem', sm: '0.875rem' },
@@ -960,9 +595,9 @@ export default function EventLivePage() {
               Change Input
             </Button>
             <Menu
-              anchorEl={anchorEl}
-              open={Boolean(anchorEl)}
-              onClose={handleMenuClose}
+              anchorEl={audioDevices.anchorEl}
+              open={Boolean(audioDevices.anchorEl)}
+              onClose={audioDevices.handleMenuClose}
               PaperProps={{
                 sx: {
                   mt: 1,
@@ -971,14 +606,17 @@ export default function EventLivePage() {
                 }
               }}
             >
-              {audioInputDevices.length === 0 ? (
+              {audioDevices.audioInputDevices.length === 0 ? (
                 <MenuItem disabled>No audio inputs found</MenuItem>
               ) : (
-                audioInputDevices.map((device) => (
+                audioDevices.audioInputDevices.map((device) => (
                   <MenuItem
                     key={device.deviceId}
-                    selected={device.deviceId === selectedAudioInput}
-                    onClick={() => handleSelectInput(device.deviceId)}
+                    selected={device.deviceId === audioDevices.selectedAudioInput}
+                    onClick={() => {
+                      handleSwitchAudioDevice(device.deviceId);
+                      audioDevices.handleMenuClose();
+                    }}
                   >
                     {device.label || `Microphone (${device.deviceId})`}
                   </MenuItem>

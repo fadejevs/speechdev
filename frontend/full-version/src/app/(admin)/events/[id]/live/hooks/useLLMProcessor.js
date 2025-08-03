@@ -8,6 +8,7 @@ export const useLLMProcessor = (eventData, socketRef) => {
   const lastProcessTimeRef = useRef(0);
   const speechPatternRef = useRef({ avgPauseLength: 1000, avgSentenceLength: 50 });
 
+
   // Smart sentence boundary detection
   const detectSentenceBoundaries = useCallback((text) => {
     if (!text) return false;
@@ -69,10 +70,10 @@ export const useLLMProcessor = (eventData, socketRef) => {
     const avgPause = speechPatternRef.current.avgPauseLength;
     const bufferLength = buffer.reduce((acc, chunk) => acc + chunk.text.length, 0);
 
-    // Base timing rules - optimized for responsiveness
-    const MIN_WAIT = 1000; // Always wait at least 1000ms
-    const MAX_WAIT = 5000; // Never wait more than 5s
-    const OPTIMAL_LENGTH = 150; // Target around 150 characters
+    // Base timing rules - optimized for FAST responsiveness
+    const MIN_WAIT = 300; // Reduced from 600ms to 300ms for faster initial response
+    const MAX_WAIT = 2000; // Reduced from 4s to 2s for quicker processing
+    const OPTIMAL_LENGTH = 80; // Reduced from 120 to 80 characters for faster processing
 
     // Dynamic timing based on:
     // 1. Natural pause length (longer pause = likely sentence end)
@@ -107,17 +108,26 @@ export const useLLMProcessor = (eventData, socketRef) => {
 
       const sourceLanguage = eventData?.sourceLanguage || "the user's language";
 
-      // Prepare context-aware prompt
-      const contextText = context.length > 0 ? context.join(' ') : '';
+      // Prepare context-aware prompt with overlap detection
       const currentText = textArray.join(' ').trim();
-
       if (!currentText) return { cleaned: '', newContext: context };
 
-      const systemPrompt = `You MUST fix this speech transcription and return ONLY the cleaned speech text in ${sourceLanguage}. Fix unclear sentences, fix punctuation, improve coherence, remove stutters. NEVER return system messages, meta-commentary, questions, greetings, or anything the speaker didn't say.
+      // Filter context to avoid overlap with current text
+      const contextText = context.length > 0 ? 
+        context.filter(sentence => {
+          // Remove context sentences that overlap significantly with current text
+          const overlap = sentence.toLowerCase().split(' ').some(word => 
+            word.length > 3 && currentText.toLowerCase().includes(word)
+          );
+          return !overlap;
+        }).join(' ') : '';
 
-${contextText ? `Context: "${contextText}"` : ''}
 
-RETURN ONLY THE CLEANED SPEECH:`;
+
+      // Shortened system prompt for faster processing
+      const systemPrompt = `You are cleaning transcribed speech. Only fix the spoken words, correct grammar, punctuation, remove stutters, and improve coherence. Do not answer questions or add content not spoken. Return ONLY the cleaned text.
+${contextText ? `Previous context: "${contextText}"` : ''}
+CLEAN THIS TRANSCRIBED SPEECH:`;
 
       try {
         const response = await fetch('/api/openai-chat', {
@@ -131,8 +141,8 @@ RETURN ONLY THE CLEANED SPEECH:`;
               { role: 'system', content: systemPrompt },
               { role: 'user', content: currentText }
             ],
-            max_tokens: 300,
-            temperature: 0.0
+            max_tokens: 150, // Reduced from 300 for faster response
+            temperature: 0.2 // Slightly increased from 0.0 for potentially faster processing
           })
         });
 
@@ -144,12 +154,49 @@ RETURN ONLY THE CLEANED SPEECH:`;
         const data = await response.json();
         const llmResponse = data.choices?.[0]?.message?.content?.trim() || '';
         
-        // Safety check: if LLM response looks suspicious, use original
-        const cleaned = passesQualityCheck(llmResponse) ? llmResponse : textArray.join(' ');
+        // Trust the LLM completely - no quality checks
+        const originalText = textArray.join(' ');
+        
+        // Basic existence check only
+        if (!passesQualityCheck(llmResponse)) {
+          console.warn('[LLM] 🚫 Empty or invalid response - using original');
+          return { cleaned: originalText, newContext: [...context, currentText] };
+        }
+        
+        // Final duplicate detection in cleaned text
+        let cleaned = llmResponse;
+        
+        // Detect and remove obvious sentence duplicates within the response
+        const cleanedSentences = cleaned.split(/[.!?]+/).filter(s => s.trim().length > 5);
+        const uniqueSentences = [];
+        const seenSentences = new Set();
+        
+        for (const sentence of cleanedSentences) {
+          const normalized = sentence.trim().toLowerCase();
+          if (!seenSentences.has(normalized) && normalized.length > 5) {
+            seenSentences.add(normalized);
+            uniqueSentences.push(sentence.trim());
+          }
+        }
+        
+        if (uniqueSentences.length < cleanedSentences.length) {
+          cleaned = uniqueSentences.join('. ').trim();
+          if (cleaned && !cleaned.endsWith('.') && !cleaned.endsWith('!') && !cleaned.endsWith('?')) {
+            cleaned += '.';
+          }
+        }
 
-        // Extract sentences for context (keep last 1-2 sentences)
+        // Extract sentences for context (keep last 1-2 sentences) with duplicate prevention
         const sentences = cleaned.split(/[.!?]+/).filter((s) => s.trim().length > 10);
-        const newContext = sentences.slice(-2); // Keep last 2 sentences as context
+        
+        // Only keep sentences that are significantly different from current input
+        const distinctSentences = sentences.filter(sentence => {
+          const similarity = currentText.toLowerCase().includes(sentence.toLowerCase().trim()) ||
+                           sentence.toLowerCase().includes(currentText.toLowerCase());
+          return !similarity;
+        });
+        
+        const newContext = distinctSentences.slice(-2); // Keep last 2 distinct sentences as context
 
         return { cleaned, newContext };
       } catch (error) {
@@ -160,44 +207,10 @@ RETURN ONLY THE CLEANED SPEECH:`;
     [eventData]
   );
 
-  // Smart quality control
+  // No quality check - trust the LLM prompt completely
   const passesQualityCheck = useCallback((text) => {
-    if (!text || typeof text !== 'string') return false;
-
-    const cleanText = text.trim();
-
-    // Basic filters
-    if (cleanText.length < 3) return false;
-    if (cleanText.length > 1000) return false; // Suspiciously long
-
-    // Content filters - block unwanted LLM responses
-    const rejectPatterns = [
-      /^(um+|uh+|er+|ah+)$/i, // Just filler words
-      /^[^a-zA-Z]*$/, // No letters (just punctuation/numbers)
-      /no text provided/i,
-      /please provide/i,
-      /i (can't|cannot) (understand|hear)/i,
-      // Block system/meta messages
-      /not sufficient/i,
-      /insufficient text/i,
-      /unable to process/i,
-      /error|warning/i,
-      /cannot transcribe/i,
-      // Block conversational additions
-      /how can i help/i,
-      /anything else/i,
-      /is there/i,
-      /thank you/i,
-      /you're welcome/i,
-      /hi there|hello there/i,
-      // Block questions the speaker didn't ask
-      /\?.*\?/,  // Multiple questions
-      /what.*\?.*how.*\?/i, // Question combos
-      // Block if it starts with obvious LLM responses
-      /^(sorry|unfortunately|i'm|i am|as an ai)/i
-    ];
-
-    return !rejectPatterns.some((pattern) => pattern.test(cleanText));
+    // Just basic existence check - trust the LLM to do its job
+    return text && typeof text === 'string' && text.trim().length > 0;
   }, []);
 
   // Determine if we should process now
@@ -215,12 +228,14 @@ RETURN ONLY THE CLEANED SPEECH:`;
       // 1. Clear sentence ending with decent length
       // 2. Long pause detected (speaker likely finished thought)
       // 3. Buffer getting too long (prevent accumulation)
+      // 4. Even if it's a short transcription, process to avoid delays
 
       if (!hasQualityContent) return false;
 
       if (hasSentenceEnd && hasGoodLength) return true;
       if (hasLongPause && hasGoodLength) return true;
-      if (combinedText.length > 300) return true; // Prevent excessive accumulation
+      if (combinedText.length > 200) return true; // Reduced from 300 to 200 to prevent excessive accumulation
+      if (buffer.length > 1) return true; // Process if there are multiple chunks to avoid delays
 
       return false;
     },
@@ -254,10 +269,6 @@ RETURN ONLY THE CLEANED SPEECH:`;
           context_length: contextHistory.length
         });
 
-        console.log(`[Smart LLM] ✅ Processed with context in ${Date.now() - startTime}ms:`, cleaned);
-        console.log(`[Smart LLM] 🧠 Context sentences:`, newContext.length);
-      } else {
-        console.log(`[Smart LLM] ❌ Failed quality check:`, cleaned);
       }
 
       // Clear buffer
@@ -300,18 +311,19 @@ RETURN ONLY THE CLEANED SPEECH:`;
 
         // Smart processing decision
         if (shouldProcessNow(newBuffer, timeSinceLastChunk)) {
-          console.log(`[Smart LLM] 🎯 Processing triggered: Smart decision`);
-          processBuffer(newBuffer, handleNewTranscription);
-          return [];
+          // Use setTimeout to ensure processing doesn't block Azure recognition
+          setTimeout(() => {
+            processBuffer(newBuffer, handleNewTranscription);
+          }, 0);
+          return []; // Buffer cleared, no timeout needed
         }
 
-        // Set dynamic timeout based on speech patterns
+        // Set dynamic timeout based on speech patterns ONLY if not processing immediately
         const optimalWait = calculateOptimalTiming(newBuffer, timeSinceLastChunk);
 
         processingTimeoutRef.current = setTimeout(() => {
           setBuffer((currentBuffer) => {
             if (currentBuffer.length > 0) {
-              console.log(`[Smart LLM] ⏰ Processing triggered: Timeout (${optimalWait}ms)`);
               processBuffer(currentBuffer, handleNewTranscription);
             }
             return [];
@@ -327,7 +339,6 @@ RETURN ONLY THE CLEANED SPEECH:`;
   const startProcessing = () => {
     isProcessingActiveRef.current = true;
     setContextHistory([]); // Reset context on start
-    console.log('[Smart LLM] 🧠 Smart context-aware processing activated.');
   };
 
   const stopProcessing = () => {
@@ -337,7 +348,6 @@ RETURN ONLY THE CLEANED SPEECH:`;
     }
     setBuffer([]);
     setContextHistory([]);
-    console.log('[Smart LLM] 🛑 Processing stopped and context cleared.');
   };
 
   return {
