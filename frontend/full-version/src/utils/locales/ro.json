@@ -1,50 +1,84 @@
 {
-  "manage": "Gestionează",
-  "dashboard": "Tabloul de bord",
-
-  "account-user": "Cont și utilizator",
-  "account": "Cont",
-  "user": "Utilizator",
-
-  "roles-permissions": "Roluri și permisiuni",
-  "billing": "Facturare",
-  "blog": "Blog",
-  "setting": "Setare",
-
-  "other": "Altul",
-  "components": "Componente",
-  "chart": "gràfiko",
-  "tanstack-table": "Tabel TanStack",
-
-  "avatar": "Avatar",
-  "button": "Buton",
-  "card": "Karta",
-  "checkbox": "Checkbox",
-  "chip": "cip",
-  "color": "Culoare",
-  "drop-down": "Derulare",
-  "dialog": "Dialog",
-  "illustration": "Ilustrație",
-  "input": "Intrare",
-  "progress": "Progres",
-  "radio": "Radio",
-  "shadow": "Umbra",
-  "slider": "Slider",
-  "switch": "Switch",
-  "tabs": "File",
-  "tooltip": "Tooltip",
-  "typography": "Tipografie",
-
-  "plugins": "Plugins",
-  "color-picker": "Selector de culori",
-  "calendar": "Calendar",
-
-  "help": "Ajutor",
-  "sample-page": "pagină-probă",
-  "changelog": "Jurnal de modificări",
-  "documentation": "Documentație",
-  "support": "Suport",
-
-  "menu-levels": "Niveluri de meniu",
-  "level": "Nivel"
+  "auth": {
+    "login": {
+      "title": "Autentificare",
+      "email": "Adresă de email",
+      "password": "Parolă",
+      "loginButton": "Conectare",
+      "forgotPassword": "Parolă uitată?",
+      "noAccount": "Nu ai cont?",
+      "signUp": "Înregistrează-te"
+    },
+    "register": {
+      "title": "Înregistrare",
+      "email": "Adresă de email",
+      "password": "Parolă",
+      "confirmPassword": "Confirmă parola",
+      "registerButton": "Înregistrează-te",
+      "haveAccount": "Ai deja cont?",
+      "login": "Conectare"
+    },
+    "forgotPassword": {
+      "title": "Parolă uitată",
+      "email": "Adresă de email",
+      "sendButton": "Trimite link de resetare",
+      "backToLogin": "Înapoi la autentificare"
+    },
+    "otpVerification": {
+      "title": "Verificare OTP",
+      "instruction": "Introdu codul de 6 cifre trimis pe email-ul tău",
+      "code": "Cod OTP",
+      "verifyButton": "Verifică",
+      "resend": "Retrimite codul"
+    },
+    "passwordRecovery": {
+      "title": "Resetare parolă",
+      "newPassword": "Parolă nouă",
+      "confirmPassword": "Confirmă parola",
+      "resetButton": "Resetare parolă",
+      "backToLogin": "Înapoi la autentificare"
+    }
+  },
+  "dashboard": {
+    "title": "Panou de control",
+    "events": "Evenimente",
+    "analytics": "Analize",
+    "settings": "Setări"
+  },
+  "events": {
+    "title": "Evenimente",
+    "createEvent": "Creează eveniment",
+    "name": "Nume eveniment",
+    "description": "Descriere",
+    "date": "Data",
+    "time": "Ora",
+    "location": "Locație",
+    "status": "Stare",
+    "actions": "Acțiuni",
+    "edit": "Editează",
+    "delete": "Șterge",
+    "live": "Live",
+    "paused": "În pauză",
+    "completed": "Finalizat"
+  },
+  "settings": {
+    "title": "Setări",
+    "general": "General",
+    "language": "Limbă",
+    "timezone": "Fus orar",
+    "currency": "Monedă",
+    "profile": "Profil",
+    "security": "Securitate"
+  },
+  "common": {
+    "save": "Salvează",
+    "cancel": "Anulează",
+    "confirm": "Confirmă",
+    "back": "Înapoi",
+    "next": "Următorul",
+    "error": "Eroare",
+    "success": "Succes",
+    "loading": "Se încarcă...",
+    "noData": "Nu există date disponibile"
+  }
 }

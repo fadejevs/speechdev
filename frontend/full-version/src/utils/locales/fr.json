@@ -1,50 +1,84 @@
 {
-  "manage": "Gérer",
-  "dashboard": "Tableau de bord",
-
-  "account-user": "Compte et utilisateur",
-  "account": "Compte",
-  "user": "Utilisateur",
-
-  "roles-permissions": "Rôles et autorisations",
-  "billing": "Facturation",
-  "blog": "Blog",
-  "setting": "Paramètre",
-
-  "other": "Autre",
-  "components": "Composants",
-  "chart": "Graphique",
-  "tanstack-table": "Tableau TanStack",
-
-  "avatar": "Avatar",
-  "button": "Bouton",
-  "card": "Carte",
-  "checkbox": "Case à cocher",
-  "chip": "Puce",
-  "color": "Couleur",
-  "drop-down": "Liste déroulante",
-  "dialog": "Dialogue",
-  "illustration": "Illustration",
-  "input": "Saisie",
-  "progress": "Progression",
-  "radio": "Radio",
-  "shadow": "Ombre",
-  "slider": "Curseur",
-  "switch": "Commutateur",
-  "tabs": "Onglets",
-  "tooltip": "Info-bulle",
-  "typography": "Typographie",
-
-  "plugins": "Plugins",
-  "color-picker": "Sélecteur de couleurs",
-  "calendar": "Calendrier",
-
-  "help": "Aide",
-  "sample-page": "exemple de page",
-  "changelog": "Journal des modifications",
-  "documentation": "Documentation",
-  "support": "Assistance",
-
-  "menu-levels": "Niveaux de menu",
-  "level": "Niveau"
+  "auth": {
+    "login": {
+      "title": "Connexion",
+      "email": "Adresse e-mail",
+      "password": "Mot de passe",
+      "loginButton": "Se connecter",
+      "forgotPassword": "Mot de passe oublié ?",
+      "noAccount": "Pas de compte ?",
+      "signUp": "S'inscrire"
+    },
+    "register": {
+      "title": "Inscription",
+      "email": "Adresse e-mail",
+      "password": "Mot de passe",
+      "confirmPassword": "Confirmer le mot de passe",
+      "registerButton": "S'inscrire",
+      "haveAccount": "Déjà un compte ?",
+      "login": "Se connecter"
+    },
+    "forgotPassword": {
+      "title": "Mot de passe oublié",
+      "email": "Adresse e-mail",
+      "sendButton": "Envoyer le lien de réinitialisation",
+      "backToLogin": "Retour à la connexion"
+    },
+    "otpVerification": {
+      "title": "Vérification OTP",
+      "instruction": "Entrez le code à 6 chiffres envoyé à votre e-mail",
+      "code": "Code OTP",
+      "verifyButton": "Vérifier",
+      "resend": "Renvoyer le code"
+    },
+    "passwordRecovery": {
+      "title": "Réinitialiser le mot de passe",
+      "newPassword": "Nouveau mot de passe",
+      "confirmPassword": "Confirmer le mot de passe",
+      "resetButton": "Réinitialiser le mot de passe",
+      "backToLogin": "Retour à la connexion"
+    }
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "events": "Événements",
+    "analytics": "Analyses",
+    "settings": "Paramètres"
+  },
+  "events": {
+    "title": "Événements",
+    "createEvent": "Créer un événement",
+    "name": "Nom de l'événement",
+    "description": "Description",
+    "date": "Date",
+    "time": "Heure",
+    "location": "Lieu",
+    "status": "Statut",
+    "actions": "Actions",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "live": "En direct",
+    "paused": "En pause",
+    "completed": "Terminé"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "general": "Général",
+    "language": "Langue",
+    "timezone": "Fuseau horaire",
+    "currency": "Devise",
+    "profile": "Profil",
+    "security": "Sécurité"
+  },
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "confirm": "Confirmer",
+    "back": "Retour",
+    "next": "Suivant",
+    "error": "Erreur",
+    "success": "Succès",
+    "loading": "Chargement...",
+    "noData": "Aucune donnée disponible"
+  }
 }

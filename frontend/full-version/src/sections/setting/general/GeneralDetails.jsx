@@ -27,7 +27,7 @@ import { IconDotsVertical } from '@tabler/icons-react';
 
 function SettingsLanguage({ selectedTags = 'English', setSelectedTags, isDisabled = false }) {
   const [language, setLanguage] = useState(selectedTags);
-  const languageList = ['English', 'Spanish', 'German'];
+  const languageList = ['English'];
 
   return (
     <Box sx={{ width: 1 }}>
@@ -41,7 +41,7 @@ function SettingsLanguage({ selectedTags = 'English', setSelectedTags, isDisable
             if (setSelectedTags) setSelectedTags(newValue);
           }
         }}
-        disabled={isDisabled}
+        disabled={true}
         disableClearable
         renderOption={({ key: optionKey, ...optionProps }, option) => (
           <li key={optionKey} {...optionProps}>

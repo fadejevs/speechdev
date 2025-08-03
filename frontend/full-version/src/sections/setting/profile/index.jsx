@@ -4,7 +4,7 @@ import Grid from '@mui/material/Grid2';
 // @project
 import ProfileDetails from './ProfileDetails';
 import ProfileLoginService from './ProfileLoginService';
-import ProfilePreferredLanguage from './ProfilePreferredLanguage';
+// import ProfilePreferredLanguage from './ProfilePreferredLanguage';
 import ProfileTimezone from './ProfileTimezone';
 import GeneralResource from '../general/GeneralResource';
 
@@ -19,9 +19,9 @@ export default function ProfileSetting() {
       <Grid size={12}>
         <ProfileLoginService />
       </Grid>
-      <Grid size={12}>
+      {/* <Grid size={12}>
         <ProfilePreferredLanguage />
-      </Grid>
+      </Grid> */}
       <Grid size={12}>
         <ProfileTimezone />
       </Grid>

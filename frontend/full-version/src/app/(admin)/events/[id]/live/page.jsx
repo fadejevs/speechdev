@@ -367,13 +367,11 @@ export default function EventLivePage() {
               opacity: (!webSocket.isConnected && !webSocket.hasError) ? 0.6 : 1
             }}
           >
-            {webSocket.isConnecting 
+            {webSocket.isConnecting || webSocket.hasError
               ? 'Connecting...'
-              : webSocket.hasError 
-                ? 'Connection Failed - Retry?'
-                : eventData?.status === 'Paused' 
-                  ? 'Resume Event' 
-                  : 'Pause Event'
+              : eventData?.status === 'Paused' 
+                ? 'Resume Event' 
+                : 'Pause Event'
             }
           </Button>
           <Button

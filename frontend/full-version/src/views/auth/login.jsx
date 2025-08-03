@@ -29,25 +29,26 @@ export default function Login() {
         {/* Social login buttons */}
         <AuthSocial />
 
-        <Divider sx={{ my: { xs: 4, sm: 5 } }}>
+        <Divider sx={{ my: { xs: 2, sm: 3 }, width: '100%' }}>
           <Typography variant="body2" color="text.secondary">
             or continue with email
           </Typography>
         </Divider>
 
-        {/* Login form */}
-        <AuthLogin />
+    
+          {/* Login form */}
+          <AuthLogin />
+   
 
-        <Typography variant="body2" color="text.secondary" sx={{ mt: { xs: 2, sm: 3 } }}>
-          Don’t have an account?{' '}
+        <Typography variant="body2" color="text.secondary" sx={{ mt: { xs: 1, sm: 2 }, paddingBottom: { xs: 15, sm: 15 } }}>
+          Don't have an account?{' '}
           <Link component={NextLink} underline="hover" variant="subtitle2" href="/register" sx={{ '&:hover': { color: 'primary.dark' } }}>
             Sign Up
           </Link>
         </Typography>
-      </Box>
 
-      {/* Copyright section*/}
-      <Copyright />
+        <Copyright/> 
+      </Box>
     </Stack>
   );
 }

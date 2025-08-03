@@ -94,7 +94,7 @@ export default function AuthLogin({ inputSx }) {
           variant="contained"
           disabled={isProcessing}
           endIcon={isProcessing && <CircularProgress color="secondary" size={16} />}
-          sx={{ minWidth: 120, mt: { xs: 1, sm: 4 }, '& .MuiButton-endIcon': { ml: 1 } }}
+          sx={{ minWidth: 120, mt: { xs: 1, sm: 4 }, '& .MuiButton-endIcon': { ml: 1 }, marginTop:{ xs: 3, sm: 3 } }}
         >
           Send Login Link
         </Button>

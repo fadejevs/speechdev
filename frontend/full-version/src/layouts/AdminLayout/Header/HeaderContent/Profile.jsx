@@ -186,11 +186,17 @@ export default function ProfileSection() {
                       secondaryAction={
                         <Switch
                           size="small"
-                          checked={theme.palette.mode === ThemeMode.DARK}
-                          onChange={() => onChangeThemeMode(theme.palette.mode === ThemeMode.DARK ? ThemeMode.LIGHT : ThemeMode.DARK)}
+                          checked={false}
+                          disabled={true}
+                          onChange={() => {}}
                         />
                       }
-                      sx={{ py: 1, pl: 1, '& .MuiListItemSecondaryAction-root': { right: 8 } }}
+                      sx={{ 
+                        py: 1, 
+                        pl: 1, 
+                        opacity: 0.5,
+                        '& .MuiListItemSecondaryAction-root': { right: 8 } 
+                      }}
                     >
                       <ListItemIcon>
                         <IconSunMoon size={16} />
@@ -198,7 +204,7 @@ export default function ProfileSection() {
                       <ListItemText primary="Dark Theme" />
                     </ListItem>
 
-                    <ListItemButton sx={buttonStyle} onClick={handleInnerActionClick}>
+                    {/* <ListItemButton sx={buttonStyle} onClick={handleInnerActionClick}>
                       <ListItemIcon>
                         <IconLanguage size={16} />
                       </ListItemIcon>
@@ -258,7 +264,7 @@ export default function ProfileSection() {
                           </Fade>
                         )}
                       </Popper>
-                    </ListItemButton>
+                    </ListItemButton> */}
                     <ListItemButton
                       sx={{ ...buttonStyle, my: 0.5 }}
                       // TODO: Add billing route when available
