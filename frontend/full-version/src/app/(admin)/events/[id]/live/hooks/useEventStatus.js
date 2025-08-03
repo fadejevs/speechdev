@@ -20,10 +20,10 @@ const updateEventStatus = async (id, status) => {
 };
 
 export const useEventStatus = (
-  eventData, 
-  setEventData, 
-  socketRef, 
-  llmProcessor, 
+  eventData,
+  setEventData,
+  socketRef,
+  llmProcessor,
   recognizerRef,
   setIsRecognizerConnecting,
   setRecognizerReady,
@@ -36,11 +36,11 @@ export const useEventStatus = (
     try {
       // Stop LLM processing immediately to save tokens
       llmProcessor.stopProcessing();
-      
+
       // Clear connection states
       setIsRecognizerConnecting(false);
       setRecognizerReady(false);
-      
+
       await updateEventStatus(eventData.id, 'Completed');
       setEventData((prev) => ({ ...prev, status: 'Completed' }));
       if (socketRef.current && socketRef.current.connected) {
@@ -62,7 +62,7 @@ export const useEventStatus = (
       if (webSocketRetry && webSocketRetry.hasError && eventData.status === 'Paused') {
         webSocketRetry.retry();
         // Wait a moment for connection to establish
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
       const newStatus = eventData.status === 'Paused' ? 'Live' : 'Paused';
@@ -74,11 +74,11 @@ export const useEventStatus = (
       if (newStatus === 'Paused') {
         // Stop LLM processing to save tokens
         llmProcessor.stopProcessing();
-        
+
         // Clear connection states
         setIsRecognizerConnecting(false);
         setRecognizerReady(false);
-        
+
         if (recognizerRef.current) {
           recognizerRef.current.stopContinuousRecognitionAsync(
             () => {
@@ -95,7 +95,7 @@ export const useEventStatus = (
         llmProcessor.startProcessing();
         setWasAutoPaused(false); // Clear auto-pause notification
       }
-      
+
       if (socketRef.current && socketRef.current.connected) {
         socketRef.current.emit('update_event_status', {
           room_id: eventData.id,
@@ -111,4 +111,4 @@ export const useEventStatus = (
     handleCompleteEvent,
     handlePauseResumeEvent
   };
-}; 
+};

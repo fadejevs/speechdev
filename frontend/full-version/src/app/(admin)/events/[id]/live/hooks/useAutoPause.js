@@ -67,7 +67,7 @@ export const useAutoPause = (eventData, setEventData, socketRef) => {
     if (eventData) {
       autoPauseIfLive();
     }
-  }, [eventData?.id, setEventData, socketRef]); // Only run when event ID changes (initial load)
+  }, [eventData, eventData?.id, setEventData, socketRef]); // Added eventData to dependencies
 
   return {
     wasAutoPaused,

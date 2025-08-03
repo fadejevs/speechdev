@@ -564,7 +564,8 @@ export const useTts = (eventData) => {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (keepAliveInterval.current) clearInterval(keepAliveInterval.current);
-      if (mobileTtsTimeout.current) clearTimeout(mobileTtsTimeout.current);
+      const timeout = mobileTtsTimeout.current; // Copy ref to variable for cleanup
+      if (timeout) clearTimeout(timeout);
     };
   }, [autoSpeakLang]);
 

@@ -106,8 +106,6 @@ export const useLLMProcessor = (eventData, socketRef) => {
         return { cleaned: '', newContext: context };
       }
 
-      const sourceLanguage = eventData?.sourceLanguage || "the user's language";
-
       // Prepare context-aware prompt with overlap detection
       const currentText = textArray.join(' ').trim();
       if (!currentText) return { cleaned: '', newContext: context };
