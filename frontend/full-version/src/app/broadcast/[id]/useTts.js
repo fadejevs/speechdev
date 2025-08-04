@@ -268,14 +268,18 @@ const swapToOpenAIAudio = async (audioElement, text, lang, eventData) => {
 
 const speakTextMobileQueued = async (text, lang, eventData, audioContextRef) => {
   try {
+    // Stop any currently playing audio
     if (currentAudioRef && !currentAudioRef.paused) {
       currentAudioRef.pause();
+      currentAudioRef.src = '';
     }
 
+    // Ensure audio context is running for mobile browsers
     if (audioContextRef.current?.state === 'suspended') {
       await audioContextRef.current.resume();
     }
 
+    // Create a silent audio buffer to maintain audio session
     const silentBlob = createSilentAudioBlob();
     const silentBlobURL = URL.createObjectURL(silentBlob);
     const placeholderAudio = new Audio(silentBlobURL);
@@ -284,17 +288,21 @@ const speakTextMobileQueued = async (text, lang, eventData, audioContextRef) => 
     placeholderAudio.addEventListener('ended', cleanupBlob);
     placeholderAudio.addEventListener('error', cleanupBlob);
 
+    // Mobile-specific audio setup
     if (isMobile()) {
       placeholderAudio.preload = 'auto';
+      placeholderAudio.crossOrigin = 'anonymous';
     }
 
     currentAudioRef = placeholderAudio;
     isAudioPlaying = true;
 
+    // Play the silent audio first to establish audio session
     await placeholderAudio.play();
 
+    // Then swap to the actual TTS audio
     return await swapToOpenAIAudio(placeholderAudio, text, lang, eventData);
-  } catch {
+  } catch (error) {
     isAudioPlaying = false;
     return false;
   }
@@ -305,7 +313,7 @@ export const useTts = (eventData) => {
   const [ttsLoading, setTtsLoading] = useState(false);
   const [autoSpeakLang, setAutoSpeakLang] = useState(null);
   
-  // Mobile-specific states for smart batching
+  // Mobile-specific states
   const [mobileAutoPlayFailed, setMobileAutoPlayFailed] = useState(false);
   const [pendingBatchCount, setPendingBatchCount] = useState(0);
 
@@ -316,8 +324,7 @@ export const useTts = (eventData) => {
   const mobileTtsTimeout = useRef(null);
   const keepAliveInterval = useRef(null);
   
-  // Mobile batch management
-  const mobileBatchQueue = useRef([]);
+  // Mobile audio management
   const lastSuccessfulPlay = useRef(Date.now());
   const autoPlayFailureCount = useRef(0);
 
@@ -351,7 +358,6 @@ export const useTts = (eventData) => {
     if (isMobileSpeaking.current || mobileTtsQueue.current.length === 0) return;
 
     isMobileSpeaking.current = true;
-    let consecutiveFailures = 0;
     
     while (mobileTtsQueue.current.length > 0 && autoSpeakLang) {
       const item = mobileTtsQueue.current.shift();
@@ -361,77 +367,38 @@ export const useTts = (eventData) => {
         
         if (success) {
           lastSuccessfulPlay.current = Date.now();
-          consecutiveFailures = 0;
+          // Reset any failure tracking since we succeeded
           autoPlayFailureCount.current = 0;
-          // If we were in batch mode, exit it since auto-play is working again
-          if (mobileAutoPlayFailed) {
-            setMobileAutoPlayFailed(false);
-            setPendingBatchCount(0);
-            mobileBatchQueue.current = [];
-          }
         } else {
-          consecutiveFailures++;
           autoPlayFailureCount.current++;
-          
-          // After 2 failures, switch to batch mode
-          if (consecutiveFailures >= 2 && !mobileAutoPlayFailed) {
-            console.log('[Mobile TTS] 📱 Auto-play failing, switching to batch mode');
-            setMobileAutoPlayFailed(true);
-            // Move remaining queue items to batch queue
-            mobileBatchQueue.current.push(...mobileTtsQueue.current);
-            mobileTtsQueue.current = [];
-            setPendingBatchCount(mobileBatchQueue.current.length);
-            break;
-          }
         }
         
-        // Small delay for natural flow
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Small delay between sentences for natural flow
+        await new Promise(resolve => setTimeout(resolve, 200));
       } catch (error) {
-        console.error('[Mobile TTS] Error processing item:', error);
-        consecutiveFailures++;
+        autoPlayFailureCount.current++;
       }
     }
 
     isMobileSpeaking.current = false;
     
-    // Check if new items were added while processing
-    if (mobileTtsQueue.current.length > 0 && autoSpeakLang && !mobileAutoPlayFailed) {
-      setTimeout(processMobileQueue, 50);
+    // Continue processing if more items were added
+    if (mobileTtsQueue.current.length > 0) {
+      setTimeout(processMobileQueue, 100);
     }
-  }, [eventData, autoSpeakLang, mobileAutoPlayFailed]);
+  }, [eventData, autoSpeakLang]);
 
   const queueForTTS = useCallback(
     (text, lang) => {
-      // DEBUG: Log when TTS is triggered and what eventData looks like
-      console.log('[queueForTTS Debug] TTS triggered:', {
-        text: text.substring(0, 50) + '...',
-        lang,
-        hasEventData: !!eventData,
-        eventDataTtsVoice: eventData?.tts_voice,
-        isMobile: isMobile(),
-        batchMode: mobileAutoPlayFailed,
-        timestamp: new Date().toISOString()
-      });
-
       if (spokenSentences.current.has(text)) return;
       spokenSentences.current.add(text);
 
       if (isMobile()) {
         if (text && text.trim().length >= 10) {
           const item = { text: text.trim(), lang };
-          
-          // If we're in batch mode, add to batch queue instead
-          if (mobileAutoPlayFailed) {
-            mobileBatchQueue.current.push(item);
-            setPendingBatchCount(mobileBatchQueue.current.length);
-            console.log(`[Mobile TTS] 📚 Added to batch queue (${mobileBatchQueue.current.length} pending)`);
-          } else {
-            // Normal auto-play mode
-            mobileTtsQueue.current.push(item);
-            if (!isMobileSpeaking.current) {
-              processMobileQueue();
-            }
+          mobileTtsQueue.current.push(item);
+          if (!isMobileSpeaking.current) {
+            processMobileQueue();
           }
         }
       } else {
@@ -439,55 +406,10 @@ export const useTts = (eventData) => {
         speakWithOpenAI(text.trim(), lang, eventData);
       }
     },
-    [eventData, processMobileQueue, mobileAutoPlayFailed]
+    [eventData, processMobileQueue]
   );
 
-  // Play batched translations (mobile-only)
-  const playBatch = useCallback(async () => {
-    if (!isMobile() || isMobileSpeaking.current || mobileBatchQueue.current.length === 0) return;
 
-    console.log(`[Mobile TTS] 🎵 Playing batch of ${mobileBatchQueue.current.length} translations`);
-    setTtsLoading(true);
-    isMobileSpeaking.current = true;
-
-    try {
-      // Resume audio context if needed
-      if (audioContextRef.current?.state === 'suspended') {
-        await audioContextRef.current.resume();
-      }
-
-      const batchToPlay = [...mobileBatchQueue.current];
-      mobileBatchQueue.current = [];
-      setPendingBatchCount(0);
-
-      // Play each item in the batch
-      for (const item of batchToPlay) {
-        try {
-          const success = await speakTextMobileQueued(item.text, item.lang, eventData, audioContextRef);
-          if (success) {
-            lastSuccessfulPlay.current = Date.now();
-            // Small delay between items for natural flow
-            await new Promise(resolve => setTimeout(resolve, 200));
-          } else {
-            console.warn('[Mobile TTS] Batch item failed, continuing with next');
-          }
-        } catch (error) {
-          console.error('[Mobile TTS] Error in batch item:', error);
-        }
-      }
-
-      // After playing batch, check if we can resume auto-play
-      setTimeout(() => {
-        if (mobileTtsQueue.current.length > 0) {
-          processMobileQueue();
-        }
-      }, 500);
-
-    } finally {
-      isMobileSpeaking.current = false;
-      setTtsLoading(false);
-    }
-  }, [eventData, processMobileQueue]);
 
   const handleMobilePlayToggle = useCallback(
     async (currentTranslationLanguage) => {
@@ -495,55 +417,41 @@ export const useTts = (eventData) => {
         // Turn off TTS
         setAutoSpeakLang(null);
         stopTts();
-        setMobileAutoPlayFailed(false);
-        setPendingBatchCount(0);
-        mobileBatchQueue.current = [];
       } else {
-        // Turn on TTS or play batch if in batch mode
-        if (mobileAutoPlayFailed && mobileBatchQueue.current.length > 0) {
-          // We're in batch mode with pending translations - play them
-          await playBatch();
-        } else {
-          // Normal TTS activation
-          setTtsLoading(true);
-          try {
-            // Reset everything for fresh start
-            spokenSentences.current.clear();
-            mobileTtsQueue.current = [];
-            mobileBatchQueue.current = [];
-            isMobileSpeaking.current = false;
-            setMobileAutoPlayFailed(false);
-            setPendingBatchCount(0);
-            autoPlayFailureCount.current = 0;
+        // Turn on TTS
+        setTtsLoading(true);
+        try {
+          // Reset everything for fresh start
+          spokenSentences.current.clear();
+          mobileTtsQueue.current = [];
+          isMobileSpeaking.current = false;
+          autoPlayFailureCount.current = 0;
 
-            if (audioContextRef.current?.state === 'suspended') {
-              await audioContextRef.current.resume();
-            }
-
-            const targetLang = getLanguageCode(currentTranslationLanguage);
-            const langCode = getBaseLangCode(targetLang);
-            setAutoSpeakLang(langCode);
-
-            if (isMobile()) {
-              if (keepAliveInterval.current) clearInterval(keepAliveInterval.current);
-              keepAliveInterval.current = setInterval(() => {
-                if (!isAudioPlaying) {
-                    console.log('[Audio Keep-Alive] Pinging audio session (8s interval).');
-                    playSilentAudio();
-                }
-                if (audioContextRef.current && audioContextRef.current.state !== 'running') {
-                    console.warn('[Audio Keep-Alive] Audio context seems stuck. Attempting to resume.');
-                    audioContextRef.current.resume().catch(() => {});
-                }
-              }, 8000);
-            }
-          } finally {
-            setTtsLoading(false);
+          if (audioContextRef.current?.state === 'suspended') {
+            await audioContextRef.current.resume();
           }
+
+          const targetLang = getLanguageCode(currentTranslationLanguage);
+          const langCode = getBaseLangCode(targetLang);
+          setAutoSpeakLang(langCode);
+
+          if (isMobile()) {
+            if (keepAliveInterval.current) clearInterval(keepAliveInterval.current);
+            keepAliveInterval.current = setInterval(() => {
+              if (!isAudioPlaying) {
+                playSilentAudio();
+              }
+              if (audioContextRef.current && audioContextRef.current.state !== 'running') {
+                audioContextRef.current.resume().catch(() => {});
+              }
+            }, 8000);
+          }
+        } finally {
+          setTtsLoading(false);
         }
       }
     },
-    [autoSpeakLang, stopTts, mobileAutoPlayFailed, playBatch]
+    [autoSpeakLang, stopTts]
   );
 
   useEffect(() => {
@@ -576,10 +484,6 @@ export const useTts = (eventData) => {
     queueForTTS,
     handleMobilePlayToggle,
     spokenSentences, // Pass this down to clear it on lang change
-    stopTts,
-    // Mobile batch states
-    mobileAutoPlayFailed,
-    pendingBatchCount,
-    playBatch
+    stopTts
   };
 };

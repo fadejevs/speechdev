@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Box, Typography, CircularProgress, Paper, Button, Menu, MenuItem, IconButton, useMediaQuery, useTheme, Fab, keyframes, Chip } from '@mui/material';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+
 import MenuIcon from '@mui/icons-material/Menu';
 import PauseIcon from '@mui/icons-material/Pause';
 import SelfieDoodle from '@/images/illustration/SelfieDoodle';
@@ -104,9 +104,7 @@ export default function BroadcastPage() {
     handleMobilePlayToggle, 
     spokenSentences, 
     stopTts,
-    mobileAutoPlayFailed,
-    pendingBatchCount,
-    playBatch
+
   } = useTts(eventData);
 
   const translationLanguageRef = useRef(translationLanguage);
@@ -444,29 +442,7 @@ export default function BroadcastPage() {
     );
   }
 
-  // Mobile TTS Autoplay Failure Prompt
-  if (isMobileView && mobileAutoPlayFailed && pendingBatchCount > 0) {
-    return (
-      <Box sx={{ position: 'fixed', bottom: 16, left: 16, right: 16, zIndex: 1000, display: 'flex', justifyContent: 'center' }}>
-        <Paper elevation={3} sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(99, 102, 241, 0.08)', maxWidth: '100%', textAlign: 'center' }}>
-          <Typography variant="body2" sx={{ mb: 1, color: 'text.primary' }}>
-            {pendingBatchCount} translation(s) waiting. Tap Play to listen.
-          </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            size="small"
-            startIcon={<PlayArrowIcon />}
-            onClick={playBatch}
-            disabled={ttsLoading}
-            sx={{ borderRadius: 2 }}
-          >
-            {ttsLoading ? 'Playing...' : 'Play Now'}
-          </Button>
-        </Paper>
-      </Box>
-    );
-  }
+
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -780,33 +756,25 @@ export default function BroadcastPage() {
                     </Typography>
                 </Typography>
                 )}
-                {/* Smart TTS Button with Mobile Batch Support */}
+                {/* Smart TTS Button */}
                 {(persistedTranslations.length > 0 || !!currentInterimTranslation) && (
                   <Box sx={{ position: 'relative' }}>
-                    {/* Mobile Batch Indicator */}
-                    {isMobileView && mobileAutoPlayFailed && pendingBatchCount > 0 && (
-                      <Chip
-                        label={`${pendingBatchCount} ready`}
-                        size="small"
-                        color="primary"
+                    {/* Mobile TTS Active Indicator */}
+                    {isMobileView && autoSpeakLang && (
+                      <Box
                         sx={{
                           position: 'absolute',
-                          top: -8,
-                          right: -8,
-                          fontSize: '0.75rem',
-                          height: 20,
-                          minWidth: 50,
-                          zIndex: 1,
-                          animation: `${pulse} 2s ease-in-out infinite`,
+                          top: -4,
+                          right: -4,
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
                           bgcolor: '#6366F1',
-                          color: 'white',
-                          '& .MuiChip-label': {
-                            px: 1
-                          }
+                          animation: `${pulse} 2s ease-in-out infinite`,
+                          zIndex: 1
                         }}
                       />
                     )}
-                    
                     <IconButton
                       onClick={() => {
                         if (isMobile()) {
@@ -833,7 +801,7 @@ export default function BroadcastPage() {
                       sx={{
                         position: 'relative',
                         '&:hover': {
-                          bgcolor: isMobileView && mobileAutoPlayFailed && pendingBatchCount > 0 ? 'rgba(99, 102, 241, 0.08)' : 'rgba(0, 0, 0, 0.04)'
+                          bgcolor: 'rgba(0, 0, 0, 0.04)'
                         }
                       }}
                     >
@@ -841,11 +809,7 @@ export default function BroadcastPage() {
                         <CircularProgress size={24} sx={{ color: '#6366F1' }} />
                       ) : (
                         <VolumeUpIcon 
-                          color={
-                            autoSpeakLang ? 'primary' : 
-                            (isMobileView && mobileAutoPlayFailed && pendingBatchCount > 0) ? 'primary' : 
-                            'inherit'
-                          } 
+                          color={autoSpeakLang ? 'primary' : 'inherit'} 
                         />
                       )}
                     </IconButton>

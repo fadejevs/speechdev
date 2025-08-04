@@ -111,10 +111,9 @@ export default function EventLivePage() {
   // Audio Devices Hook (independent initialization)
   const audioDevices = useAudioDevices();
   
-  // Speech Recognition Hook (uses current selected audio input)
+  // Speech Recognition Hook (uses default microphone for consistency)
   const speechRecognition = useAzureSpeechRecognition(
     eventData,
-    audioDevices.selectedAudioInput,
     llmProcessor,
     setIsRecognizerConnecting,
     setRecognizerReady
@@ -220,7 +219,7 @@ export default function EventLivePage() {
       // Add a small delay to ensure previous recognizer is fully stopped
       setTimeout(() => {
         if (speechRecognition.startRecognizerRef.current) {
-          speechRecognition.startRecognizerRef.current(audioDevices.selectedAudioInput);
+          speechRecognition.startRecognizerRef.current();
         }
       }, 100);
     } else {
@@ -229,37 +228,11 @@ export default function EventLivePage() {
     }
   }, [eventData?.id, eventData?.status]);
 
-  // Handler for switching audio devices
+  // Handler for switching audio devices - DISABLED for now
   const handleSwitchAudioDevice = (deviceId) => {
+    // Functionality disabled to prevent multiple mic input confusion
+    // Only update the selected device for display purposes
     audioDevices.setSelectedAudioInput(deviceId);
-    
-    // If event is live and recognizer is running, restart with new device
-    if (eventData?.status === 'Live' && speechRecognition.recognizerRef.current) {
-      // Stop current recognizer
-      speechRecognition.recognizerRef.current.stopContinuousRecognitionAsync(
-        () => {
-          speechRecognition.recognizerRef.current = null;
-          
-          // Start new recognizer with selected device after a brief delay
-          setTimeout(() => {
-            if (speechRecognition.startRecognizerRef.current) {
-              speechRecognition.startRecognizerRef.current(deviceId);
-            }
-          }, 500);
-        },
-        (err) => {
-          console.error('[Audio] Error stopping recognizer for device switch:', err);
-          speechRecognition.recognizerRef.current = null;
-          
-          // Still try to start with new device
-          setTimeout(() => {
-            if (speechRecognition.startRecognizerRef.current) {
-              speechRecognition.startRecognizerRef.current(deviceId);
-            }
-          }, 500);
-        }
-      );
-    }
   };
 
   // Share dialog handlers

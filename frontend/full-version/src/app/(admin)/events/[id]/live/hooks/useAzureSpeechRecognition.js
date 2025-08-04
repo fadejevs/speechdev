@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
 
-export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProcessor, setIsRecognizerConnecting, setRecognizerReady) => {
+export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecognizerConnecting, setRecognizerReady) => {
   const [currentAzureLanguageCode, setCurrentAzureLanguageCode] = useState('en-US');
   const recognizerRef = useRef(null);
   const startRecognizerRef = useRef(null);
@@ -34,7 +34,7 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
 
   const createStartRecognizer = useCallback(
     (socketRef) => {
-      const startRecognizer = (deviceId = null) => {
+      const startRecognizer = () => {
         if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
           alert('Azure Speech key/region not set');
           return;
@@ -155,13 +155,12 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
         );
 
         // Configure speech settings
-        console.log(`[Azure] Using language code: ${currentAzureLanguageCode}`);
         speechConfig.speechRecognitionLanguage = currentAzureLanguageCode;
         speechConfig.enableDictation(); // Enable dictation mode for better continuous recognition
         speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Don't filter any speech
 
-        // speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '400'); // Increased to 400ms to allow more interim text during speech
-        // speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '800'); // Increased to 800ms for longer pause before finalizing
+        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '500'); 
+        // speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '1000'); // Increased to 800ms for longer pause before finalizing
         speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, '1000'); // Matching older version for max wait
         speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, '1000'); // Matching older version for quicker start
 
@@ -175,16 +174,8 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
           speechConfig.addTargetLanguage(lang);
         });
 
-        // Use selected audio device or default to selected input device
-        const useDeviceId = deviceId || selectedAudioInput;
-        let audioConfig;
-
-        if (useDeviceId && useDeviceId !== '') {
-          // Create audio config with specific device
-          audioConfig = SpeechSDK.AudioConfig.fromMicrophoneInput(useDeviceId);
-        } else {
-          audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-        }
+        // Use default microphone input for consistency - prevent multiple device confusion
+        let audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
 
         const recognizer = new SpeechSDK.TranslationRecognizer(speechConfig, audioConfig);
 
@@ -349,22 +340,22 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
           recognizerRef.current.stopContinuousRecognitionAsync(
             () => {
               recognizerRef.current = null;
-              setTimeout(() => startRecognizer(selectedAudioInput), 2000);
+              setTimeout(() => startRecognizer(), 1000);
             },
             (err) => {
               console.error('[Live] Error stopping recognizer, but attempting restart anyway in 2 seconds...', err);
               recognizerRef.current = null;
-              setTimeout(() => startRecognizer(selectedAudioInput), 2000);
+              setTimeout(() => startRecognizer(), 1000);
             }
           );
         } else {
-          setTimeout(() => startRecognizer(selectedAudioInput), 2000);
+          setTimeout(() => startRecognizer(), 1000);
         }
       };
 
       return startRecognizer;
     },
-    [eventData, selectedAudioInput, llmProcessor, handleNewTranscription, setIsRecognizerConnecting, setRecognizerReady, currentAzureLanguageCode]
+    [eventData, llmProcessor, handleNewTranscription, setIsRecognizerConnecting, setRecognizerReady, currentAzureLanguageCode]
   );
 
   const cleanup = useCallback(() => {
