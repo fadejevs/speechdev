@@ -103,7 +103,8 @@ export default function BroadcastPage() {
     queueForTTS, 
     handleMobilePlayToggle, 
     spokenSentences, 
-    stopTts
+    stopTts,
+    isSpeaking
   } = useTts(eventData);
 
   const translationLanguageRef = useRef(translationLanguage);
@@ -575,7 +576,25 @@ export default function BroadcastPage() {
             {ttsLoading ? (
               <CircularProgress size={28} sx={{ color: '#8B5CF6' }} />
             ) : autoSpeakLang ? (
-              <PauseIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
+              isSpeaking ? (
+                <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <VolumeUpIcon sx={{ fontSize: { xs: 28, sm: 32 }, color: '#10B981' }} />
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: -4,
+                      right: -4,
+                      width: 12,
+                      height: 12,
+                      bgcolor: '#10B981',
+                      borderRadius: '50%',
+                      animation: 'pulse 1.5s infinite'
+                    }}
+                  />
+                </Box>
+              ) : (
+                <PauseIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
+              )
             ) : (
               <VolumeUpIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
             )}
@@ -807,9 +826,25 @@ export default function BroadcastPage() {
                       {ttsLoading ? (
                         <CircularProgress size={24} sx={{ color: '#6366F1' }} />
                       ) : (
-                        <VolumeUpIcon 
-                          color={autoSpeakLang ? 'primary' : 'inherit'} 
-                        />
+                        <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <VolumeUpIcon 
+                            color={autoSpeakLang ? (isSpeaking ? 'success' : 'primary') : 'inherit'} 
+                          />
+                          {isSpeaking && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: -4,
+                                right: -4,
+                                width: 8,
+                                height: 8,
+                                bgcolor: '#10B981',
+                                borderRadius: '50%',
+                                animation: 'pulse 1.5s infinite'
+                              }}
+                            />
+                          )}
+                        </Box>
                       )}
                     </IconButton>
                   </Box>

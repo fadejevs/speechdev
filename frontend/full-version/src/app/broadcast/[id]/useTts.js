@@ -14,7 +14,7 @@ let currentAudioRef = null;
 let openAITTSQueue = [];
 let isProcessingOpenAIQueue = false;
 
-const speakWithOpenAIImmediate = async (text, lang, eventData) => {
+const speakWithOpenAIImmediate = async (text, lang, eventData, setIsSpeaking) => {
   try {
     // Stop any currently playing audio first
     if (currentAudioRef && !currentAudioRef.paused) {
@@ -22,7 +22,7 @@ const speakWithOpenAIImmediate = async (text, lang, eventData) => {
       currentAudioRef.src = '';
     }
 
-    // Set audio playing state
+    if (setIsSpeaking) setIsSpeaking(true);
     const getVoiceForLanguage = (langCode, voiceType = 'female') => {
       const voiceMap = {
         female: {
@@ -93,6 +93,7 @@ const speakWithOpenAIImmediate = async (text, lang, eventData) => {
     return new Promise((resolve) => {
       const cleanup = () => {
         URL.revokeObjectURL(audioUrl);
+        if (setIsSpeaking) setIsSpeaking(false);
       };
 
       audio.onended = () => {
@@ -120,6 +121,7 @@ const speakWithOpenAIImmediate = async (text, lang, eventData) => {
       }
     });
   } catch {
+    if (setIsSpeaking) setIsSpeaking(false);
     return false;
   }
 };
@@ -146,6 +148,7 @@ const speakWithOpenAI = (text, lang, eventData) => {
 export const useTts = (eventData) => {
   const [ttsLoading, setTtsLoading] = useState(false);
   const [autoSpeakLang, setAutoSpeakLang] = useState(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const audioContextRef = useRef(null);
   const spokenSentences = useRef(new Set());
@@ -169,9 +172,10 @@ export const useTts = (eventData) => {
     openAITTSQueue = [];
     // Reset flags
     isProcessingOpenAIQueue = false;
+    setIsSpeaking(false);
     // Clear timers
     if (keepAliveInterval.current) clearInterval(keepAliveInterval.current);
-  }, []);
+  }, [setIsSpeaking]);
 
   const queueForTTS = useCallback(
     (text, lang) => {
@@ -179,16 +183,14 @@ export const useTts = (eventData) => {
       spokenSentences.current.add(text);
 
       if (isMobile()) {
-        // Mobile: Only play if TTS is active
-        if (autoSpeakLang) {
-          speakWithOpenAIImmediate(text.trim(), lang, eventData);
-        }
+        // Mobile: Direct playback when called
+        speakWithOpenAIImmediate(text.trim(), lang, eventData, setIsSpeaking);
       } else {
         // Desktop: Use queue system
         speakWithOpenAI(text.trim(), lang, eventData);
       }
     },
-    [eventData, autoSpeakLang]
+    [eventData, setIsSpeaking]
   );
 
   const handleMobilePlayToggle = useCallback(
@@ -254,6 +256,7 @@ export const useTts = (eventData) => {
     queueForTTS,
     handleMobilePlayToggle,
     spokenSentences,
-    stopTts
+    stopTts,
+    isSpeaking
   };
 };
