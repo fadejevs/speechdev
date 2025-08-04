@@ -96,7 +96,7 @@ export default function BroadcastPage() {
   const [liveTranslations, setLiveTranslations] = useState({});
   const [realtimeTranslations, setRealtimeTranslations] = useState({});
 
-  const { 
+    const {
     ttsLoading, 
     autoSpeakLang, 
     setAutoSpeakLang, 
@@ -104,7 +104,7 @@ export default function BroadcastPage() {
     handleMobilePlayToggle, 
     spokenSentences, 
     stopTts,
-
+    mobileTtsReady
   } = useTts(eventData);
 
   const translationLanguageRef = useRef(translationLanguage);
@@ -578,7 +578,24 @@ export default function BroadcastPage() {
             ) : autoSpeakLang ? (
               <PauseIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
             ) : (
-              <VolumeUpIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
+              <Box sx={{ position: 'relative' }}>
+                <VolumeUpIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
+                {mobileTtsReady && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: -4,
+                      right: -4,
+                      width: 12,
+                      height: 12,
+                      bgcolor: '#10B981',
+                      borderRadius: '50%',
+                      border: '2px solid white',
+                      animation: 'pulse 2s infinite'
+                    }}
+                  />
+                )}
+              </Box>
             )}
           </Fab>
 
@@ -808,9 +825,25 @@ export default function BroadcastPage() {
                       {ttsLoading ? (
                         <CircularProgress size={24} sx={{ color: '#6366F1' }} />
                       ) : (
-                        <VolumeUpIcon 
-                          color={autoSpeakLang ? 'primary' : 'inherit'} 
-                        />
+                        <Box sx={{ position: 'relative' }}>
+                          <VolumeUpIcon 
+                            color={autoSpeakLang ? 'primary' : 'inherit'} 
+                          />
+                          {mobileTtsReady && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: -4,
+                                right: -4,
+                                width: 8,
+                                height: 8,
+                                bgcolor: '#10B981',
+                                borderRadius: '50%',
+                                border: '1px solid white'
+                              }}
+                            />
+                          )}
+                        </Box>
                       )}
                     </IconButton>
                   </Box>

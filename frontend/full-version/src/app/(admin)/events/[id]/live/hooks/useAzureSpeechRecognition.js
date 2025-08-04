@@ -46,13 +46,13 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
             () => {
               recognizerRef.current = null;
               // Restart the function after stopping
-              setTimeout(() => startRecognizer(deviceId), 100);
+              setTimeout(() => startRecognizer(), 100);
             },
             (err) => {
               console.error('[Azure] ❌ Error stopping previous recognizer:', err);
               recognizerRef.current = null;
               // Still try to start new one
-              setTimeout(() => startRecognizer(deviceId), 100);
+              setTimeout(() => startRecognizer(), 100);
             }
           );
           return; // Exit early and let the callback restart
