@@ -108,13 +108,15 @@ const speakWithOpenAIImmediate = async (text, lang, eventData, setIsSpeaking) =>
       // For mobile, add a small delay to ensure audio is ready
       if (isMobile()) {
         setTimeout(() => {
-          audio.play().catch(() => {
+          audio.play().catch((err) => {
+            console.error('Mobile TTS playback failed:', err);
             cleanup();
             resolve(false);
           });
         }, 50);
       } else {
-        audio.play().catch(() => {
+        audio.play().catch((err) => {
+          console.error('Desktop TTS playback failed:', err);
           cleanup();
           resolve(false);
         });
@@ -149,10 +151,12 @@ export const useTts = (eventData) => {
   const [ttsLoading, setTtsLoading] = useState(false);
   const [autoSpeakLang, setAutoSpeakLang] = useState(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [mobilePendingCount, setMobilePendingCount] = useState(0);
 
   const audioContextRef = useRef(null);
   const spokenSentences = useRef(new Set());
   const keepAliveInterval = useRef(null);
+  const mobilePendingSentences = useRef([]);
 
   useEffect(() => {
     if (isSafari() || isIOS()) {
@@ -180,31 +184,71 @@ export const useTts = (eventData) => {
   const queueForTTS = useCallback(
     (text, lang) => {
       if (spokenSentences.current.has(text)) return;
-      spokenSentences.current.add(text);
 
       if (isMobile()) {
-        // Mobile: Direct playback when called
-        speakWithOpenAIImmediate(text.trim(), lang, eventData, setIsSpeaking);
+        // Mobile: Store pending sentences, don't play automatically
+        if (autoSpeakLang) {
+          mobilePendingSentences.current.push({ text: text.trim(), lang });
+          setMobilePendingCount(mobilePendingSentences.current.length);
+        }
       } else {
-        // Desktop: Use queue system
+        // Desktop: Use queue system and mark as spoken
+        spokenSentences.current.add(text);
         speakWithOpenAI(text.trim(), lang, eventData);
       }
     },
-    [eventData, setIsSpeaking]
+    [eventData, autoSpeakLang]
   );
+
+  // Function to play all pending mobile sentences within user gesture
+  const playPendingMobileSentences = useCallback(async () => {
+    if (mobilePendingSentences.current.length === 0) return;
+
+    setTtsLoading(true);
+    try {
+      // Ensure audio context is running
+      if (audioContextRef.current && audioContextRef.current.state !== 'running') {
+        await audioContextRef.current.resume();
+      }
+
+      // Play all pending sentences in sequence
+      for (const { text, lang } of mobilePendingSentences.current) {
+        await speakWithOpenAIImmediate(text, lang, eventData, setIsSpeaking);
+        // Mark as spoken after successful playback
+        spokenSentences.current.add(text);
+      }
+
+      // Clear pending sentences
+      mobilePendingSentences.current = [];
+      setMobilePendingCount(0);
+    } catch (error) {
+      console.error('Mobile TTS playback error:', error);
+    } finally {
+      setTtsLoading(false);
+    }
+  }, [eventData, setIsSpeaking]);
 
   const handleMobilePlayToggle = useCallback(
     async (currentTranslationLanguage) => {
       if (autoSpeakLang) {
-        // Turn off TTS
-        setAutoSpeakLang(null);
-        stopTts();
+        // If we have pending sentences, play them (within user gesture)
+        if (mobilePendingSentences.current.length > 0) {
+          await playPendingMobileSentences();
+        } else {
+          // Turn off TTS
+          setAutoSpeakLang(null);
+          mobilePendingSentences.current = [];
+          setMobilePendingCount(0);
+          stopTts();
+        }
       } else {
         // Turn on TTS
         setTtsLoading(true);
         try {
           // Reset everything for fresh start
           spokenSentences.current.clear();
+          mobilePendingSentences.current = [];
+          setMobilePendingCount(0);
 
           const targetLang = getLanguageCode(currentTranslationLanguage);
           const langCode = getBaseLangCode(targetLang);
@@ -228,7 +272,7 @@ export const useTts = (eventData) => {
         }
       }
     },
-    [autoSpeakLang, stopTts]
+    [autoSpeakLang, stopTts, playPendingMobileSentences]
   );
 
   useEffect(() => {
@@ -257,6 +301,7 @@ export const useTts = (eventData) => {
     handleMobilePlayToggle,
     spokenSentences,
     stopTts,
-    isSpeaking
+    isSpeaking,
+    mobilePendingCount
   };
 };

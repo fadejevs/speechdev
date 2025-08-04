@@ -104,7 +104,8 @@ export default function BroadcastPage() {
     handleMobilePlayToggle, 
     spokenSentences, 
     stopTts,
-    isSpeaking
+    isSpeaking,
+    mobilePendingCount
   } = useTts(eventData);
 
   const translationLanguageRef = useRef(translationLanguage);
@@ -592,6 +593,30 @@ export default function BroadcastPage() {
                     }}
                   />
                 </Box>
+              ) : mobilePendingCount > 0 ? (
+                <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <VolumeUpIcon sx={{ fontSize: { xs: 28, sm: 32 }, color: '#FF6B35' }} />
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: -6,
+                      right: -6,
+                      minWidth: 16,
+                      height: 16,
+                      bgcolor: '#FF6B35',
+                      color: 'white',
+                      borderRadius: '50%',
+                      fontSize: '10px',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '2px solid white'
+                    }}
+                  >
+                    {mobilePendingCount}
+                  </Box>
+                </Box>
               ) : (
                 <PauseIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
               )
@@ -828,7 +853,7 @@ export default function BroadcastPage() {
                       ) : (
                         <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <VolumeUpIcon 
-                            color={autoSpeakLang ? (isSpeaking ? 'success' : 'primary') : 'inherit'} 
+                            color={autoSpeakLang ? (isSpeaking ? 'success' : (mobilePendingCount > 0 ? 'warning' : 'primary')) : 'inherit'} 
                           />
                           {isSpeaking && (
                             <Box
@@ -843,6 +868,28 @@ export default function BroadcastPage() {
                                 animation: 'pulse 1.5s infinite'
                               }}
                             />
+                          )}
+                          {mobilePendingCount > 0 && !isSpeaking && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: -6,
+                                right: -6,
+                                minWidth: 12,
+                                height: 12,
+                                bgcolor: '#FF6B35',
+                                color: 'white',
+                                borderRadius: '50%',
+                                fontSize: '8px',
+                                fontWeight: 'bold',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                border: '1px solid white'
+                              }}
+                            >
+                              {mobilePendingCount}
+                            </Box>
                           )}
                         </Box>
                       )}
