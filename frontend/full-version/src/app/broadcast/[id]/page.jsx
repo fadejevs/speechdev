@@ -103,8 +103,7 @@ export default function BroadcastPage() {
     queueForTTS, 
     handleMobilePlayToggle, 
     spokenSentences, 
-    stopTts,
-    mobileTtsReady
+    stopTts
   } = useTts(eventData);
 
   const translationLanguageRef = useRef(translationLanguage);
@@ -578,24 +577,7 @@ export default function BroadcastPage() {
             ) : autoSpeakLang ? (
               <PauseIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
             ) : (
-              <Box sx={{ position: 'relative' }}>
-                <VolumeUpIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
-                {mobileTtsReady && (
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      top: -4,
-                      right: -4,
-                      width: 12,
-                      height: 12,
-                      bgcolor: '#10B981',
-                      borderRadius: '50%',
-                      border: '2px solid white',
-                      animation: 'pulse 2s infinite'
-                    }}
-                  />
-                )}
-              </Box>
+              <VolumeUpIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
             )}
           </Fab>
 
@@ -825,25 +807,9 @@ export default function BroadcastPage() {
                       {ttsLoading ? (
                         <CircularProgress size={24} sx={{ color: '#6366F1' }} />
                       ) : (
-                        <Box sx={{ position: 'relative' }}>
-                          <VolumeUpIcon 
-                            color={autoSpeakLang ? 'primary' : 'inherit'} 
-                          />
-                          {mobileTtsReady && (
-                            <Box
-                              sx={{
-                                position: 'absolute',
-                                top: -4,
-                                right: -4,
-                                width: 8,
-                                height: 8,
-                                bgcolor: '#10B981',
-                                borderRadius: '50%',
-                                border: '1px solid white'
-                              }}
-                            />
-                          )}
-                        </Box>
+                        <VolumeUpIcon 
+                          color={autoSpeakLang ? 'primary' : 'inherit'} 
+                        />
                       )}
                     </IconButton>
                   </Box>

@@ -3,8 +3,6 @@ import {
   isMobile,
   isSafari,
   isIOS,
-  playSilentAudio,
-  createSilentAudioBlob,
   initializeAudioContext,
   getLanguageCode,
   getBaseLangCode
@@ -145,16 +143,13 @@ const speakWithOpenAI = (text, lang, eventData) => {
   });
 };
 
-
 export const useTts = (eventData) => {
   const [ttsLoading, setTtsLoading] = useState(false);
   const [autoSpeakLang, setAutoSpeakLang] = useState(null);
-  const [mobileTtsReady, setMobileTtsReady] = useState(false); // New: indicates ready sentences
 
   const audioContextRef = useRef(null);
   const spokenSentences = useRef(new Set());
   const keepAliveInterval = useRef(null);
-  const mobilePendingQueue = useRef([]); // New: queue for mobile ready sentences
 
   useEffect(() => {
     if (isSafari() || isIOS()) {
@@ -181,68 +176,45 @@ export const useTts = (eventData) => {
   const queueForTTS = useCallback(
     (text, lang) => {
       if (spokenSentences.current.has(text)) return;
+      spokenSentences.current.add(text);
 
       if (isMobile()) {
-        // Mobile: Add to pending queue and show ready indicator (don't mark as spoken yet)
-        mobilePendingQueue.current.push({ text: text.trim(), lang });
-        setMobileTtsReady(true);
+        // Mobile: Only play if TTS is active
+        if (autoSpeakLang) {
+          speakWithOpenAIImmediate(text.trim(), lang, eventData);
+        }
       } else {
-        // Desktop: Use queue system as normal and mark as spoken
-        spokenSentences.current.add(text);
+        // Desktop: Use queue system
         speakWithOpenAI(text.trim(), lang, eventData);
       }
     },
-    [eventData]
+    [eventData, autoSpeakLang]
   );
-
-  // New function to play mobile pending queue
-  const playMobilePendingQueue = useCallback(async () => {
-    if (mobilePendingQueue.current.length === 0) return;
-
-    setTtsLoading(true);
-    setMobileTtsReady(false);
-
-    try {
-      // Play all pending sentences
-      for (const item of mobilePendingQueue.current) {
-        await speakWithOpenAIImmediate(item.text, item.lang, eventData);
-        // Mark as spoken after successful playback
-        spokenSentences.current.add(item.text);
-      }
-      
-      // Clear the pending queue after playing
-      mobilePendingQueue.current = [];
-    } finally {
-      setTtsLoading(false);
-    }
-  }, [eventData]);
 
   const handleMobilePlayToggle = useCallback(
     async (currentTranslationLanguage) => {
       if (autoSpeakLang) {
         // Turn off TTS
         setAutoSpeakLang(null);
-        setMobileTtsReady(false);
-        mobilePendingQueue.current = [];
         stopTts();
-      } else if (mobileTtsReady) {
-        // Play pending sentences (mobile on-demand mode)
-        await playMobilePendingQueue();
       } else {
-        // Turn on TTS (first time setup)
+        // Turn on TTS
         setTtsLoading(true);
         try {
           // Reset everything for fresh start
           spokenSentences.current.clear();
-          mobilePendingQueue.current = [];
 
           const targetLang = getLanguageCode(currentTranslationLanguage);
           const langCode = getBaseLangCode(targetLang);
           
           if (isMobile()) {
             // Mobile: Initialize audio session with user interaction
-            const silentBlob = createSilentAudioBlob();
-            const audio = new Audio(URL.createObjectURL(silentBlob));
+            if (audioContextRef.current && audioContextRef.current.state !== 'running') {
+              await audioContextRef.current.resume();
+            }
+
+            // Play silent audio to unlock audio session
+            const audio = new Audio('data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAABDW7QAgdIlRglJlZZlzJFEogAhQDBAGLGnIgMAAS8pUU1MNhPdQR1BQYEZ3OjOEgAhB9vkAAAAIgAhB9vkAAAAIgAhB9vkAAAAAWEltTAAACGwAAAPIQOkQpoBQDBAGLGnIgMAAS8pUU1MNhPdQR1BQYEZ3OjOEgAhB9vkAAAAIgAhB9vkAAAAIgAhB9vkAAAAA=');
             audio.volume = 0;
             await audio.play();
             setTimeout(() => URL.revokeObjectURL(audio.src), 100);
@@ -254,13 +226,12 @@ export const useTts = (eventData) => {
         }
       }
     },
-    [autoSpeakLang, mobileTtsReady, stopTts, playMobilePendingQueue]
+    [autoSpeakLang, stopTts]
   );
 
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && autoSpeakLang && isMobile()) {
-        playSilentAudio();
         if (audioContextRef.current && audioContextRef.current.state !== 'running') {
           audioContextRef.current.resume().catch(() => {});
         }
@@ -283,7 +254,6 @@ export const useTts = (eventData) => {
     queueForTTS,
     handleMobilePlayToggle,
     spokenSentences,
-    stopTts,
-    mobileTtsReady
+    stopTts
   };
 };
