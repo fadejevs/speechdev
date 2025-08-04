@@ -329,7 +329,7 @@ export default function EventLivePage() {
           <Button
             variant="outlined"
             onClick={eventStatus.handlePauseResumeEvent}
-            disabled={!webSocket.isConnected && !webSocket.hasError}
+            disabled={webSocket.isConnecting}
             sx={{
               textTransform: 'none',
               px: { xs: 2, sm: 3 },
@@ -337,10 +337,10 @@ export default function EventLivePage() {
               borderRadius: '8px',
               flex: { xs: 1, sm: 'initial' },
               fontSize: { xs: '0.875rem', sm: '1rem' },
-              opacity: (!webSocket.isConnected && !webSocket.hasError) ? 0.6 : 1
+              opacity: webSocket.isConnecting ? 0.6 : 1,
             }}
           >
-            {webSocket.isConnecting || webSocket.hasError
+            {webSocket.isConnecting
               ? 'Connecting...'
               : eventData?.status === 'Paused' 
                 ? 'Resume Event' 
@@ -358,7 +358,7 @@ export default function EventLivePage() {
               borderRadius: '8px',
               flex: { xs: 1, sm: 'initial' },
               fontSize: { xs: '0.875rem', sm: '1rem' },
-              opacity: webSocket.isConnecting ? 0.6 : 1
+              opacity: webSocket.isConnecting ? 0.6 : 1,
             }}
           >
             {webSocket.isConnecting ? 'Connecting...' : 'Complete Event'}

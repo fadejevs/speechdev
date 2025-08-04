@@ -159,7 +159,7 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
         speechConfig.enableDictation(); // Enable dictation mode for better continuous recognition
         speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Don't filter any speech
 
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '500'); 
+        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '500');
         // speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '1000'); // Increased to 800ms for longer pause before finalizing
         speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, '1000'); // Matching older version for max wait
         speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, '1000'); // Matching older version for quicker start

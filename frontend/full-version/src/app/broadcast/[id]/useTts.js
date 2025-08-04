@@ -302,7 +302,7 @@ const speakTextMobileQueued = async (text, lang, eventData, audioContextRef) => 
 
     // Then swap to the actual TTS audio
     return await swapToOpenAIAudio(placeholderAudio, text, lang, eventData);
-  } catch (error) {
+  } catch {
     isAudioPlaying = false;
     return false;
   }
@@ -313,9 +313,7 @@ export const useTts = (eventData) => {
   const [ttsLoading, setTtsLoading] = useState(false);
   const [autoSpeakLang, setAutoSpeakLang] = useState(null);
   
-  // Mobile-specific states
-  const [mobileAutoPlayFailed, setMobileAutoPlayFailed] = useState(false);
-  const [pendingBatchCount, setPendingBatchCount] = useState(0);
+
 
   const audioContextRef = useRef(null);
   const spokenSentences = useRef(new Set());
@@ -375,9 +373,9 @@ export const useTts = (eventData) => {
         
         // Small delay between sentences for natural flow
         await new Promise(resolve => setTimeout(resolve, 200));
-      } catch (error) {
-        autoPlayFailureCount.current++;
-      }
+              } catch {
+          autoPlayFailureCount.current++;
+        }
     }
 
     isMobileSpeaking.current = false;
