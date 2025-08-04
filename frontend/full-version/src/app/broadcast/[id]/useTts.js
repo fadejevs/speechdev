@@ -131,15 +131,37 @@ const speakWithOpenAI = (text, lang, eventData) => {
   });
 };
 
-const swapToOpenAIAudio = async (audioElement, text, lang, eventData) => {
-  let tempKeepAlive;
-  try {
-    tempKeepAlive = setInterval(playSilentAudio, 4000);
 
+
+const speakTextMobileQueued = async (text, lang, eventData, audioContextRef) => {
+  try {
+    // For mobile, we need to ensure audio context is active
+    if (audioContextRef.current?.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+
+    // Stop any currently playing audio
+    if (currentAudioRef && !currentAudioRef.paused) {
+      currentAudioRef.pause();
+      currentAudioRef.src = '';
+    }
+
+    // Create a simple audio element for mobile
+    const audio = new Audio();
+    
+    // Mobile-specific setup
+    if (isMobile()) {
+      audio.preload = 'auto';
+      audio.crossOrigin = 'anonymous';
+      // Set volume to ensure it's not muted
+      audio.volume = 1.0;
+    }
+
+    currentAudioRef = audio;
+    isAudioPlaying = true;
+
+    // Get TTS audio directly without silent audio trick
     const getVoiceForLanguage = (langCode, voiceType = 'female') => {
-      // Normalize language code (e.g., 'en-US' -> 'en')
-      const normalizedLang = langCode ? langCode.split('-')[0].toLowerCase() : 'en';
-      
       const voiceMap = {
         female: {
           en: 'nova',
@@ -154,18 +176,6 @@ const swapToOpenAIAudio = async (audioElement, text, lang, eventData) => {
           ru: 'shimmer',
           ar: 'nova',
           hi: 'shimmer',
-          // Add more languages for broader support
-          lv: 'nova',    // Latvian
-          lt: 'nova',    // Lithuanian  
-          et: 'nova',    // Estonian
-          pl: 'shimmer', // Polish
-          cs: 'shimmer', // Czech
-          sk: 'shimmer', // Slovak
-          hu: 'nova',    // Hungarian
-          ro: 'nova',    // Romanian
-          bg: 'shimmer', // Bulgarian
-          hr: 'nova',    // Croatian
-          sl: 'nova',    // Slovenian
           default: 'nova'
         },
         male: {
@@ -181,43 +191,14 @@ const swapToOpenAIAudio = async (audioElement, text, lang, eventData) => {
           ru: 'onyx',
           ar: 'echo',
           hi: 'onyx',
-          // Add more languages for broader support
-          lv: 'echo',    // Latvian
-          lt: 'echo',    // Lithuanian
-          et: 'echo',    // Estonian  
-          pl: 'onyx',    // Polish
-          cs: 'onyx',    // Czech
-          sk: 'onyx',    // Slovak
-          hu: 'echo',    // Hungarian
-          ro: 'echo',    // Romanian
-          bg: 'onyx',    // Bulgarian
-          hr: 'echo',    // Croatian
-          sl: 'echo',    // Slovenian
           default: 'echo'
         }
       };
-      
-      console.log('[TTS Debug] SwapToOpenAI - Language normalization:', {
-        originalLang: langCode,
-        normalizedLang,
-        voiceType,
-        availableVoices: Object.keys(voiceMap[voiceType])
-      });
-      
-      return voiceMap[voiceType]?.[normalizedLang] || voiceMap[voiceType]?.default || 'alloy';
+      return voiceMap[voiceType]?.[langCode] || voiceMap[voiceType]?.default || 'alloy';
     };
 
     const voiceType = eventData?.tts_voice || 'female';
     const voice = getVoiceForLanguage(lang, voiceType);
-    
-    // DEBUG: Log voice selection details for SwapToOpenAI
-    console.log('[TTS Debug] SwapToOpenAI - Voice selection:', {
-      lang,
-      voiceType,
-      selectedVoice: voice,
-      eventDataTtsVoice: eventData?.tts_voice,
-      hasEventData: !!eventData
-    });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -230,78 +211,38 @@ const swapToOpenAIAudio = async (audioElement, text, lang, eventData) => {
     });
 
     clearTimeout(timeoutId);
-    if (!response.ok) return false;
+
+    if (!response.ok) {
+      isAudioPlaying = false;
+      return false;
+    }
 
     const audioBlob = await response.blob();
     const audioUrl = URL.createObjectURL(audioBlob);
-
-    audioElement.src = audioUrl;
-    audioElement.load();
+    
+    audio.src = audioUrl;
 
     return new Promise((resolve) => {
       const cleanup = () => {
-        if (tempKeepAlive) clearInterval(tempKeepAlive);
         URL.revokeObjectURL(audioUrl);
         isAudioPlaying = false;
       };
 
-      audioElement.onended = () => {
+      audio.onended = () => {
         cleanup();
         resolve(true);
       };
-      audioElement.onerror = () => {
+      
+      audio.onerror = () => {
         cleanup();
         resolve(false);
       };
 
-      audioElement.play().catch(() => {
+      audio.play().catch(() => {
         cleanup();
         resolve(false);
       });
     });
-  } catch {
-    return false;
-  } finally {
-    if (tempKeepAlive) clearInterval(tempKeepAlive);
-  }
-};
-
-const speakTextMobileQueued = async (text, lang, eventData, audioContextRef) => {
-  try {
-    // Stop any currently playing audio
-    if (currentAudioRef && !currentAudioRef.paused) {
-      currentAudioRef.pause();
-      currentAudioRef.src = '';
-    }
-
-    // Ensure audio context is running for mobile browsers
-    if (audioContextRef.current?.state === 'suspended') {
-      await audioContextRef.current.resume();
-    }
-
-    // Create a silent audio buffer to maintain audio session
-    const silentBlob = createSilentAudioBlob();
-    const silentBlobURL = URL.createObjectURL(silentBlob);
-    const placeholderAudio = new Audio(silentBlobURL);
-
-    const cleanupBlob = () => URL.revokeObjectURL(silentBlobURL);
-    placeholderAudio.addEventListener('ended', cleanupBlob);
-    placeholderAudio.addEventListener('error', cleanupBlob);
-
-    // Mobile-specific audio setup
-    if (isMobile()) {
-      placeholderAudio.preload = 'auto';
-      placeholderAudio.crossOrigin = 'anonymous';
-    }
-
-    currentAudioRef = placeholderAudio;
-    isAudioPlaying = true;
-
-    // Play the silent audio first to establish audio session
-    await placeholderAudio.play();
-
-    // Then swap to the actual TTS audio
-    return await swapToOpenAIAudio(placeholderAudio, text, lang, eventData);
   } catch {
     isAudioPlaying = false;
     return false;
@@ -352,7 +293,7 @@ export const useTts = (eventData) => {
     if (keepAliveInterval.current) clearInterval(keepAliveInterval.current);
   }, []);
 
-  const processMobileQueue = useCallback(async () => {
+    const processMobileQueue = useCallback(async () => {
     if (isMobileSpeaking.current || mobileTtsQueue.current.length === 0) return;
 
     isMobileSpeaking.current = true;
@@ -365,24 +306,23 @@ export const useTts = (eventData) => {
         
         if (success) {
           lastSuccessfulPlay.current = Date.now();
-          // Reset any failure tracking since we succeeded
           autoPlayFailureCount.current = 0;
         } else {
           autoPlayFailureCount.current++;
         }
         
-        // Small delay between sentences for natural flow
-        await new Promise(resolve => setTimeout(resolve, 200));
-              } catch {
-          autoPlayFailureCount.current++;
-        }
+        // Longer delay for mobile to ensure audio session stability
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch {
+        autoPlayFailureCount.current++;
+      }
     }
 
     isMobileSpeaking.current = false;
     
     // Continue processing if more items were added
     if (mobileTtsQueue.current.length > 0) {
-      setTimeout(processMobileQueue, 100);
+      setTimeout(processMobileQueue, 200);
     }
   }, [eventData, autoSpeakLang]);
 
@@ -395,8 +335,17 @@ export const useTts = (eventData) => {
         if (text && text.trim().length >= 10) {
           const item = { text: text.trim(), lang };
           mobileTtsQueue.current.push(item);
+          
+          // Ensure audio context is active before processing
+          if (audioContextRef.current?.state === 'suspended') {
+            audioContextRef.current.resume().catch(() => {});
+          }
+          
           if (!isMobileSpeaking.current) {
-            processMobileQueue();
+            // Small delay to ensure audio context is ready
+            setTimeout(() => {
+              processMobileQueue();
+            }, 100);
           }
         }
       } else {
@@ -425,8 +374,20 @@ export const useTts = (eventData) => {
           isMobileSpeaking.current = false;
           autoPlayFailureCount.current = 0;
 
+          // Ensure audio context is active for mobile
           if (audioContextRef.current?.state === 'suspended') {
             await audioContextRef.current.resume();
+          }
+
+          // Initialize audio session with a silent audio for mobile
+          if (isMobile()) {
+            const silentBlob = createSilentAudioBlob();
+            const silentAudio = new Audio(URL.createObjectURL(silentBlob));
+            silentAudio.volume = 0;
+            await silentAudio.play().catch(() => {});
+            setTimeout(() => {
+              URL.revokeObjectURL(silentAudio.src);
+            }, 1000);
           }
 
           const targetLang = getLanguageCode(currentTranslationLanguage);
@@ -442,7 +403,7 @@ export const useTts = (eventData) => {
               if (audioContextRef.current && audioContextRef.current.state !== 'running') {
                 audioContextRef.current.resume().catch(() => {});
               }
-            }, 8000);
+            }, 5000); // More frequent keep-alive for mobile
           }
         } finally {
           setTtsLoading(false);
