@@ -186,7 +186,7 @@ export const useTts = (eventData) => {
       if (spokenSentences.current.has(text)) return;
 
       if (isMobile()) {
-        // Mobile: Store pending sentences, don't play automatically
+        // Mobile: Store pending sentences, don't play automatically  
         if (autoSpeakLang) {
           mobilePendingSentences.current.push({ text: text.trim(), lang });
           setMobilePendingCount(mobilePendingSentences.current.length);
@@ -231,11 +231,11 @@ export const useTts = (eventData) => {
   const handleMobilePlayToggle = useCallback(
     async (currentTranslationLanguage) => {
       if (autoSpeakLang) {
-        // If we have pending sentences, play them (within user gesture)
+        // If we have pending sentences, play them first (within user gesture)
         if (mobilePendingSentences.current.length > 0) {
           await playPendingMobileSentences();
         } else {
-          // Turn off TTS
+          // No pending sentences, turn off TTS
           setAutoSpeakLang(null);
           mobilePendingSentences.current = [];
           setMobilePendingCount(0);
@@ -259,11 +259,15 @@ export const useTts = (eventData) => {
               await audioContextRef.current.resume();
             }
 
-            // Play silent audio to unlock audio session
-            const audio = new Audio('data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAABDW7QAgdIlRglJlZZlzJFEogAhQDBAGLGnIgMAAS8pUU1MNhPdQR1BQYEZ3OjOEgAhB9vkAAAAIgAhB9vkAAAAIgAhB9vkAAAAAWEltTAAACGwAAAPIQOkQpoBQDBAGLGnIgMAAS8pUU1MNhPdQR1BQYEZ3OjOEgAhB9vkAAAAIgAhB9vkAAAAIgAhB9vkAAAAA=');
-            audio.volume = 0;
-            await audio.play();
-            setTimeout(() => URL.revokeObjectURL(audio.src), 100);
+
+            // Skip silent audio due to CSP restrictions
+            // const audio = new Audio('data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAABDW7QAgdIlRglJlZZlzJFEogAhQDBAGLGnIgMAAS8pUU1MNhPdQR1BQYEZ3OjOEgAhB9vkAAAAIgAhB9vkAAAAIgAhB9vkAAAAAWEltTAAACGwAAAPIQOkQpoBQDBAGLGnIgMAAS8pUU1MNhPdQR1BQYEZ3OjOEgAhB9vkAAAAIgAhB9vkAAAAIgAhB9vkAAAAA=');
+            // audio.volume = 0;
+            // await audio.play();
+            // setTimeout(() => URL.revokeObjectURL(audio.src), 100);
+
+            // Immediately test TTS with a confirmation message within the user gesture
+            await speakWithOpenAIImmediate('TTS activated', langCode, eventData, setIsSpeaking);
           }
           
           setAutoSpeakLang(langCode);
@@ -272,7 +276,7 @@ export const useTts = (eventData) => {
         }
       }
     },
-    [autoSpeakLang, stopTts, playPendingMobileSentences]
+    [autoSpeakLang, stopTts, playPendingMobileSentences, eventData]
   );
 
   useEffect(() => {
