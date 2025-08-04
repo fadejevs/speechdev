@@ -578,7 +578,7 @@ export default function BroadcastPage() {
             ) : autoSpeakLang ? (
               <PauseIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
             ) : (
-              <PlayArrowIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
+              <VolumeUpIcon sx={{ fontSize: { xs: 28, sm: 32 } }} />
             )}
           </Fab>
 
