@@ -211,12 +211,24 @@ export const useTts = (eventData) => {
         await audioContextRef.current.resume();
       }
 
+      // Set speaking state once for the entire sequence
+      setIsSpeaking(true);
+
       // Play all pending sentences in sequence
       for (const { text, lang } of mobilePendingSentences.current) {
-        await speakWithOpenAIImmediate(text, lang, eventData, setIsSpeaking);
-        // Mark as spoken after successful playback
-        spokenSentences.current.add(text);
+        const success = await speakWithOpenAIImmediate(text, lang, eventData, null); // Don't manage state per sentence
+        if (success) {
+          // Mark as spoken after successful playback
+          spokenSentences.current.add(text);
+        } else {
+          console.error('Failed to play sentence:', text);
+        }
+        // Small delay between sentences for mobile stability
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
+
+      // Clear speaking state after all sentences are done
+      setIsSpeaking(false);
 
       // Clear pending sentences
       mobilePendingSentences.current = [];
@@ -231,7 +243,7 @@ export const useTts = (eventData) => {
   const handleMobilePlayToggle = useCallback(
     async (currentTranslationLanguage) => {
       if (autoSpeakLang) {
-        // If we have pending sentences, play them first (within user gesture)
+        // If we have pending sentences, play them (within user gesture)
         if (mobilePendingSentences.current.length > 0) {
           await playPendingMobileSentences();
         } else {
@@ -267,7 +279,7 @@ export const useTts = (eventData) => {
             // setTimeout(() => URL.revokeObjectURL(audio.src), 100);
 
             // Immediately test TTS with a confirmation message within the user gesture
-            await speakWithOpenAIImmediate('TTS activated', langCode, eventData, setIsSpeaking);
+            await speakWithOpenAIImmediate('Activated', langCode, eventData, setIsSpeaking);
           }
           
           setAutoSpeakLang(langCode);
