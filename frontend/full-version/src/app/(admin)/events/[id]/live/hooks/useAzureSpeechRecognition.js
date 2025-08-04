@@ -160,9 +160,8 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
         speechConfig.enableDictation(); // Enable dictation mode for better continuous recognition
         speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Don't filter any speech
 
-        // Balanced timeout settings for smooth continuous recognition
-        speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '400'); // Increased to 400ms to allow more interim text during speech
-        speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '800'); // Increased to 800ms for longer pause before finalizing
+        // speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, '400'); // Increased to 400ms to allow more interim text during speech
+        // speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '800'); // Increased to 800ms for longer pause before finalizing
         speechConfig.setProperty(SpeechSDK.PropertyId.Speech_SegmentationMaximumSilenceTimeoutMs, '1000'); // Matching older version for max wait
         speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, '1000'); // Matching older version for quicker start
 
@@ -267,7 +266,7 @@ export const useAzureSpeechRecognition = (eventData, selectedAudioInput, llmProc
                       lastInterimText = ''; // Clear to prevent re-processing
                     }, 0);
                   }
-                }, 3000); // Increased to 3 seconds for more time to accumulate interim text
+                }, 2000); // 2 seconds for more time to accumulate interim text
               }
             }
           }
