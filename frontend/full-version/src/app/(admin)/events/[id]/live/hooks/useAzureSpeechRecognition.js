@@ -183,6 +183,7 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
 
         // Simple interim tracking - non-blocking approach
         let lastInterimText = '';
+        let lastProcessedText = '';
         let interimFallbackTimeout = null;
 
         // Add phrase list for better recognition of specific words.
@@ -253,11 +254,15 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
                   if (lastInterimText === text && lastInterimText.trim().length > 0) {
                     // Use setTimeout to ensure this doesn't block Azure's recognition loop
                     setTimeout(() => {
-                      llmProcessor.addToBuffer(text, sourceLanguage, {}, handleNewTranscription);
+                      // Mark this text as processed to prevent final result from processing it again
+                      const processedInterimText = text;
+                      llmProcessor.addToBuffer(processedInterimText, sourceLanguage, {}, handleNewTranscription);
                       lastInterimText = ''; // Clear to prevent re-processing
+                      // Store processed text to check against final results
+                      lastProcessedText = processedInterimText;
                     }, 0);
                   }
-                }, 2000); // 2 seconds for more time to accumulate interim text
+                }, 3000); // Increased to 3 seconds to give more time for final results
               }
             }
           }
@@ -284,10 +289,20 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
             interimFallbackTimeout = null;
           }
 
-          // Only process if we actually have text
+          // Only process if we actually have text and it hasn't been processed already
           if (text && text.trim().length > 0) {
+            // Check if this text was already processed by the interim fallback
+            if (lastProcessedText && text.includes(lastProcessedText.trim())) {
+              console.log('[Azure] Final result matches already processed interim text, skipping to prevent duplication:', text.substring(0, 15) + '...');
+              // Reset tracking
+              lastInterimText = '';
+              lastProcessedText = '';
+              return;
+            }
+
             // Reset interim tracking since we got a successful final result
             lastInterimText = '';
+            lastProcessedText = '';
 
             // Immediate handoff to LLM processor - no blocking of Azure recognition
             // NOTE: Only send to LLM processor, let it emit the final cleaned transcript
