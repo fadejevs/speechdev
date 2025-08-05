@@ -15,7 +15,7 @@ import branding from '@/branding.json';
 import { getFullLanguageName, getBaseLangCode, getLanguageCode, getPlaceholderText, isMobile, isTablet } from './utils';
 import { useTts } from './useTts';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speechdev.onrender.com';
+const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'https://everspeak.onrender.com';
 
 const fetchEventById = async (id) => {
   const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=*`, {

@@ -34,8 +34,8 @@ const nextConfig = {
               // Explicit worker-src too (fallback to script-src if omitted)
               "worker-src 'self' blob: data:",
               // allow Azure Speech websockets + Geoapify + Supabase + DeepL
-              "connect-src 'self' https://speechdev.onrender.com " +
-                'ws://speechdev.onrender.com wss://speechdev.onrender.com ' +
+              "connect-src 'self' https://everspeak.onrender.com " +
+                'ws://everspeak.onrender.com wss://everspeak.onrender.com ' +
                 'wss://*.s2s.speech.microsoft.com wss://*.stt.speech.microsoft.com wss://*.tts.speech.microsoft.com ' +
                 'https://api.geoapify.com ' +
                 'https://jpydgtzmbcwbyufpvupp.supabase.co ' +

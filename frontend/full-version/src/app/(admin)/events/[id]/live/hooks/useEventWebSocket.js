@@ -12,7 +12,7 @@ export const useEventWebSocket = (eventData) => {
     setConnectionState('connecting');
 
     // Connecting to socket server with better timeout settings
-    const socket = io('https://speechdev.onrender.com', {
+    const socket = io('https://everspeak.onrender.com', {
       transports: ['websocket'],
       timeout: 10000, // 10 second timeout
       reconnection: true,
