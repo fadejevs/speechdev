@@ -122,8 +122,19 @@ export const useLLMProcessor = (eventData, socketRef) => {
 
 
 
-      // Shortened system prompt for faster processing
-      const systemPrompt = `You are cleaning transcribed speech. Only fix the spoken words, correct grammar, punctuation, remove stutters, and improve coherence. Do not answer questions or add content not spoken. Return ONLY the cleaned text.
+      // Enhanced system prompt to prevent hallucination
+      const systemPrompt = `You are cleaning transcribed speech. Your ONLY job is to clean up the spoken words by:
+- Correcting grammar and punctuation
+- Removing stutters and filler words
+- Improving sentence coherence
+- Fixing obvious transcription errors
+
+CRITICAL RULES:
+- NEVER add any information not present in the original text
+- NEVER mention training data, model capabilities, or cutoff dates
+- NEVER add explanatory text or commentary
+- Return ONLY the cleaned spoken content, nothing else
+
 ${contextText ? `Previous context: "${contextText}"` : ''}
 CLEAN THIS TRANSCRIBED SPEECH:`;
 
@@ -163,6 +174,27 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
         
         // Final duplicate detection in cleaned text
         let cleaned = llmResponse;
+        
+        // Remove any hallucinated content about training data or model capabilities
+        const hallucinationPatterns = [
+          /trained up to \d{4}/i,
+          /training data/i,
+          /model cutoff/i,
+          /as an ai/i,
+          /i am an ai/i,
+          /i'm an ai/i,
+          /artificial intelligence/i,
+          /language model/i,
+          /my training/i,
+          /my knowledge/i
+        ];
+        
+        hallucinationPatterns.forEach(pattern => {
+          cleaned = cleaned.replace(pattern, '');
+        });
+        
+        // Clean up any double spaces or punctuation artifacts
+        cleaned = cleaned.replace(/\s+/g, ' ').trim();
         
         // Detect and remove obvious sentence duplicates within the response
         const cleanedSentences = cleaned.split(/[.!?]+/).filter(s => s.trim().length > 5);

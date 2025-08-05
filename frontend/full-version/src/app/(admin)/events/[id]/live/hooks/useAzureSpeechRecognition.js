@@ -154,8 +154,9 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
           process.env.NEXT_PUBLIC_AZURE_REGION
         );
 
-        // Configure speech settings
-        speechConfig.speechRecognitionLanguage = currentAzureLanguageCode;
+        // Configure speech settings - USE THE CORRECT LANGUAGE CODE!
+        speechConfig.speechRecognitionLanguage = azureLanguageCode;
+        console.log('[Azure] Setting speech recognition language to:', azureLanguageCode, 'for source language:', sourceLanguage);
         speechConfig.enableDictation(); // Enable dictation mode for better continuous recognition
         speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Don't filter any speech
 
