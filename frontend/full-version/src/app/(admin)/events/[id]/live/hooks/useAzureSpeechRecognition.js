@@ -103,16 +103,51 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
           vi: 'vi-VN',
           id: 'id-ID',
           ms: 'ms-MY',
-          fa: 'fa-IR',
-          Latvian: 'lv-LV',
-          English: 'en-US',
-          Spanish: 'es-ES',
-          French: 'fr-FR',
-          German: 'de-DE'
+          fa: 'fa-IR'
         };
 
         // Map to proper Azure language code
         let azureLanguageCode = sourceLanguage;
+
+        // Handle full language names by converting to language codes
+        const languageNameToCode = {
+          'latvian': 'lv',
+          'english': 'en', 
+          'spanish': 'es',
+          'french': 'fr',
+          'german': 'de',
+          'italian': 'it',
+          'portuguese': 'pt',
+          'russian': 'ru',
+          'japanese': 'ja',
+          'korean': 'ko',
+          'chinese': 'zh',
+          'arabic': 'ar',
+          'hindi': 'hi',
+          'turkish': 'tr',
+          'dutch': 'nl',
+          'polish': 'pl',
+          'swedish': 'sv',
+          'norwegian': 'no',
+          'danish': 'da',
+          'finnish': 'fi',
+          'czech': 'cs',
+          'hungarian': 'hu',
+          'romanian': 'ro',
+          'slovak': 'sk',
+          'bulgarian': 'bg',
+          'croatian': 'hr',
+          'slovenian': 'sl',
+          'estonian': 'et',
+          'lithuanian': 'lt',
+          'ukrainian': 'uk',
+          'hebrew': 'he',
+          'thai': 'th',
+          'vietnamese': 'vi',
+          'indonesian': 'id',
+          'malay': 'ms',
+          'persian': 'fa'
+        };
 
         // Try direct mapping first
         if (azureSpeechLanguageMap[sourceLanguage]) {
@@ -121,6 +156,11 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
         // If it's already in xx-XX format, use it
         else if (sourceLanguage && sourceLanguage.includes('-')) {
           azureLanguageCode = sourceLanguage;
+        }
+        // If it's a full language name, convert to code first
+        else if (sourceLanguage && languageNameToCode[sourceLanguage.toLowerCase()]) {
+          const code = languageNameToCode[sourceLanguage.toLowerCase()];
+          azureLanguageCode = azureSpeechLanguageMap[code];
         }
         // If it's just a base code, map it
         else if (sourceLanguage) {
