@@ -235,6 +235,42 @@ export const useTts = (eventData) => {
   const spokenSentences = useRef(new Set());
   const keepAliveInterval = useRef(null);
 
+  // Seamless audio route resync function
+  const resyncAudioRoute = useCallback(async () => {
+    if (!isMobile()) return; // Only on mobile
+    
+    console.log('[TTS] Seamlessly resyncing audio route...');
+    
+    // Stop any playing audio
+    if (currentAudioSource) {
+      try {
+        if (currentAudioSource.stop) currentAudioSource.stop();
+        if (currentAudioSource.pause) {
+          currentAudioSource.pause();
+          currentAudioSource.src = '';
+        }
+      } catch (err) {}
+      currentAudioSource = null;
+    }
+
+    // Close old context
+    if (audioContextRef.current) {
+      try {
+        await audioContextRef.current.close();
+      } catch (err) {}
+    }
+
+    // Create new context
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      audioContextRef.current = new AudioContext();
+      await audioContextRef.current.resume();
+      console.log('[TTS] AudioContext seamlessly resynced to current device');
+    } catch (err) {
+      console.error('[TTS] Failed to recreate AudioContext:', err);
+    }
+  }, []);
+
   useEffect(() => {
     if (isSafari() || isIOS()) {
       audioContextRef.current = initializeAudioContext();
@@ -336,24 +372,42 @@ export const useTts = (eventData) => {
     [autoSpeakLang, stopTts, eventData]
   );
 
+  // 1. Seamless resync when user returns to app (likely connected AirPods)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && autoSpeakLang && isMobile()) {
-        if (audioContextRef.current && audioContextRef.current.state !== 'running') {
-          audioContextRef.current.resume().catch(() => {});
-        }
+        console.log('[TTS] User returned to app - resyncing audio route');
+        resyncAudioRoute();
       }
     };
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Cleanup on unmount
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [autoSpeakLang, resyncAudioRoute]);
+
+  // 2. Periodic seamless resync every 10 seconds (backup)
+  useEffect(() => {
+    if (!autoSpeakLang || !isMobile()) return;
+    
+    console.log('[TTS] Starting periodic audio resync (every 10s)');
+    const interval = setInterval(resyncAudioRoute, 10000); // Every 10s
+    
+    return () => {
+      console.log('[TTS] Stopping periodic audio resync');
+      clearInterval(interval);
+    };
+  }, [autoSpeakLang, resyncAudioRoute]);
+
+  // 3. Cleanup on unmount
+  useEffect(() => {
+    return () => {
       const interval = keepAliveInterval.current;
       if (interval) clearInterval(interval);
     };
-  }, [autoSpeakLang]);
+  }, []);
 
   return {
     ttsLoading,
@@ -363,6 +417,7 @@ export const useTts = (eventData) => {
     handleMobilePlayToggle,
     spokenSentences,
     stopTts,
-    isSpeaking
+    isSpeaking,
+    resyncAudioRoute // Available for debugging if needed
   };
 };
