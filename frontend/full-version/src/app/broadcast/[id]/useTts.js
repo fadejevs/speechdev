@@ -249,7 +249,9 @@ export const useTts = (eventData) => {
           currentAudioSource.pause();
           currentAudioSource.src = '';
         }
-      } catch (err) {}
+      } catch {
+        // Audio source might already be stopped
+      }
       currentAudioSource = null;
     }
 
@@ -257,7 +259,9 @@ export const useTts = (eventData) => {
     if (audioContextRef.current) {
       try {
         await audioContextRef.current.close();
-      } catch (err) {}
+      } catch {
+        // AudioContext might already be closed
+      }
     }
 
     // Create new context
@@ -266,8 +270,8 @@ export const useTts = (eventData) => {
       audioContextRef.current = new AudioContext();
       await audioContextRef.current.resume();
       console.log('[TTS] AudioContext seamlessly resynced to current device');
-    } catch (err) {
-      console.error('[TTS] Failed to recreate AudioContext:', err);
+    } catch (error) {
+      console.error('[TTS] Failed to recreate AudioContext:', error);
     }
   }, []);
 
@@ -405,7 +409,9 @@ export const useTts = (eventData) => {
   useEffect(() => {
     return () => {
       const interval = keepAliveInterval.current;
-      if (interval) clearInterval(interval);
+      if (interval) {
+        clearInterval(interval);
+      }
     };
   }, []);
 
