@@ -7,6 +7,12 @@ export const useLLMProcessor = (eventData, socketRef) => {
   const isProcessingActiveRef = useRef(false);
   const lastProcessTimeRef = useRef(0);
   const speechPatternRef = useRef({ avgPauseLength: 1000, avgSentenceLength: 50 });
+  // Ordering control for outputs
+  const sequenceCounterRef = useRef(0);
+  const lastEmittedSequenceRef = useRef(0);
+  const pendingOutputsRef = useRef(new Map());
+  // Throttled preview for live feedback while LLM is working
+  const lastPreviewSentRef = useRef(0);
 
 
   // Smart sentence boundary detection
@@ -278,39 +284,63 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
 
       const startTime = Date.now();
       const textToProcess = currentBuffer.map((item) => item.text);
+      const sequence = ++sequenceCounterRef.current;
 
       // Process with context awareness
       const result = await processWithGPT(textToProcess, contextHistory);
       const { cleaned, newContext } = result;
 
-      if (passesQualityCheck(cleaned) && socketRef.current && socketRef.current.connected) {
-        // Update context history for next chunk
-        setContextHistory(newContext);
+      // Queue output to enforce in-order delivery
+      const outputPayload = {
+        cleaned,
+        newContext,
+        sourceLanguage: currentBuffer[0].sourceLanguage,
+        translations: currentBuffer[currentBuffer.length - 1].translations,
+        processingTime: Date.now() - startTime,
+        chunkIds: currentBuffer.map((item) => item.id),
+        handleNewTranscription
+      };
+      pendingOutputsRef.current.set(sequence, outputPayload);
 
-        socketRef.current.emit('realtime_transcription', {
-          text: cleaned,
-          is_final: true,
-          is_llm_processed: true,
-          source_language: currentBuffer[0].sourceLanguage,
-          room_id: eventData.id,
-          translations: currentBuffer[currentBuffer.length - 1].translations,
-          processing_time: Date.now() - startTime,
-          chunk_ids: currentBuffer.map((item) => item.id),
-          context_length: contextHistory.length
-        });
+      // Attempt to flush in order
+      const flush = () => {
+        while (pendingOutputsRef.current.has(lastEmittedSequenceRef.current + 1)) {
+          const nextSeq = lastEmittedSequenceRef.current + 1;
+          const out = pendingOutputsRef.current.get(nextSeq);
+          pendingOutputsRef.current.delete(nextSeq);
 
-      }
+          // Update context before emitting next
+          setContextHistory(out.newContext);
 
-      // Clear buffer
-      setBuffer([]);
-      lastProcessTimeRef.current = Date.now();
+          if (passesQualityCheck(out.cleaned) && socketRef.current && socketRef.current.connected) {
+            socketRef.current.emit('realtime_transcription', {
+              text: out.cleaned,
+              is_final: true,
+              is_llm_processed: true,
+              source_language: out.sourceLanguage,
+              room_id: eventData.id,
+              translations: out.translations,
+              processing_time: out.processingTime,
+              chunk_ids: out.chunkIds,
+              context_length: contextHistory.length
+            });
+          }
 
-      // Callback for local handling
-      handleNewTranscription({
-        text: cleaned,
-        source_language: currentBuffer[0].sourceLanguage,
-        translations: currentBuffer[currentBuffer.length - 1].translations
-      });
+          // Local callback
+          out.handleNewTranscription({
+            text: out.cleaned,
+            source_language: out.sourceLanguage,
+            translations: out.translations
+          });
+
+          lastEmittedSequenceRef.current = nextSeq;
+          // housekeeping
+          setBuffer([]);
+          lastProcessTimeRef.current = Date.now();
+        }
+      };
+
+      flush();
     },
     [eventData, socketRef, processWithGPT, contextHistory, passesQualityCheck]
   );
@@ -360,6 +390,24 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
 
         // Set dynamic timeout based on speech patterns ONLY if not processing immediately
         const optimalWait = calculateOptimalTiming(newBuffer, timeSinceLastChunk);
+
+        // Emit throttled live preview for mobile users while waiting
+        const now = Date.now();
+        if (socketRef.current && socketRef.current.connected && now - lastPreviewSentRef.current > 800) {
+          const previewText = newBuffer.map((i) => i.text).join(' ').slice(0, 220);
+          if (previewText && previewText.length > 10) {
+            lastPreviewSentRef.current = now;
+            socketRef.current.emit('realtime_transcription', {
+              text: previewText,
+              is_final: false,
+              is_llm_processed: false,
+              is_buffer_preview: true,
+              source_language: newBuffer[0].sourceLanguage,
+              room_id: eventData.id,
+              translations: {}
+            });
+          }
+        }
 
         processingTimeoutRef.current = setTimeout(() => {
           setBuffer((currentBuffer) => {

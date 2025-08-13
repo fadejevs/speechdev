@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
 
-export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecognizerConnecting, setRecognizerReady) => {
+export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecognizerConnecting, setRecognizerReady, audioDevices = null) => {
   const [currentAzureLanguageCode, setCurrentAzureLanguageCode] = useState('en-US');
   const recognizerRef = useRef(null);
   const startRecognizerRef = useRef(null);
@@ -34,7 +34,7 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
 
   const createStartRecognizer = useCallback(
     (socketRef) => {
-      const startRecognizer = () => {
+      const startRecognizer = async () => {
         if (!process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || !process.env.NEXT_PUBLIC_AZURE_REGION) {
           alert('Azure Speech key/region not set');
           return;
@@ -46,13 +46,25 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
             () => {
               recognizerRef.current = null;
               // Restart the function after stopping
-              setTimeout(() => startRecognizer(), 100);
+              setTimeout(async () => {
+                try {
+                  await startRecognizer();
+                } catch (err) {
+                  console.error('[Azure] Error during restart:', err);
+                }
+              }, 100);
             },
             (err) => {
               console.error('[Azure] ❌ Error stopping previous recognizer:', err);
               recognizerRef.current = null;
               // Still try to start new one
-              setTimeout(() => startRecognizer(), 100);
+              setTimeout(async () => {
+                try {
+                  await startRecognizer();
+                } catch (err) {
+                  console.error('[Azure] Error during restart:', err);
+                }
+              }, 100);
             }
           );
           return; // Exit early and let the callback restart
@@ -196,7 +208,7 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
 
         // Configure speech settings - USE THE CORRECT LANGUAGE CODE!
         speechConfig.speechRecognitionLanguage = azureLanguageCode;
-        console.log('[Azure] Setting speech recognition language to:', azureLanguageCode, 'for source language:', sourceLanguage);
+        // console.log('[Azure] Setting speech recognition language to:', azureLanguageCode, 'for source language:', sourceLanguage);
         speechConfig.enableDictation(); // Enable dictation mode for better continuous recognition
         speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Don't filter any speech
 
@@ -215,8 +227,32 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
           speechConfig.addTargetLanguage(lang);
         });
 
-        // Use default microphone input for consistency - prevent multiple device confusion
-        let audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+        // Use selected audio device if available, otherwise fallback to default
+        let audioConfig;
+        // Get the current device from the audioDevices hook's ref for immediate access
+        const currentDevice = audioDevices?.selectedAudioInputRef?.current || audioDevices?.selectedAudioInput || '';
+        // console.log('[Azure] Device selection check - audioDevices:', currentDevice);
+        if (audioDevices && currentDevice) {
+          // console.log('[Azure] Attempting to use selected device:', currentDevice);
+          try {
+            // Get the audio stream for the selected device
+            const stream = await audioDevices.getSelectedDeviceStream();
+            if (stream) {
+              // console.log('[Azure] Successfully got stream for device, creating AudioConfig');
+              audioConfig = SpeechSDK.AudioConfig.fromStreamInput(stream);
+                              // console.log('[Azure] AudioConfig created with custom stream');
+            } else {
+              // console.log('[Azure] No stream returned, falling back to default microphone');
+              audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+            }
+          } catch (err) {
+            console.error('[Azure] Error getting selected device stream, falling back to default:', err);
+            audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+          }
+        } else {
+          // console.log('[Azure] No device selected, using default microphone');
+          audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+        }
 
         const recognizer = new SpeechSDK.TranslationRecognizer(speechConfig, audioConfig);
 
@@ -274,6 +310,7 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
           if (text && text.trim().length > 0) {
             setIsRecognizerConnecting(false);
             setRecognizerReady(true);
+            // console.log('[Azure] Received audio input:', text.substring(0, 20) + '...');
           }
 
           // Simple non-blocking interim tracking
@@ -303,7 +340,7 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
                       lastProcessedText = processedInterimText;
                     }, 0);
                   }
-                }, 3000); // Increased to 3 seconds to give more time for final results
+                }, 2000); // Increased to 2 seconds to give more time for final results
               }
             }
           }
@@ -316,7 +353,7 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
               source_language: currentAzureLanguageCode,
               room_id: eventData.id
             });
-            console.log('[Azure] Interim sent:', text.substring(0, 15) + (text.length > 15 ? '...' : ''));
+            // console.log('[Azure] Interim sent:', text.substring(0, 15) + (text.length > 15 ? '...' : ''));
           }
         };
 
@@ -334,7 +371,7 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
           if (text && text.trim().length > 0) {
             // Check if this text was already processed by the interim fallback
             if (lastProcessedText && text.includes(lastProcessedText.trim())) {
-              console.log('[Azure] Final result matches already processed interim text, skipping to prevent duplication:', text.substring(0, 15) + '...');
+              // console.log('[Azure] Final result matches already processed interim text, skipping to prevent duplication:', text.substring(0, 15) + '...');
               // Reset tracking
               lastInterimText = '';
               lastProcessedText = '';
@@ -349,7 +386,7 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
             // NOTE: Only send to LLM processor, let it emit the final cleaned transcript
             // Don't emit raw final transcript to avoid duplication with LLM processed version
             llmProcessor.addToBuffer(text, sourceLanguage, rawTranslations, handleNewTranscription);
-            console.log('[Azure] Final sent to LLM processor (immediate):', text.substring(0, 15) + (text.length > 15 ? '...' : ''));
+            // console.log('[Azure] Final sent to LLM processor (immediate):', text.substring(0, 15) + (text.length > 15 ? '...' : ''));
           }
         };
 
@@ -358,9 +395,9 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
           () => {
             restartCount = 0; // Reset restart counter on successful start
             // Note: Don't clear connecting state here - wait for first audio detection
-            console.log('[Azure] Continuous recognition started successfully.');
+            // console.log('[Azure] Continuous recognition started successfully with device:', audioDevices?.selectedAudioInput);
             // Periodic check disabled to match older working version
-            console.log('[Azure] Periodic activity check disabled to prevent microphone access issues.');
+            // console.log('[Azure] Periodic activity check disabled to prevent microphone access issues.');
           },
           (err) => {
             console.error('[Azure] Failed to start recognition:', err);
@@ -396,22 +433,40 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
           recognizerRef.current.stopContinuousRecognitionAsync(
             () => {
               recognizerRef.current = null;
-              setTimeout(() => startRecognizer(), 1000);
+              setTimeout(async () => {
+                try {
+                  await startRecognizer();
+                } catch (err) {
+                  console.error('[Azure] Error during restart:', err);
+                }
+              }, 1000);
             },
             (err) => {
               console.error('[Live] Error stopping recognizer, but attempting restart anyway in 2 seconds...', err);
               recognizerRef.current = null;
-              setTimeout(() => startRecognizer(), 1000);
+              setTimeout(async () => {
+                try {
+                  await startRecognizer();
+                } catch (err) {
+                  console.error('[Azure] Error during restart:', err);
+                }
+              }, 1000);
             }
           );
         } else {
-          setTimeout(() => startRecognizer(), 1000);
+          setTimeout(async () => {
+            try {
+              await startRecognizer();
+            } catch (err) {
+              console.error('[Azure] Error during restart:', err);
+            }
+          }, 1000);
         }
       };
 
       return startRecognizer;
     },
-    [eventData, llmProcessor, handleNewTranscription, setIsRecognizerConnecting, setRecognizerReady, currentAzureLanguageCode]
+    [eventData, llmProcessor, handleNewTranscription, setIsRecognizerConnecting, setRecognizerReady, currentAzureLanguageCode, audioDevices?.selectedAudioInput]
   );
 
   const cleanup = useCallback(() => {
@@ -420,10 +475,10 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
     setRecognizerReady(false);
 
     if (recognizerRef.current) {
-      console.log('[Azure] Cleaning up recognizer to release microphone resources.');
+      // console.log('[Azure] Cleaning up recognizer to release microphone resources.');
       recognizerRef.current.stopContinuousRecognitionAsync(
         () => {
-          console.log('[Azure] Recognizer stopped successfully, microphone released.');
+          // console.log('[Azure] Recognizer stopped successfully, microphone released.');
           recognizerRef.current = null;
         },
         (err) => {
@@ -435,13 +490,13 @@ export const useAzureSpeechRecognition = (eventData, llmProcessor, setIsRecogniz
       try {
         if (recognizerRef.current && recognizerRef.current.audioSource) {
           recognizerRef.current.audioSource.turnOff();
-          console.log('[Azure] Audio source turned off explicitly.');
+          // console.log('[Azure] Audio source turned off explicitly.');
         }
       } catch (error) {
         console.error('[Azure] Error turning off audio source:', error);
       }
     } else {
-      console.log('[Azure] No recognizer to clean up.');
+      // console.log('[Azure] No recognizer to clean up.');
     }
   }, [setIsRecognizerConnecting, setRecognizerReady]);
 
