@@ -82,6 +82,16 @@ const EventCompletionPage = () => {
   const [eventData, setEventData] = useState(null);
   const [transcripts, setTranscripts] = useState({});
 
+  // Format a transcript into a more readable txt layout
+  const formatTranscript = (lines = []) => {
+    if (!Array.isArray(lines) || lines.length === 0) return '';
+    const joined = lines.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    if (!joined) return '';
+    // Split into sentences and place each on a new line
+    const sentences = joined.split(/(?<=[.!?])\s+/);
+    return sentences.join('\n');
+  };
+
   useEffect(() => {
     fetchEventById(id).then((event) => {
       console.log('Fetched event from Supabase:', event);
@@ -447,14 +457,24 @@ const EventCompletionPage = () => {
 
           {/* Target languages */}
           {eventData.targetLanguages.map((lang, i) => {
-            const baseLang = getBaseLangCode(lang).toUpperCase(); // privKeys are uppercase
-            // Extract all translations for this language from privmap
-            const translationLines = (transcripts.privmap || [])
-              .map((item) => {
-                const idx = item.privKeys.indexOf(baseLang);
-                return idx !== -1 ? item.privValues[idx] : null;
-              })
-              .filter(Boolean);
+            const baseLangCode = getBaseLangCode(lang); // e.g., 'en', 'lv'
+            const lower = baseLangCode ? baseLangCode.toLowerCase() : '';
+            const upper = baseLangCode ? baseLangCode.toUpperCase() : '';
+
+            // Prefer the simple per-lang array if present
+            let translationLines = Array.isArray(transcripts[lower]) ? transcripts[lower] : [];
+
+            // Fallback: reconstruct from legacy privmap shape if simple array missing
+            if ((!translationLines || translationLines.length === 0) && Array.isArray(transcripts.privmap)) {
+              translationLines = transcripts.privmap
+                .map((item) => {
+                  if (!item || !Array.isArray(item.privKeys) || !Array.isArray(item.privValues)) return null;
+                  // Find a key that matches the language (e.g., 'LV-LV' contains 'LV')
+                  const idx = item.privKeys.findIndex((k) => typeof k === 'string' && k.toUpperCase().includes(upper));
+                  return idx !== -1 ? item.privValues[idx] : null;
+                })
+                .filter(Boolean);
+            }
 
             return (
               <Box
@@ -487,11 +507,12 @@ const EventCompletionPage = () => {
                     variant="contained"
                     disabled={translationLines.length === 0}
                     onClick={() => {
-                      const blob = new Blob([translationLines.join('\n')], { type: 'text/plain' });
+                      const pretty = formatTranscript(translationLines);
+                      const blob = new Blob([pretty], { type: 'text/plain' });
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement('a');
                       a.href = url;
-                      a.download = `${getFullLanguageName(baseLang)}_translation.txt`;
+                      a.download = `${getFullLanguageName(getBaseLangCode(lang))}_translation.txt`;
                       a.click();
                       URL.revokeObjectURL(url);
                     }}

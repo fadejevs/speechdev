@@ -76,10 +76,10 @@ export const useLLMProcessor = (eventData, socketRef) => {
     const avgPause = speechPatternRef.current.avgPauseLength;
     const bufferLength = buffer.reduce((acc, chunk) => acc + chunk.text.length, 0);
 
-    // Base timing rules - optimized for FAST responsiveness
-    const MIN_WAIT = 300; // Reduced from 600ms to 300ms for faster initial response
-    const MAX_WAIT = 2000; // Reduced from 4s to 2s for quicker processing
-    const OPTIMAL_LENGTH = 120; // Reduced from 120 to 80 characters for faster processing
+    // Base timing rules - more aggressive for faster responsiveness
+    const MIN_WAIT = 200;
+    const MAX_WAIT = 1200;
+    const OPTIMAL_LENGTH = 80;
 
     // Dynamic timing based on:
     // 1. Natural pause length (longer pause = likely sentence end)
@@ -156,8 +156,8 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
               { role: 'system', content: systemPrompt },
               { role: 'user', content: currentText }
             ],
-            max_tokens: 120, // Reduced from 300 for faster response
-            temperature: 0.2 // Slightly increased from 0.0 for potentially faster processing
+            max_tokens: 100,
+            temperature: 0.2
           })
         });
 
@@ -255,7 +255,7 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
       if (buffer.length === 0) return false;
 
       const combinedText = buffer.map((item) => item.text).join(' ');
-      const hasGoodLength = combinedText.length >= 20;
+      const hasGoodLength = combinedText.length >= 10;
       const hasSentenceEnd = detectSentenceBoundaries(combinedText);
       const hasLongPause = timeSinceLastChunk > speechPatternRef.current.avgPauseLength * 1.5;
       const hasQualityContent = passesQualityCheck(combinedText);
@@ -270,7 +270,7 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
 
       if (hasSentenceEnd && hasGoodLength) return true;
       if (hasLongPause && hasGoodLength) return true;
-      if (combinedText.length > 200) return true; // Reduced from 300 to 200 to prevent excessive accumulation
+      if (combinedText.length > 150) return true;
       if (buffer.length > 1) return true; // Process if there are multiple chunks to avoid delays
 
       return false;
@@ -371,20 +371,8 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
 
         // Smart processing decision
         if (shouldProcessNow(newBuffer, timeSinceLastChunk)) {
-          // Use requestIdleCallback for true background processing to avoid blocking Azure
-          if (window.requestIdleCallback) {
-            window.requestIdleCallback(
-              () => {
-                processBuffer(newBuffer, handleNewTranscription);
-              },
-              { timeout: 1000 }
-            );
-          } else {
-            // Fallback for browsers without requestIdleCallback
-            setTimeout(() => {
-              processBuffer(newBuffer, handleNewTranscription);
-            }, 0);
-          }
+          // Fire immediately for lower latency
+          processBuffer(newBuffer, handleNewTranscription);
           return []; // Buffer cleared, no timeout needed
         }
 
@@ -412,17 +400,8 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
         processingTimeoutRef.current = setTimeout(() => {
           setBuffer((currentBuffer) => {
             if (currentBuffer.length > 0) {
-              // Use background processing for timeout cases too
-              if (window.requestIdleCallback) {
-                window.requestIdleCallback(
-                  () => {
-                    processBuffer(currentBuffer, handleNewTranscription);
-                  },
-                  { timeout: 2000 }
-                );
-              } else {
-                processBuffer(currentBuffer, handleNewTranscription);
-              }
+              // Process now without idle delay
+              processBuffer(currentBuffer, handleNewTranscription);
             }
             return [];
           });
