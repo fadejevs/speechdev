@@ -111,12 +111,13 @@ export default function EventLivePage() {
   // Audio Devices Hook (independent initialization)
   const audioDevices = useAudioDevices();
   
-  // Speech Recognition Hook (uses default microphone for consistency)
+  // Speech Recognition Hook (uses selected audio device)
   const speechRecognition = useAzureSpeechRecognition(
     eventData,
     llmProcessor,
     setIsRecognizerConnecting,
-    setRecognizerReady
+    setRecognizerReady,
+    audioDevices
   );
   
   // Auto-pause Hook
@@ -185,15 +186,10 @@ export default function EventLivePage() {
   useEffect(() => {
     if (!webSocket.socketRef.current) return;
 
-    // Only initialize if not already done to prevent multiple instances
-    if (speechRecognition.startRecognizerRef.current) {
-      return;
-    }
-
-    // Create the startRecognizer function with the websocket reference
+    // Always (re)bind the start function so it captures the latest device selection
     const startRecognizer = speechRecognition.createStartRecognizer(webSocket.socketRef);
     speechRecognition.startRecognizerRef.current = startRecognizer;
-  }, [webSocket.socketRef.current]);
+  }, [webSocket.socketRef.current, speechRecognition.createStartRecognizer, audioDevices.selectedAudioInput]);
 
   // Start/stop recognition based on event status
   useEffect(() => {
@@ -228,11 +224,60 @@ export default function EventLivePage() {
     }
   }, [eventData?.id, eventData?.status]);
 
-  // Handler for switching audio devices - DISABLED for now
-  const handleSwitchAudioDevice = (deviceId) => {
-    // Functionality disabled to prevent multiple mic input confusion
-    // Only update the selected device for display purposes
-    audioDevices.setSelectedAudioInput(deviceId);
+  // Handler for switching audio devices
+  const handleSwitchAudioDevice = async (deviceId) => {
+    // console.log('[Live] Switching to device:', deviceId);
+    
+    // If deviceId is 'default', find the actual default device
+    let actualDeviceId = deviceId;
+    if (deviceId === 'default') {
+      const defaultDevice = audioDevices.audioInputDevices.find(device => 
+        device.label.toLowerCase().includes('airpods') || 
+        device.label.toLowerCase().includes('default')
+      );
+      if (defaultDevice) {
+        actualDeviceId = defaultDevice.deviceId;
+        // console.log('[Live] Mapped default to actual device:', defaultDevice.label, 'ID:', actualDeviceId);
+      } else {
+        // console.log('[Live] Could not find default device, using first available');
+        actualDeviceId = audioDevices.audioInputDevices[0]?.deviceId || deviceId;
+      }
+    }
+    
+    // Update the selected device
+    // console.log('[Live] Setting selected audio input to:', actualDeviceId);
+    audioDevices.setSelectedAudioInput(actualDeviceId);
+          // console.log('[Live] Device state updated, current selection:', audioDevices.selectedAudioInput);
+    
+    // Restart recognition with new device if currently live
+    if (eventData?.status === 'Live' && speechRecognition.recognizerRef.current) {
+      // console.log('[Live] Restarting recognition with new device');
+      try {
+        // Stop current recognition
+        speechRecognition.recognizerRef.current.stopContinuousRecognitionAsync(
+          () => {
+            // console.log('[Live] Recognition stopped, starting with new device');
+            speechRecognition.recognizerRef.current = null;
+            // Start recognition with new device immediately
+            if (speechRecognition.startRecognizerRef.current) {
+              speechRecognition.startRecognizerRef.current();
+            }
+          },
+          (err) => {
+            console.error('[Live] Error stopping recognition:', err);
+            speechRecognition.recognizerRef.current = null;
+            // Still try to start with new device
+            if (speechRecognition.startRecognizerRef.current) {
+              speechRecognition.startRecognizerRef.current();
+            }
+          }
+        );
+      } catch (err) {
+        console.error('[Live] Error switching audio device:', err);
+      }
+    } else {
+      console.log('[Live] Not live or no recognizer, device will be used on next start');
+    }
   };
 
   // Share dialog handlers
@@ -563,7 +608,16 @@ export default function EventLivePage() {
                 }
               }}
             >
-              Change Input
+              {(() => {
+                const currentDevice = audioDevices.audioInputDevices.find(d => d.deviceId === audioDevices.selectedAudioInput);
+                if (currentDevice) {
+                  if (currentDevice.label.includes('AirPods')) return 'AirPods';
+                  if (currentDevice.label.includes('Built-in')) return 'MacBook Mic';
+                  if (currentDevice.label.includes('iPhone')) return 'iPhone Mic';
+                  return 'Change Input';
+                }
+                return 'Change Input';
+              })()}
             </Button>
             <Menu
               anchorEl={audioDevices.anchorEl}
@@ -580,18 +634,36 @@ export default function EventLivePage() {
               {audioDevices.audioInputDevices.length === 0 ? (
                 <MenuItem disabled>No audio inputs found</MenuItem>
               ) : (
-                audioDevices.audioInputDevices.map((device) => (
+                audioDevices.audioInputDevices
+                  .filter(device => device.deviceId !== 'default') // Filter out the confusing 'default' option
+                  .map((device) => {
+                    // Create a better display name
+                    let displayName = device.label;
+                    if (displayName.includes('Built-in')) {
+                      displayName = 'MacBook Microphone';
+                    } else if (displayName.includes('AirPods')) {
+                      displayName = 'AirPods';
+                    } else if (displayName.includes('iPhone')) {
+                      displayName = 'iPhone Microphone';
+                    }
+                    
+                    return (
                   <MenuItem
                     key={device.deviceId}
                     selected={device.deviceId === audioDevices.selectedAudioInput}
-                    onClick={() => {
-                      handleSwitchAudioDevice(device.deviceId);
+                        onClick={async () => {
+                          try {
+                            await handleSwitchAudioDevice(device.deviceId);
+                          } catch (err) {
+                            console.error('Error switching audio device:', err);
+                          }
                       audioDevices.handleMenuClose();
                     }}
                   >
-                    {device.label || `Microphone (${device.deviceId})`}
+                        {displayName}
                   </MenuItem>
-                ))
+                    );
+                  })
               )}
             </Menu>
             <IconButton

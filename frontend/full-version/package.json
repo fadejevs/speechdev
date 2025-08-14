@@ -35,6 +35,7 @@
     "axios": "1.7.7",
     "date-fns": "3.6.0",
     "dayjs": "^1.11.13",
+    "groq-sdk": "^0.30.0",
     "lodash-es": "4.17.21",
     "microsoft-cognitiveservices-speech-sdk": "^1.43.1",
     "next": "15.0.3",

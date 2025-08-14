@@ -7,6 +7,12 @@ export const useLLMProcessor = (eventData, socketRef) => {
   const isProcessingActiveRef = useRef(false);
   const lastProcessTimeRef = useRef(0);
   const speechPatternRef = useRef({ avgPauseLength: 1000, avgSentenceLength: 50 });
+  // Ordering control for outputs
+  const sequenceCounterRef = useRef(0);
+  const lastEmittedSequenceRef = useRef(0);
+  const pendingOutputsRef = useRef(new Map());
+  // Throttled preview for live feedback while LLM is working
+  const lastPreviewSentRef = useRef(0);
 
 
   // Smart sentence boundary detection
@@ -70,10 +76,10 @@ export const useLLMProcessor = (eventData, socketRef) => {
     const avgPause = speechPatternRef.current.avgPauseLength;
     const bufferLength = buffer.reduce((acc, chunk) => acc + chunk.text.length, 0);
 
-    // Base timing rules - optimized for FAST responsiveness
-    const MIN_WAIT = 300; // Reduced from 600ms to 300ms for faster initial response
-    const MAX_WAIT = 2000; // Reduced from 4s to 2s for quicker processing
-    const OPTIMAL_LENGTH = 120; // Reduced from 120 to 80 characters for faster processing
+    // Base timing rules - more aggressive for faster responsiveness
+    const MIN_WAIT = 200;
+    const MAX_WAIT = 1200;
+    const OPTIMAL_LENGTH = 80;
 
     // Dynamic timing based on:
     // 1. Natural pause length (longer pause = likely sentence end)
@@ -150,8 +156,8 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
               { role: 'system', content: systemPrompt },
               { role: 'user', content: currentText }
             ],
-            max_tokens: 120, // Reduced from 300 for faster response
-            temperature: 0.2 // Slightly increased from 0.0 for potentially faster processing
+            max_tokens: 100,
+            temperature: 0.2
           })
         });
 
@@ -249,7 +255,7 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
       if (buffer.length === 0) return false;
 
       const combinedText = buffer.map((item) => item.text).join(' ');
-      const hasGoodLength = combinedText.length >= 20;
+      const hasGoodLength = combinedText.length >= 10;
       const hasSentenceEnd = detectSentenceBoundaries(combinedText);
       const hasLongPause = timeSinceLastChunk > speechPatternRef.current.avgPauseLength * 1.5;
       const hasQualityContent = passesQualityCheck(combinedText);
@@ -264,7 +270,7 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
 
       if (hasSentenceEnd && hasGoodLength) return true;
       if (hasLongPause && hasGoodLength) return true;
-      if (combinedText.length > 200) return true; // Reduced from 300 to 200 to prevent excessive accumulation
+      if (combinedText.length > 150) return true;
       if (buffer.length > 1) return true; // Process if there are multiple chunks to avoid delays
 
       return false;
@@ -278,39 +284,63 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
 
       const startTime = Date.now();
       const textToProcess = currentBuffer.map((item) => item.text);
+      const sequence = ++sequenceCounterRef.current;
 
       // Process with context awareness
       const result = await processWithGPT(textToProcess, contextHistory);
       const { cleaned, newContext } = result;
 
-      if (passesQualityCheck(cleaned) && socketRef.current && socketRef.current.connected) {
-        // Update context history for next chunk
-        setContextHistory(newContext);
+      // Queue output to enforce in-order delivery
+      const outputPayload = {
+        cleaned,
+        newContext,
+        sourceLanguage: currentBuffer[0].sourceLanguage,
+        translations: currentBuffer[currentBuffer.length - 1].translations,
+        processingTime: Date.now() - startTime,
+        chunkIds: currentBuffer.map((item) => item.id),
+        handleNewTranscription
+      };
+      pendingOutputsRef.current.set(sequence, outputPayload);
 
-        socketRef.current.emit('realtime_transcription', {
-          text: cleaned,
-          is_final: true,
-          is_llm_processed: true,
-          source_language: currentBuffer[0].sourceLanguage,
-          room_id: eventData.id,
-          translations: currentBuffer[currentBuffer.length - 1].translations,
-          processing_time: Date.now() - startTime,
-          chunk_ids: currentBuffer.map((item) => item.id),
-          context_length: contextHistory.length
-        });
+      // Attempt to flush in order
+      const flush = () => {
+        while (pendingOutputsRef.current.has(lastEmittedSequenceRef.current + 1)) {
+          const nextSeq = lastEmittedSequenceRef.current + 1;
+          const out = pendingOutputsRef.current.get(nextSeq);
+          pendingOutputsRef.current.delete(nextSeq);
 
-      }
+          // Update context before emitting next
+          setContextHistory(out.newContext);
 
-      // Clear buffer
-      setBuffer([]);
-      lastProcessTimeRef.current = Date.now();
+          if (passesQualityCheck(out.cleaned) && socketRef.current && socketRef.current.connected) {
+            socketRef.current.emit('realtime_transcription', {
+              text: out.cleaned,
+              is_final: true,
+              is_llm_processed: true,
+              source_language: out.sourceLanguage,
+              room_id: eventData.id,
+              translations: out.translations,
+              processing_time: out.processingTime,
+              chunk_ids: out.chunkIds,
+              context_length: contextHistory.length
+            });
+          }
 
-      // Callback for local handling
-      handleNewTranscription({
-        text: cleaned,
-        source_language: currentBuffer[0].sourceLanguage,
-        translations: currentBuffer[currentBuffer.length - 1].translations
-      });
+          // Local callback
+          out.handleNewTranscription({
+            text: out.cleaned,
+            source_language: out.sourceLanguage,
+            translations: out.translations
+          });
+
+          lastEmittedSequenceRef.current = nextSeq;
+          // housekeeping
+          setBuffer([]);
+          lastProcessTimeRef.current = Date.now();
+        }
+      };
+
+      flush();
     },
     [eventData, socketRef, processWithGPT, contextHistory, passesQualityCheck]
   );
@@ -341,40 +371,37 @@ CLEAN THIS TRANSCRIBED SPEECH:`;
 
         // Smart processing decision
         if (shouldProcessNow(newBuffer, timeSinceLastChunk)) {
-          // Use requestIdleCallback for true background processing to avoid blocking Azure
-          if (window.requestIdleCallback) {
-            window.requestIdleCallback(
-              () => {
-                processBuffer(newBuffer, handleNewTranscription);
-              },
-              { timeout: 1000 }
-            );
-          } else {
-            // Fallback for browsers without requestIdleCallback
-            setTimeout(() => {
-              processBuffer(newBuffer, handleNewTranscription);
-            }, 0);
-          }
+          // Fire immediately for lower latency
+          processBuffer(newBuffer, handleNewTranscription);
           return []; // Buffer cleared, no timeout needed
         }
 
         // Set dynamic timeout based on speech patterns ONLY if not processing immediately
         const optimalWait = calculateOptimalTiming(newBuffer, timeSinceLastChunk);
 
+        // Emit throttled live preview for mobile users while waiting
+        const now = Date.now();
+        if (socketRef.current && socketRef.current.connected && now - lastPreviewSentRef.current > 800) {
+          const previewText = newBuffer.map((i) => i.text).join(' ').slice(0, 220);
+          if (previewText && previewText.length > 10) {
+            lastPreviewSentRef.current = now;
+            socketRef.current.emit('realtime_transcription', {
+              text: previewText,
+              is_final: false,
+              is_llm_processed: false,
+              is_buffer_preview: true,
+              source_language: newBuffer[0].sourceLanguage,
+              room_id: eventData.id,
+              translations: {}
+            });
+          }
+        }
+
         processingTimeoutRef.current = setTimeout(() => {
           setBuffer((currentBuffer) => {
             if (currentBuffer.length > 0) {
-              // Use background processing for timeout cases too
-              if (window.requestIdleCallback) {
-                window.requestIdleCallback(
-                  () => {
-                    processBuffer(currentBuffer, handleNewTranscription);
-                  },
-                  { timeout: 2000 }
-                );
-              } else {
-                processBuffer(currentBuffer, handleNewTranscription);
-              }
+              // Process now without idle delay
+              processBuffer(currentBuffer, handleNewTranscription);
             }
             return [];
           });

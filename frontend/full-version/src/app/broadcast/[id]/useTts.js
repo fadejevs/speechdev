@@ -83,7 +83,9 @@ const speakWithOpenAIImmediate = async (text, lang, eventData, setIsSpeaking, au
     
     // Hybrid approach: Use HTML5 Audio for initial user gesture, Web Audio API for autoplay
     let audioUrl = null;
-    if (isMobile() && !audioContextRef.current) {
+    // Use HTML5 Audio for the very first play on any platform to satisfy autoplay policies
+    // After the first successful play, subsequent plays can use Web Audio API
+    if (!audioContextRef.current) {
       // First time on mobile - use HTML5 Audio within user gesture
       console.log('[TTS] Using HTML5 Audio for initial mobile gesture');
       audioUrl = URL.createObjectURL(audioBlob);

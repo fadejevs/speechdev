@@ -28,10 +28,12 @@ axiosServices.interceptors.request.use(
 axiosServices.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response.status === 401 && !window.location.href.includes('/login')) {
+    const status = error && error.response ? error.response.status : undefined;
+    if (typeof window !== 'undefined' && status === 401 && !window.location.href.includes('/login')) {
       window.location.pathname = '/login';
     }
-    return Promise.reject((error.response && error.response.data) || 'Wrong Services');
+    // If there is no response (e.g., ERR_EMPTY_RESPONSE), propagate the original error
+    return Promise.reject(error);
   }
 );
 
