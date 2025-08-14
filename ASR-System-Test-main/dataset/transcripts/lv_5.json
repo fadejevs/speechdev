@@ -1,0 +1,112 @@
+{
+  "audio_filename": "lv_mx8tT5SDe-0_0-0-04.0-0-0-52.0.wav",
+  "language": "lv",
+  "duration_seconds": 48.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -0.16,
+      "end_time": 1.48,
+      "text": "Mani sauc Armins Ronis,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 1.48,
+      "end_time": 4.48,
+      "text": "un šis stāsts būs veltīts laika apstākļiem Rīgā",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 4.48,
+      "end_time": 7.36,
+      "text": "un par to, kā piemēroties tiem.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 7.36,
+      "end_time": 10.4,
+      "text": "Latvija atrodas mērenajā klimatiskajā joslā,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 10.4,
+      "end_time": 13.68,
+      "text": "tāpēc Latvijā un arī Rīgā ir četri gadalaiki,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 13.68,
+      "end_time": 17.68,
+      "text": "pavasaris, vasara, rudens un ziema.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 17.68,
+      "end_time": 19.8,
+      "text": "Katrs no šiem gadalaikiem ir citāds",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 19.8,
+      "end_time": 23.04,
+      "text": "un prasa citādu apģērbu un paradumus.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 23.04,
+      "end_time": 25.76,
+      "text": "Rīga atrodas tuvu jūrai.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 25.76,
+      "end_time": 30.36,
+      "text": "Apmākušās un mākoņainas dienas ir biežāk nekā saulainās.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 30.36,
+      "end_time": 33.76,
+      "text": "Bieži vien laikapstākļi mainās ļoti ātri",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 33.76,
+      "end_time": 37.4,
+      "text": "var spīdēt saule, bet jau pēc brīža ir pamatīgs negaiss.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 37.4,
+      "end_time": 40.4,
+      "text": "Tāpat var ātri kļūt auksti vai silti,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_013",
+      "start_time": 40.4,
+      "end_time": 45.88,
+      "text": "tāpēc Rīgā cilvēki dodas ārā no mājām, paķerot līdzi nepieciešamās lietas,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_014",
+      "start_time": 45.88,
+      "end_time": 48.56,
+      "text": "kas vajadzīgas, ja mainās laiks.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

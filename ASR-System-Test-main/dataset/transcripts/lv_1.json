@@ -1,0 +1,98 @@
+{
+  "audio_filename": "lv_wb6lWvwZin8_0-52-11.0-0-53-03.0.wav",
+  "language": "lv",
+  "duration_seconds": 52.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -0.31,
+      "end_time": 4.59,
+      "text": "Kangaru kalnos drūmīgi šņāca lielajie meži,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 4.59,
+      "end_time": 8.09,
+      "text": "Dziļajie purvi izsvīda miglu kalnāju starpās.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 8.09,
+      "end_time": 11.71,
+      "text": "Mežos plosījās plēsīgi zvēri, nāvīgas čūskas",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 11.71,
+      "end_time": 15.92,
+      "text": "Lodāja purvos, un bailīgi ūpji kauca pa naktīm,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 15.92,
+      "end_time": 19.95,
+      "text": "Nelabu iespaidu darīja ceļniekiem visiem šis vidus.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 19.95,
+      "end_time": 23.93,
+      "text": "Šaurajā celiņa malā, kas ap purviem un kalniem",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 23.93,
+      "end_time": 27.82,
+      "text": "Locījās, stāvēja kādā pakalnā Kangara māja.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 27.82,
+      "end_time": 31.93,
+      "text": "Svētulis Kangars atlaida nupat pēdējos laudis,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 31.93,
+      "end_time": 35.29,
+      "text": "Kuri pie viņa bija nākuši padoma, palīga meklēt",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 35.29,
+      "end_time": 39.72,
+      "text": "Visādos trūkumos, dažādās nelabās miesīgās kaitēs.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 39.72,
+      "end_time": 43.67,
+      "text": "Aizslēdza durvis vakara krēslā un iededza lāpu,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 43.67,
+      "end_time": 48.04,
+      "text": "Ņēma tad kukuļus, ziedus, ko dienā bij nesuši ļaudis,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 48.04,
+      "end_time": 51.98,
+      "text": "Nolika visus tos kambarī, kopā pie agrākām lietām.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

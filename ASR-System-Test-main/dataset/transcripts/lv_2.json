@@ -1,0 +1,77 @@
+{
+  "audio_filename": "lv_wb6lWvwZin8_0-52-11.0-0-53-03.0.wav",
+  "language": "lv",
+  "duration_seconds": 28.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -4.4,
+      "end_time": 0.44,
+      "text": "Naida runa pazemo un noniecina cilvēkus par to, kas viņi ir.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 0.68,
+      "end_time": 4.44,
+      "text": "Tā aizskar cilvēku viņa identitātes galveno pazīmju",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 4.44,
+      "end_time": 9.6,
+      "text": "ādas krāsas, tautības, valodas, reliģijas,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 9.6,
+      "end_time": 13.64,
+      "text": "veselības stāvokļa, seksuālās orientācijas,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 13.64,
+      "end_time": 16.71,
+      "text": "dzimuma identitātes, vai vecuma dēļ.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 16.92,
+      "end_time": 19.84,
+      "text": "Naida runa var parādīties jebkur.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 20.79,
+      "end_time": 21.11,
+      "text": "Gan uz ielas,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 21.43,
+      "end_time": 22.52,
+      "text": "gan internetā.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 22.52,
+      "end_time": 24.36,
+      "text": "Tā var būt anonīma,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 24.36,
+      "end_time": 27.75,
+      "text": "to var paust pazīstams cilvēks vai politiķis.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "audio_filename": "et_y-228BSwZMA_0-0-21.0-0-1-09.0.wav",
+  "language": "et",
+  "duration_seconds": 48.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": 0.62,
+      "end_time": 2.16,
+      "text": "Eesti on demokraatlik riik",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 2.16,
+      "end_time": 5.37,
+      "text": "ja igaühel meist on palju võimalusi oma häält kasutada,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 5.37,
+      "end_time": 7.39,
+      "text": "et ühiskonnaelus osaleda",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 7.39,
+      "end_time": 10.84,
+      "text": "ja et enda kui ka teiste elu paremaks muuta.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 10.84,
+      "end_time": 12.66,
+      "text": "Suur osa neist võimalustest",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 12.66,
+      "end_time": 15.23,
+      "text": "on kirjeldatud juba Eesti Vabariigi põhiseaduses.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 15.23,
+      "end_time": 20.79,
+      "text": "Näiteks paragrahv nelikümmend viis, Igaühel on õigus vabalt levitada ideid,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 20.79,
+      "end_time": 25.92,
+      "text": "arvamusi, veendumusi ja muud informatsiooni sõnas, trükis,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 25.92,
+      "end_time": 28.38,
+      "text": "pildis või muul viisil.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 28.38,
+      "end_time": 30.9,
+      "text": "Tsensuuri ei ole.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 30.9,
+      "end_time": 33.14,
+      "text": "Või paragrahv nelikümmend seitse,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 33.14,
+      "end_time": 38.2,
+      "text": "Kõigil on õigus ilma eelneva loata rahumeelselt koguneda",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 38.2,
+      "end_time": 39.79,
+      "text": "ja koosolekuid pidada.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_013",
+      "start_time": 39.79,
+      "end_time": 43.39,
+      "text": "Või näiteks paragrahv nelikümmend kaheksa,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_014",
+      "start_time": 43.43,
+      "end_time": 47.48,
+      "text": "Igaühel on õigus koonduda mittetulundusühingutesse",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_015",
+      "start_time": 47.48,
+      "end_time": 48.64,
+      "text": "ja liitudesse.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

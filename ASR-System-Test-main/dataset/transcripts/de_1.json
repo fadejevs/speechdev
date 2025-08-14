@@ -1,0 +1,98 @@
+{
+  "audio_filename": "de_3GeIaNDGgsw_0-0-10.0-0-0-54.0.wav",
+  "language": "de",
+  "duration_seconds": 44.0,
+  "transcription_segments": [
+    {
+      "id": "segment_001",
+      "start_time": 0.6,
+      "end_time": 5.66,
+      "text": "Henry Hühnchen lebt in einem ganz normalen kleinen Hühnerhaus",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 5.74,
+      "end_time": 8.36,
+      "text": "in einem ganz normalen Dorf.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 8.59,
+      "end_time": 11.29,
+      "text": "Er ist weder groß noch klein.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 11.56,
+      "end_time": 14.1,
+      "text": "Er ist weder dick noch dünn.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 14.45,
+      "end_time": 17.08,
+      "text": "Er ist weder schlau noch dumm.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 17.5,
+      "end_time": 21.2,
+      "text": "Henry Hühnchen ist ein ganz normales Huhn.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 22.0,
+      "end_time": 24.65,
+      "text": "An einem ganz normalen Morgen",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 24.7,
+      "end_time": 28.11,
+      "text": "isst Henry Hühnchen in der Küche sein Frühstück.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 28.69,
+      "end_time": 30.81,
+      "text": "Er mag Toast mit Butter",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 30.81,
+      "end_time": 32.81,
+      "text": "und Kaffee mit Sahne.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 33.31,
+      "end_time": 36.06,
+      "text": "Er liest die Nachrichten im Internet.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 36.64,
+      "end_time": 39.9,
+      "text": "Dort sieht er eine furchtbare Nachricht",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_013",
+      "start_time": 39.95,
+      "end_time": 42.68,
+      "text": "mit einer furchtbaren Überschrift.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

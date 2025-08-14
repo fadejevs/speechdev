@@ -1,0 +1,49 @@
+{
+  "audio_filename": "lt_JiwFViK6Bng_0-0-20.0-0-1-03.0.wav",
+  "language": "lt",
+  "duration_seconds": 43.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": 0.96,
+      "end_time": 5.32,
+      "text": "Du tūkstančiai dvidešimt pirmieji metai paskelbti Archyvų metais.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 10.48,
+      "end_time": 16.44,
+      "text": "Prieš šimtą metų Lietuvoje įkurtas pirmasis valstybės archyvas. Na, o Seimo archyvas dar labai jaunas.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 17.86,
+      "end_time": 22.34,
+      "text": "Jam tik trisdešimt metų, kaip ir mūsų atkurtai Lietuvos valstybei.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 22.34,
+      "end_time": 29.26,
+      "text": "Čia saugomi parlamento dokumentai tūkstantis devyni šimtai devyniasdešimtųjų metų kovo vienuoliktosios iki pat šių dienų.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 29.64,
+      "end_time": 34.38,
+      "text": "Jūsų dėmesiui pristatome trijų edukacinių vaizdo siužetų ciklą,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 34.56,
+      "end_time": 43.7,
+      "text": "kurio metu Seimo archyvas atvers savo saugyklų duris ir supažindins jus su čia saugoma istorija.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

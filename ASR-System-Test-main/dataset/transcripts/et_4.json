@@ -1,0 +1,77 @@
+{
+  "audio_filename": "et_ZLvw-QYjBxA_0-3-18.0-0-4-00.0.wav",
+  "language": "et",
+  "duration_seconds": 42.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -0.32,
+      "end_time": 4.84,
+      "text": "Jah, ilmamudeleid on väga palju, mis siis arvutavad seda ilma.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 4.96,
+      "end_time": 8.32,
+      "text": "Jah, ja tuleb öelda, et mõnes olukorras on üks neist parem,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 8.44,
+      "end_time": 10.48,
+      "text": "mõnes olukorras jälle teine parem.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 10.6,
+      "end_time": 13.6,
+      "text": "No, Eesti ilmateenistust on olnud sada üks aastat.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 13.72,
+      "end_time": 18.88,
+      "text": "Ja kindlasti on see päevpäevalt ja aastaaastalt paremaks läinud.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 19.0,
+      "end_time": 23.28,
+      "text": "Ja kindlasti soovitaks meie, meie ilmateadet jälgida.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 23.4,
+      "end_time": 27.44,
+      "text": "Ja kui siis ei tea, mida siis usaldada,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 27.56,
+      "end_time": 32.72,
+      "text": "siis tuleks kindlasti jälgida kõiki või lõpuks helistada ka sünoptikule.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 32.84,
+      "end_time": 37.0,
+      "text": "Ja üle küsida, korrata, et mis siis tegelikult toimub.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 37.12,
+      "end_time": 41.24,
+      "text": "Ja nii praegu väga paljud inimesed ka, ka teevad just.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

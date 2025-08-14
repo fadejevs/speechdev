@@ -1,0 +1,63 @@
+{
+  "audio_filename": "en-6AFV7OuUDIk_dd8-zjY4HEg_0-0-11.0-0-0-40.0.wav",
+  "language": "en-6AFV7OuUDIk",
+  "duration_seconds": 29.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -4.32,
+      "end_time": 0.52,
+      "text": "CHAPTER I THE STRANGE MANS ARRIVAL",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 0.52,
+      "end_time": 4.67,
+      "text": "The stranger came early in February, one wintry day, through a biting",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 4.67,
+      "end_time": 9.54,
+      "text": "wind and a driving snow, the last snowfall of the year, over the down,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 9.54,
+      "end_time": 12.75,
+      "text": "walking from Bramblehurst railway station, and carrying a little black",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 12.75,
+      "end_time": 17.74,
+      "text": "portmanteau in his thickly gloved hand. He was wrapped up from head to",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 17.74,
+      "end_time": 21.34,
+      "text": "foot, and the brim of his soft felt hat hid every inch of his face but",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 21.34,
+      "end_time": 25.1,
+      "text": "the shiny tip of his nose. The snow had piled itself against his",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 25.1,
+      "end_time": 29.66,
+      "text": "shoulders and chest, and added a white crest to the burden he carried.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

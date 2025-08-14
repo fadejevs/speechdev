@@ -1,0 +1,119 @@
+{
+  "audio_filename": "de-CcQ45jRV4-E_3IpcM5gqRM4_0-2-07.0-0-2-51.0.wav",
+  "language": "de-CcQ45jRV4-E",
+  "duration_seconds": 44.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -0.58,
+      "end_time": 1.95,
+      "text": "Aber wir können zumindest den Effekt beobachten,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 2.08,
+      "end_time": 4.08,
+      "text": "den Schwarze Löcher auf Masse haben.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 4.22,
+      "end_time": 6.48,
+      "text": "So wie um die Sonne oder einen Planeten,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 6.62,
+      "end_time": 9.23,
+      "text": "kann Masse auch um Schwarze Löcher kreisen.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 9.37,
+      "end_time": 13.13,
+      "text": "Viele Schwarze Löcher werden auerhalb ihres Ereignishorizonts",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 13.27,
+      "end_time": 15.62,
+      "text": "von Scheiben aus Materie umkreist.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 15.75,
+      "end_time": 17.67,
+      "text": "Die kann unglaublich heiß werden.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 17.8,
+      "end_time": 19.57,
+      "text": "Denn auf einer nahen Umlaufbahn",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 19.7,
+      "end_time": 22.47,
+      "text": "beschleunigt sie bis zu halber Lichtgeschwindigkeit.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 22.62,
+      "end_time": 25.58,
+      "text": "Kleinste Reibungen und Kollisionen zwischen Partikeln",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 25.72,
+      "end_time": 29.05,
+      "text": "heizen die Masse bis zu einer Milliarde Grad Celsius auf.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 29.18,
+      "end_time": 32.35,
+      "text": "Kurioserweise leuchtet der Raum um diese Schwarzen Löcher",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 32.48,
+      "end_time": 34.18,
+      "text": "deshalb strahlend hell.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_013",
+      "start_time": 34.32,
+      "end_time": 36.77,
+      "text": "Was, wenn du dich einem Schwarzen Loch nähern",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_014",
+      "start_time": 36.9,
+      "end_time": 39.0,
+      "text": "oder sogar hineingelangen könntest?",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_015",
+      "start_time": 39.13,
+      "end_time": 43.47,
+      "text": "Zunächst würdest du das merkwürdigste Spiegelkabinett des Universums betreten.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

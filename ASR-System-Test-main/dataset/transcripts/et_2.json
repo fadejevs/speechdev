@@ -1,0 +1,35 @@
+{
+  "audio_filename": "et_JCW1aWp6JVg_0-0-49.0-0-1-22.0.wav",
+  "language": "et",
+  "duration_seconds": 33.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": 0.45,
+      "end_time": 9.95,
+      "text": "Kogu see kompott tuli niivõrd äge ja tagasiside niivõrd positiivne, et otsustasime selle põhjal luua tasuta kättesaadava materjali,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 9.95,
+      "end_time": 16.32,
+      "text": "mis oleks sissejuhatuseks keskaega, ning mis mahuks täpselt ühe koolitunni sisse.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 16.77,
+      "end_time": 24.47,
+      "text": "Nüüd nimesid ja numbreid sa sellest filmist eriti ei leia ja see ei ole ka filmi eesmärk nendest kuuled sa tunnis nii või naa.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 24.47,
+      "end_time": 31.64,
+      "text": "Filmi eesmärk on anda sulle tunnetuslik mõistmine sellest, miks keskaeg üldse oluline on.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

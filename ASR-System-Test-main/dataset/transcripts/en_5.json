@@ -1,0 +1,63 @@
+{
+  "audio_filename": "en-GB_8k-Lf6YwDLw_0-0-06.0-0-0-42.0.wav",
+  "language": "en-GB",
+  "duration_seconds": 36.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": 0.0,
+      "end_time": 4.16,
+      "text": "We have a federal government, which is based in Washington, D.C.,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 4.16,
+      "end_time": 6.68,
+      "text": "and has jurisdiction over the entire country.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 6.68,
+      "end_time": 10.8,
+      "text": "We have state governments, which of course there are fifty states in the US,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 10.8,
+      "end_time": 14.8,
+      "text": "and then we have local governments, as well, municipal governments and",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 14.8,
+      "end_time": 18.72,
+      "text": "other things that also occur at a very kind of localized level.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 18.72,
+      "end_time": 25.28,
+      "text": "The constitution in the United States is the most significant document there is.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 25.28,
+      "end_time": 31.92,
+      "text": "It outlines the roles and responsibilities of the three branches of the federal government",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 31.92,
+      "end_time": 35.68,
+      "text": "and also determines to a large extent what laws can be passed.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

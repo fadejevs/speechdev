@@ -1,0 +1,105 @@
+{
+  "audio_filename": "et_Jk0tks4n_Wo_0-0-18.0-0-1-10.0.wav",
+  "language": "et",
+  "duration_seconds": 52.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -0.96,
+      "end_time": 4.46,
+      "text": "Võlusopi aed on maagiline koht, kus puulehed sosistavad,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 4.62,
+      "end_time": 8.72,
+      "text": "vihmaussid naeratavad ja mesilased tantsivad.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 9.56,
+      "end_time": 12.68,
+      "text": "Suure koheva tamme all ärkas Lumi just kui",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 12.68,
+      "end_time": 13.32,
+      "text": "unest.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 13.32,
+      "end_time": 16.94,
+      "text": "Ta oli seal istunud nii kaua, et ei",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 16.94,
+      "end_time": 20.7,
+      "text": "märganudki, kuidas hommik juba mööda oli hiilinud.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 21.92,
+      "end_time": 26.42,
+      "text": "Tema juuksed olid veidi sassis ja silmad vaatasid",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 26.42,
+      "end_time": 28.24,
+      "text": "eemalolevalt kaugusesse.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 28.96,
+      "end_time": 33.44,
+      "text": "Lumi armastas selliseid hetki, kus aeg jäi",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 33.44,
+      "end_time": 37.78,
+      "text": "justkui seisma ja maailm sosistas vaikseid saladusi.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 37.78,
+      "end_time": 43.34,
+      "text": "Ta silmitses väikese maja akent, mis paistis läbi",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 43.34,
+      "end_time": 43.86,
+      "text": "puude.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 44.72,
+      "end_time": 49.5,
+      "text": "Seal oma toas istus Runo, poiss, keda Lumi",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_013",
+      "start_time": 49.5,
+      "end_time": 51.1,
+      "text": "tundis juba kaua.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

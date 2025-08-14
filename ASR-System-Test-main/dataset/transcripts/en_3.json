@@ -1,0 +1,71 @@
+{
+  "audio_filename": "en_ka6_3TJcCkA_0-0-0.0-0-0-45.0.wav",
+  "language": "en",
+  "duration_seconds": 45.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": 0.82,
+      "end_time": 7.14,
+      "text": "Thank you, Mister Secretary General, your excellencies, ladies and gentlemen, and distinguished guests.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 7.14,
+      "end_time": 15.37,
+      "text": "I'm honored to be here today, I stand before you not as an expert but as a concerned citizen,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 15.37,
+      "end_time": 20.4,
+      "text": "one of the four hundred thousand people who marched in the streets of New York on Sunday, and the billions",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 20.4,
+      "end_time": 25.43,
+      "text": "of others around the world who want to solve our climate crisis.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 25.43,
+      "end_time": 28.52,
+      "text": "As an actor I pretend for a living.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 28.52,
+      "end_time": 33.51,
+      "text": "I play fictitious characters often solving fictitious problems. ",
+      "speaker_id": "speaker_A"
+    },
+    
+    {
+      "id": "segment_006",
+      "start_time": 33.51,
+      "end_time": 39.14,
+      "text": "I believe that mankind has looked at climate change in that same way, as if it were a fiction,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 39.14,
+      "end_time": 43.14,
+      "text": "happening to someone elses planet, as if pretending that climate change wasnt real",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 43.14,
+      "end_time": 45.88,
+      "text": "would somehow make it go away.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

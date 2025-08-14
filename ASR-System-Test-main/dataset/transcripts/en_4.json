@@ -1,0 +1,112 @@
+{
+  "audio_filename": "en_iHzzSao6ypE_0-0-0.0-0-0-40.0.wav",
+  "language": "en",
+  "duration_seconds": 40.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": 0.0,
+      "end_time": 1.28,
+      "text": "Stuck at an intersection,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 1.28,
+      "end_time": 4.7,
+      "text": "you always watch unfold the Fundamental Problem of Traffic.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 4.7,
+      "end_time": 7.68,
+      "text": "On green, the first car accelerates, and then the next,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 7.68,
+      "end_time": 10.94,
+      "text": "and then the next, and then the next, and then you,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 10.94,
+      "end_time": 12.46,
+      "text": "only to catch the red.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 12.46,
+      "end_time": 14.54,
+      "text": "Had the cars accelerated simultaneously,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 14.54,
+      "end_time": 16.38,
+      "text": "you would have made it through.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 16.38,
+      "end_time": 19.32,
+      "text": "Coordination, not cars, is the problem,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 19.32,
+      "end_time": 22.46,
+      "text": "because we are monkey drivers with slow reaction times",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 22.47,
+      "end_time": 24.18,
+      "text": "and short attention spans.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 24.18,
+      "end_time": 29.36,
+      "text": "Even if we tried, getting everyone to press the pedal on three, two, one, now",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 29.36,
+      "end_time": 30.68,
+      "text": "would be challenging.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 30.68,
+      "end_time": 34.04,
+      "text": "This discoordination limits how many cars can get through an intersection",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_013",
+      "start_time": 34.04,
+      "end_time": 36.2,
+      "text": "and when one backs up to the next,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_014",
+      "start_time": 36.2,
+      "end_time": 40.7,
+      "text": "thats when city-sized gridlock cascades happen, taking forever to clear.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

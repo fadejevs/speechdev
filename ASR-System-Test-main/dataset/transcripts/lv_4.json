@@ -1,0 +1,63 @@
+{
+  "audio_filename": "lv_2EsiR0a1qys_0-0-34.0-0-1-11.0.wav",
+  "language": "lv",
+  "duration_seconds": 37.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": 0.8,
+      "end_time": 4.94,
+      "text": "Vakar runājām ar Vidzemes kandidātiem, šodien laiks Kurzemei,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 5.12,
+      "end_time": 9.32,
+      "text": "un pi=irms sākam iepazīties ar mūsu kandidātiem šajā vakarā,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 9.48,
+      "end_time": 11.21,
+      "text": "vispirms nedaudz statistikas.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 12.42,
+      "end_time": 17.39,
+      "text": "Četrpadsmitās Saeimas vēlēšanās pirmajā oktobrī par Kurzemes sarakstiem varēs balsot",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 17.56,
+      "end_time": 21.81,
+      "text": "Dienvidkurzemes, Kuldīgas, Saldus, Talsu un Ventspils novadā,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 21.97,
+      "end_time": 27.43,
+      "text": "Liepājas valstspilsētā un Ventspils valstspilsētā. Kopumā simt piecdesmit vienā iecirknī.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 27.59,
+      "end_time": 32.72,
+      "text": "Jaunajā saeimā no Kurzemes vēlēšanu apgabala tiks ievēlēti divpadsmit deputātu,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 32.88,
+      "end_time": 38.06,
+      "text": "un uz šīm vietām šobrīd pretendē divsimt divdesmit deviņi kandidāti no deviņpadsmit sarakstiem.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "audio_filename": "lt_7sPJME5gCI0_0-3-33.0-0-4-12.0.wav",
+  "language": "lt",
+  "duration_seconds": 39.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -0.13,
+      "end_time": 3.67,
+      "text": "Jų pirmųjų fonetinė priegaidžių prigimtis, tarminiai jų variantai",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 3.8,
+      "end_time": 7.42,
+      "text": "bei sąveika su kitais prozodiniais elementais pradėti nagrinėti",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 7.57,
+      "end_time": 10.17,
+      "text": "tuometinėmis garso analizės priemonėmis.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 10.57,
+      "end_time": 14.62,
+      "text": "Ši pradinė inercija įgavo pagreitį antroje praėjusio amžiaus pusėje,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 14.87,
+      "end_time": 19.0,
+      "text": "kai į eksperimentiką pasuko talentinga jaunųjų mokslininkų karta.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 19.17,
+      "end_time": 21.66,
+      "text": "Pirmiausia paminėtini Aleksas Girdenis",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 21.74,
+      "end_time": 23.3,
+      "text": "ir Antanas Pakerys.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 23.32,
+      "end_time": 26.18,
+      "text": "Pastarųjų darbais eksperimentiniai priegaidžių tyrimai",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 26.25,
+      "end_time": 27.67,
+      "text": "kilstelėti į aukštesnį lygį.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 28.47,
+      "end_time": 31.65,
+      "text": "Šių dienų lietuvių ir latvių kalbų prozodijos tyrėjų,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 31.82,
+      "end_time": 33.66,
+      "text": "galima sakyti, iš esmės yra sekama",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 33.76,
+      "end_time": 36.09,
+      "text": "šių dviejų mokslininkų suformuotomis",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 36.19,
+      "end_time": 39.3,
+      "text": "teorinėmis ir metodologinėmis nuostatomis.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

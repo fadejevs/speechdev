@@ -1,0 +1,112 @@
+{
+  "audio_filename": "et_Z0KglfK3XZ0_0-0-59.0-0-1-36.0.wav",
+  "language": "et",
+  "duration_seconds": 37.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -0.29,
+      "end_time": 1.1,
+      "text": "Aga sademed on ju ka need,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 1.1,
+      "end_time": 2.99,
+      "text": "mis taevast alla sajavad,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 2.99,
+      "end_time": 4.62,
+      "text": "kuidas siis need tekivad?",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 5.03,
+      "end_time": 7.12,
+      "text": "Tõesti, sademed ei saa tekkida",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 7.12,
+      "end_time": 9.15,
+      "text": "ainuüksi niiske õhu jahtumisel.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 9.15,
+      "end_time": 11.0,
+      "text": "Pilved tekivad siis,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 11.0,
+      "end_time": 14.29,
+      "text": "kui soe ja niiske õhk tõuseb maapinnalt ülespoole.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 14.29,
+      "end_time": 16.93,
+      "text": "Tõusev niiske õhumass on hõredam.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 16.93,
+      "end_time": 20.55,
+      "text": "Maapinnale tuleb asemele jahe ja tihedam õhuvool.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 20.55,
+      "end_time": 23.95,
+      "text": "Niiske õhk, mis liikus üles, jahtub.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 23.95,
+      "end_time": 26.36,
+      "text": "Seetõttu kondenseerub veeaur",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 26.36,
+      "end_time": 30.11,
+      "text": "pisikesteks veepiiskadeks või jääkristallideks.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 30.11,
+      "end_time": 32.97,
+      "text": "Need pisikesed tilgad ja kristallid",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_013",
+      "start_time": 32.97,
+      "end_time": 34.84,
+      "text": "kogunevad tolmuosakeste ümber",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_014",
+      "start_time": 34.84,
+      "end_time": 36.68,
+      "text": "ja moodustavadki pilved.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

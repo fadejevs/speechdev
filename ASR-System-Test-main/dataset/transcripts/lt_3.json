@@ -1,0 +1,112 @@
+{
+  "audio_filename": "lt_2UhDIn_qtiI_0-0-20.0-0-0-58.0.wav",
+  "language": "lt",
+  "duration_seconds": 38.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -0.44,
+      "end_time": 1.83,
+      "text": "Prieš kelis šimtus metų raštininko darbas Lietuvoje",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 1.83,
+      "end_time": 5.69,
+      "text": "garantavo jei ne prabangų, tai tikrai sotų gyvenimą.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 5.87,
+      "end_time": 7.77,
+      "text": "Raštininkų reikėjo valdovo kanceliarijai,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 7.77,
+      "end_time": 10.09,
+      "text": "raštininkai dirbo ir turtingų didikų rūmuose.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 10.19,
+      "end_time": 13.15,
+      "text": "Būtent raštininkai surašė visus senuosius dokumentus",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 13.15,
+      "end_time": 17.08,
+      "text": "ir kartu sukūrė tai, ką šiandien vadiname Lietuvos Metrika.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 17.08,
+      "end_time": 19.21,
+      "text": "Tai pagrindinis Lietuvos didžiosios kunigaikštystės",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 19.21,
+      "end_time": 20.36,
+      "text": "dokumentų archyvas.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 20.51,
+      "end_time": 23.27,
+      "text": "Tiesa, tas archyvas , iš viso maždaug šeši šimtai knygų ,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 23.27,
+      "end_time": 25.91,
+      "text": "jau daugiau kaip du šimtus metų yra Rusijoje,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 25.91,
+      "end_time": 28.09,
+      "text": "bet Lietuvos istorikai jame esančius dokumentus",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 28.35,
+      "end_time": 30.9,
+      "text": "vis dėlto turi , mikrofilmų pavidalu.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 30.9,
+      "end_time": 33.51,
+      "text": "Šiais laikais archyvai , gana atviros institucijos.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_013",
+      "start_time": 33.51,
+      "end_time": 35.7,
+      "text": "Užsiregistravai , ir ieškok ko širdis geidžia.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_014",
+      "start_time": 35.7,
+      "end_time": 37.81,
+      "text": "Tolimų giminių arba medžiagos mokslo darbui.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

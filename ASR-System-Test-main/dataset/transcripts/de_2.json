@@ -1,0 +1,182 @@
+{
+  "audio_filename": "de-jwyiGF9oSqQ_Q0Yu7flRQG8_0-4-09.0-0-5-07.0.wav",
+  "language": "de-jwyiGF9oSqQ",
+  "duration_seconds": 58.0,
+  "transcription_segments": [
+    {
+      "id": "segment_001",
+      "start_time": 0.24,
+      "end_time": 1.44,
+      "text": "So viel zur Theorie.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 1.56,
+      "end_time": 2.96,
+      "text": "Jetzt zur Praxis.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 3.08,
+      "end_time": 5.8,
+      "text": "Es ist also Wahltag und ihr habt zwei Stimmen,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 5.92,
+      "end_time": 8.04,
+      "text": "könnt insgesamt zwei Kreuze machen.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 8.16,
+      "end_time": 11.48,
+      "text": "Mit eurer Erststimme wählt ihr eine ganz bestimmte Person.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 11.6,
+      "end_time": 14.56,
+      "text": "Die Wahl habt ihr dabei aus allen Kandidatinnen und Kandidaten,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 14.68,
+      "end_time": 17.4,
+      "text": "die die Parteien für euren speziellen Wahlkreis",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 17.52,
+      "end_time": 19.48,
+      "text": "als Direktkandidaten aufgestellt haben.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 19.6,
+      "end_time": 22.08,
+      "text": "Pro Partei gibt es maximal eine Person.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 22.2,
+      "end_time": 24.68,
+      "text": "Dabei gilt, Die Person, die am Ende",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 24.8,
+      "end_time": 27.32,
+      "text": "die relative Mehrheit aller Erststimmen hat,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 27.44,
+      "end_time": 30.84,
+      "text": "ist gewählt und zieht als Direktkandidatin oder Direktkandidat",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_013",
+      "start_time": 30.96,
+      "end_time": 32.04,
+      "text": "in den Bundestag ein.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_014",
+      "start_time": 32.16,
+      "end_time": 33.44,
+      "text": "Zumindest sehr wahrscheinlich,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_015",
+      "start_time": 33.56,
+      "end_time": 35.72,
+      "text": "darüber sprechen wir auch gleich noch etwas genauer.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_016",
+      "start_time": 35.84,
+      "end_time": 37.52,
+      "text": "Davor aber erst mal zur Zweitstimme.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_017",
+      "start_time": 37.64,
+      "end_time": 39.64,
+      "text": "Mit der wählt ihr, wie schon gesagt, eine Partei.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_018",
+      "start_time": 39.76,
+      "end_time": 42.08,
+      "text": "Ihr könnt aber auch nur ein Kreuz bei der Erststimme",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_019",
+      "start_time": 42.2,
+      "end_time": 44.2,
+      "text": "oder nur ein Kreuz bei der Zweitstimme machen.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_020",
+      "start_time": 44.32,
+      "end_time": 46.88,
+      "text": "Nur mehr als zwei Kreuze dürfen es insgesamt nicht sein.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_021",
+      "start_time": 47.0,
+      "end_time": 48.88,
+      "text": "Und es gibt auch noch weitere Möglichkeiten,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_022",
+      "start_time": 49.0,
+      "end_time": 50.08,
+      "text": "wie man ungültig wählt.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_023",
+      "start_time": 50.2,
+      "end_time": 51.88,
+      "text": "Mehr dazu in der Infobox verlinkt.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_024",
+      "start_time": 52.0,
+      "end_time": 54.56,
+      "text": "Also, ihr wählt und am Ende wird in ganz Deutschland ausgezählt",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_025",
+      "start_time": 54.68,
+      "end_time": 57.12,
+      "text": "und geschaut welche Partei hat wie viele Stimmen.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

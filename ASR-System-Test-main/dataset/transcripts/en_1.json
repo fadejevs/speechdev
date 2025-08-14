@@ -1,0 +1,56 @@
+{
+  "audio_filename": "en_FU_0NF_jrgE_0-0-09.0-0-0-41.0.wav",
+  "language": "en",
+  "duration_seconds": 32.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": 0.75,
+      "end_time": 4.55,
+      "text": "Once there was a bird who fell in love with a whale.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 4.87,
+      "end_time": 8.54,
+      "text": "And a whale who fell in love with a bird.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 9.47,
+      "end_time": 13.08,
+      "text": "The bird loved the whale's beautiful smile.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 13.48,
+      "end_time": 17.65,
+      "text": "He loved the way she swam through the water so gracefully.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 18.33,
+      "end_time": 22.05,
+      "text": "The whale loved the bird's handsome white feathers.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 22.45,
+      "end_time": 25.87,
+      "text": "She loved to watch him soar through the sky.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 26.92,
+      "end_time": 31.11,
+      "text": "And they both loved to eat lots of tiny fish.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

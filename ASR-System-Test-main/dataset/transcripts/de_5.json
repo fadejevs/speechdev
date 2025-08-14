@@ -1,0 +1,112 @@
+{
+  "audio_filename": "de-CcQ45jRV4-E_pM9MTchpW1k_0-0-18.0-0-1-00.0.wav",
+  "language": "de-CcQ45jRV4-E",
+  "duration_seconds": 42.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -0.28,
+      "end_time": 1.84,
+      "text": "Wie es zur Gründung der Bundesrepublik Deutschland",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 1.92,
+      "end_time": 4.24,
+      "text": "und der Deutschen Demokratischen Republik, der DDR, kommt,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 4.32,
+      "end_time": 7.08,
+      "text": "das könnt ihr euch in zwei meiner anderen Videos ansehen.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 7.16,
+      "end_time": 10.6,
+      "text": "Einfach oben auf das I klicken, da bekommt ihr die Videos verlinkt.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 11.0,
+      "end_time": 14.0,
+      "text": "Die Deutsche Demokratische Republik, die DDR, also der Staat,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 14.08,
+      "end_time": 17.32,
+      "text": "der auf dem Gebiet der ehemaligen sowjetischen Besatzungszone entsteht,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 17.4,
+      "end_time": 19.6,
+      "text": "hat von Beginn an ein großes Problem.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 20.0,
+      "end_time": 24.12,
+      "text": "Seit dem Arbeiteraufstand im Jahr neunzehnhundertdreiundfünfzig flüchten Jahr für Jahr",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 24.2,
+      "end_time": 27.4,
+      "text": "zwischen zweihundert und dreihunderttausend Bürgerinnen und Bürger",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 27.48,
+      "end_time": 28.8,
+      "text": "von Ost nach West.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 29.2,
+      "end_time": 32.56,
+      "text": "Die Hälfte dieser Flüchtenden ist noch keine fünfundzwanzig Jahre alt.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 32.68,
+      "end_time": 35.04,
+      "text": "Also junge, qualifizierte Arbeitskräfte.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_012",
+      "start_time": 35.48,
+      "end_time": 38.92,
+      "text": "Die Führungsspitze der DDR unternimmt einen verzweifelten Versuch,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_013",
+      "start_time": 39.0,
+      "end_time": 40.04,
+      "text": "das zu beenden.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_014",
+      "start_time": 40.28,
+      "end_time": 42.16,
+      "text": "Natürlich soll kein Mensch davon erfahren.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

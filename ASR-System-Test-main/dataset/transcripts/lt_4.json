@@ -1,0 +1,91 @@
+{
+  "audio_filename": "lt_6DGOt_YFBsg_0-0-12.0-0-1-08.0.wav",
+  "language": "lt",
+  "duration_seconds": 56.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": 0.58,
+      "end_time": 2.53,
+      "text": "Daugelis vietų turi vardus.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 3.52,
+      "end_time": 7.53,
+      "text": "Žmonės pavadina ne tik upes, ežerus, miestus ar kaimus,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 7.83,
+      "end_time": 13.39,
+      "text": "tačiau ir miškus, laukus, pievas, takus, seklumas, salas, įlankas.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 13.66,
+      "end_time": 19.45,
+      "text": "Gyvenamos teritorijos , miestų rajonai, jų dalys, aikštės, gatvės, parkai ,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 19.84,
+      "end_time": 21.59,
+      "text": "taip pat turi pavadinimus.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_005",
+      "start_time": 22.0,
+      "end_time": 27.96,
+      "text": "Vieni jų yra seni, kaip pavyzdžiui, Vilnius, Nemunas, o kiti gyvuoja gerokai trumpiau,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_006",
+      "start_time": 28.39,
+      "end_time": 32.32,
+      "text": "kaip pavyzdžiui, kokio nors mažo takelio viensėdyje pavadinimas,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_007",
+      "start_time": 32.59,
+      "end_time": 35.34,
+      "text": "kuris numiršta kartu su jį mynusiais žmonėmis.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_008",
+      "start_time": 36.22,
+      "end_time": 41.42,
+      "text": "Lietuvos vietovardžiuose yra didelė jų darybos ir pamato įvairovė.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_009",
+      "start_time": 42.08,
+      "end_time": 46.65,
+      "text": "Ją parodydama vietovardžius aptarsiu pagal jų pamatinius žodžius",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_010",
+      "start_time": 46.97,
+      "end_time": 50.64,
+      "text": "ir skirsiu vietų vardų, atsiradusių iš apeliatyvų,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_011",
+      "start_time": 50.91,
+      "end_time": 56.11,
+      "text": "tai yra bendrinių žodžių, asmenvardžių ir kitų vietovardžių, grupes.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

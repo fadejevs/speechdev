@@ -1,0 +1,42 @@
+{
+  "audio_filename": "lt_ATyEwvlb3ns_0-0-07.0-0-0-35.0.wav",
+  "language": "lt",
+  "duration_seconds": 28.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": 1.58,
+      "end_time": 5.39,
+      "text": "Kitą kartą gyveno kaime mažytė mergaitė.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 6.18,
+      "end_time": 9.81,
+      "text": "Tokia graži, kad gražesnės pasaulyje nerasi.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 11.08,
+      "end_time": 14.7,
+      "text": "Mylėjo ją mamytė, mylėjo ją ir senelė.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_003",
+      "start_time": 16.33,
+      "end_time": 20.04,
+      "text": "Geroji senelė pasiūdino mergaitei raudoną kepuraitę,",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_004",
+      "start_time": 21.0,
+      "end_time": 26.26,
+      "text": "kuri jai taip tiko, jog visi ėmė ją vadinti Raudonkepuraite.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+# Core APIs and Libraries
+openai
+fireworks-ai
+groq
+azure-cognitiveservices-speech
+pandas
+python-decouple
+
+# Audio and Data Handling
+pydub
+soundfile
+
+# Reporting and Utilities
+tqdm
+fpdf2
+
+# Analysis and Metrics
+jiwer
+matplotlib
+seaborn

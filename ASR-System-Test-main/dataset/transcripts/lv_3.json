@@ -1,0 +1,28 @@
+{
+  "audio_filename": "lv_wb6lWvwZin8_0-52-11.0-0-53-03.0.wav",
+  "language": "lv",
+  "duration_seconds": 21.0,
+  "transcription_segments": [
+    {
+      "id": "segment_000",
+      "start_time": -1.06,
+      "end_time": 9.27,
+      "text": "Vai tu kādreiz esi naktī vai vēlā vakarstundā vienkārši gulējis zālītē un skatījies zvaigznēs?",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_001",
+      "start_time": 9.27,
+      "end_time": 10.87,
+      "text": "Pūksītis ir.",
+      "speaker_id": "speaker_A"
+    },
+    {
+      "id": "segment_002",
+      "start_time": 10.87,
+      "end_time": 21.43,
+      "text": "Pagājušajā vasarā, pirms viņa ģimene pārvācās uz Melleņu ieplaku, tā bija viena no ežuļa mīļākajām vasaras vakaru nodarbēm.",
+      "speaker_id": "speaker_A"
+    }
+  ]
+}
