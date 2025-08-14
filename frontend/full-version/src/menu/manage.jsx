@@ -22,14 +22,14 @@ const manage = {
       url: '/dashboard/analytics',
       // icon: 'IconLayoutGrid'
       icon: 'IconStack2'
+    },
+    {
+      id: 'metrics',
+      title: <FormattedMessage id="Metrics" />,
+      type: 'item',
+      url: '/dashboard/metrics',
+      icon: 'IconChartHistogram'
     }
-    // {
-    //   id: 'metrics',
-    //   title: <FormattedMessage id="Metrics" />,
-    //   type: 'item',
-    //   url: '/dashboard/metrics',
-    //   icon: 'IconChartHistogram'
-    // }
   ]
 };
 
