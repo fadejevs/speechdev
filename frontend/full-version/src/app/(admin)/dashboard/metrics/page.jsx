@@ -3,6 +3,8 @@
 import React from 'react';
 import { Tabs, Tab, Box } from '@mui/material';
 import MetricsDashboard from '@/sections/dashboard/analytics/MetricsDashboard';
+import BenchmarksDashboard from '@/sections/dashboard/analytics/BenchmarksDashboard';
+import ExpensesDashboard from '@/sections/dashboard/analytics/ExpensesDashboard';
 
 function TabPanel({ value, index, children }) {
   if (value !== index) return null;
@@ -23,10 +25,10 @@ const MetricsPage = () => {
         <MetricsDashboard />
       </TabPanel>
       <TabPanel value={value} index={1}>
-        <Box>Benchmarks (to be implemented)</Box>
+        <BenchmarksDashboard />
       </TabPanel>
       <TabPanel value={value} index={2}>
-        <Box>Expenses (to be implemented)</Box>
+        <ExpensesDashboard />
       </TabPanel>
     </Box>
   );
